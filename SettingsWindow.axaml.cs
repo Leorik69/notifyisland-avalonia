@@ -12,15 +12,22 @@ public partial class SettingsWindow : Window
     private bool _boot;
     private bool _syncing;
 
+    private readonly DispatcherTimer _commitDelay = new() { Interval = TimeSpan.FromMilliseconds(180) };
+
     public SettingsWindow()
     {
         InitializeComponent();
+        _commitDelay.Tick += (_, _) =>
+        {
+            _commitDelay.Stop();
+            if (_boot) Commit();
+        };
         Opened += (_, _) => Win32Overlay.ApplyNormalChrome(this);
         PaletteBox.ItemsSource = Array.ConvertAll(PaletteCatalog.All, p => p.Name);
         FontBox.ItemsSource = Array.ConvertAll(FontCatalog.All, f => f.Name);
         IconBox.ItemsSource = new[] { "Fluent outline", "Fluent filled", "Segoe MDL2", "Weather soft", "Fluent color" };
         AnimBox.ItemsSource = new[] { "Morph + pulse", "Pulse", "Breathe", "Morph only" };
-        SpeedBox.ItemsSource = new[] { "Fast (180ms)", "Normal (260ms)" };
+        SpeedBox.ItemsSource = new[] { "Fast (167ms)", "Normal (250ms)" };
         ClockBox.ItemsSource = new[] { "HH:mm", "HH:mm:ss", "h:mm tt" };
         DensityBox.ItemsSource = new[] { "Comfort", "Compact" };
         BadgeStyleBox.ItemsSource = new[] { "Icon + count", "Count only", "Dot" };
@@ -30,8 +37,16 @@ public partial class SettingsWindow : Window
         LayerBox.ItemsSource = new[] { "Always on top", "Normal window", "Desktop (HWND_BOTTOM)" };
         LoadFromPrefs();
         WeatherHub.Changed += OnWeatherStatus;
-        Closed += (_, _) => WeatherHub.Changed -= OnWeatherStatus;
-        IslandAnimator.WireLayout(PreviewPill, Motion.MorphMs);
+        Closed += (_, _) =>
+        {
+            WeatherHub.Changed -= OnWeatherStatus;
+            if (_commitDelay.IsEnabled)
+            {
+                _commitDelay.Stop();
+                Commit();
+            }
+        };
+        IslandAnimator.WireChrome(PreviewPill);
         _boot = true;
         PaintPreview();
         PathHint.Text = "Saved to " + PrefsStore.ActivePath;
@@ -110,21 +125,23 @@ public partial class SettingsWindow : Window
     {
         if (!_boot) return;
         Commit();
-        IslandAnimator.Pulse(PreviewPill, Motion.PulseMs);
+        IslandAnimator.FastInvoke(PreviewPill);
     }
 
     private void OnSlider(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (!_boot || _syncing || e.Property != Slider.ValueProperty) return;
         if (sender is Slider s) SyncFromSlider(s);
-        Commit();
+        _commitDelay.Stop();
+        _commitDelay.Start();
     }
 
     private void OnNum(object? sender, NumericUpDownValueChangedEventArgs e)
     {
         if (!_boot || _syncing) return;
         if (sender is NumericUpDown n) SyncFromNum(n);
-        Commit();
+        _commitDelay.Stop();
+        _commitDelay.Start();
     }
 
     private void SyncFromSlider(Slider s)
@@ -195,7 +212,7 @@ public partial class SettingsWindow : Window
 
     private void OnPreviewAnim(object? sender, RoutedEventArgs e)
     {
-        IslandAnimator.Pulse(PreviewPill, Motion.PulseMs);
+        IslandAnimator.FastInvoke(PreviewPill);
         IslandHost.Overlay?.PreviewAnimation();
     }
 

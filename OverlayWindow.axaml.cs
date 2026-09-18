@@ -15,7 +15,7 @@ public partial class OverlayWindow : Window
     private readonly OverlayMachine _machine = new();
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
-    private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(2.6) };
+    private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(3.2) };
     private readonly HwndMorph _hwnd;
     private bool _demoOn;
     private OverlayKind _lastKind = OverlayKind.Idle;
@@ -41,7 +41,6 @@ public partial class OverlayWindow : Window
                 _demo.Start();
             }
         };
-        SizeChanged += (_, _) => Win32Overlay.ApplyNoActivate(this);
         KeyDown += OnKey;
         PrefsStore.Changed += OnPrefsChanged;
         Closed += (_, _) => PrefsStore.Changed -= OnPrefsChanged;
@@ -80,7 +79,7 @@ public partial class OverlayWindow : Window
             _ = ToastHub.RefreshAsync(true);
         WeatherHub.Changed += () => Dispatcher.UIThread.Post(() => { PaintWeather(); Paint(); });
         WeatherHub.Start();
-        AppBadgeHub.Changed += () => Dispatcher.UIThread.Post(() => { PaintBadge(); ApplySize(); Paint(); });
+        AppBadgeHub.Changed += () => Dispatcher.UIThread.Post(OnBadgeChanged);
         if (!PrefsStore.Current.OverlayVisible) Hide();
     }
 
@@ -97,7 +96,7 @@ public partial class OverlayWindow : Window
         _machine.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Preview", Body = "Theme animation" });
         ApplySize();
         Paint();
-        IslandAnimator.Pulse(Pill, Motion.PulseMs);
+        IslandAnimator.FastInvoke(Pill);
     }
 
     public void ShowToast(string title, string body, string? template = null)
@@ -133,7 +132,7 @@ public partial class OverlayWindow : Window
             PrefsStore.Mutate(p => p.OverlayVisible = true);
             IslandAnimator.WireOpacity(this, Motion.FadeMs);
             Opacity = 1;
-            IslandAnimator.Pulse(Pill, Motion.PulseMs);
+            IslandAnimator.FastInvoke(Pill);
             return;
         }
         if (_hiding) return;
@@ -196,8 +195,8 @@ public partial class OverlayWindow : Window
 
     private void ApplyTheme()
     {
-        IslandAnimator.WireLayout(Pill, Motion.MorphMs);
-        IslandAnimator.WireLayout(Glow, Motion.MorphMs);
+        IslandAnimator.WireChrome(Pill);
+        IslandAnimator.WireChrome(Glow);
         IslandAnimator.WireOpacity(ClockText, Motion.FadeMs);
         IslandAnimator.WireOpacity(OverlayPanel, Motion.FadeMs);
         IslandAnimator.WireOpacity(OverlayProgress, Motion.FadeMs);
@@ -210,8 +209,8 @@ public partial class OverlayWindow : Window
         IslandAnimator.WireOpacity(MediaPlay, Motion.FadeMs);
         IslandAnimator.WireOpacity(KindIcon, Motion.FadeMs);
         IslandAnimator.WireOpacity(WeatherChip, Motion.FadeMs);
-        IslandAnimator.WireProgress(OverlayProgress, Motion.ProgressMs);
-        IslandAnimator.WireProgress(RowProgress, Motion.ProgressMs);
+        IslandAnimator.WireProgress(OverlayProgress);
+        IslandAnimator.WireProgress(RowProgress);
         IslandAnimator.WireOpacity(this, Motion.FadeMs);
 
         var pal = PaletteCatalog.Get(PrefsStore.Current.PaletteId);
@@ -284,7 +283,7 @@ public partial class OverlayWindow : Window
         Glow.Height = toH + 8 + prefs.GlowStrength * 6;
         Glow.CornerRadius = new CornerRadius(radius + 4);
         if (animate)
-            _hwnd.To(toW, toH, Motion.MorphMs);
+            _hwnd.To(toW, toH, Motion.WidthMorphMs(toW - _lastW));
         else
         {
             Width = toW;
@@ -327,17 +326,29 @@ public partial class OverlayWindow : Window
         if (snap.Kind is OverlayKind.Progress or OverlayKind.Timer) _completeArmed = true;
     }
 
+    private bool _badgeVis;
+
+    private void OnBadgeChanged()
+    {
+        var vis = ShowBadgeNow();
+        PaintBadge();
+        Paint();
+        if (vis != _badgeVis)
+        {
+            _badgeVis = vis;
+            ApplySize();
+        }
+    }
+
     private void PlayMotion(OverlayKind kind)
     {
         var extra = PrefsStore.Current.Animation;
-        if (extra is "pulse" or "morph")
-            IslandAnimator.Pulse(Pill, Motion.PulseMs);
-        if (extra == "breathe")
-            IslandAnimator.Breathe(Glow, Motion.BreatheMs);
-        if (kind is OverlayKind.Notification or OverlayKind.Stack)
-            IslandAnimator.Pulse(Glow, Motion.PulseMs);
-        if (NotifyTemplates.Normalize(_machine.Snapshot().Payload.Template) == NotifyTemplates.Call)
-            IslandAnimator.Pulse(Pill, Motion.PulseMs);
+        var invoke = kind is OverlayKind.Notification or OverlayKind.Stack or OverlayKind.Error
+            || NotifyTemplates.Normalize(_machine.Snapshot().Payload.Template) is NotifyTemplates.Call or NotifyTemplates.Chat;
+        if (invoke)
+            IslandAnimator.FastInvoke(Pill);
+        if (extra == "breathe" && invoke)
+            IslandAnimator.Breathe(Glow);
     }
 
     private void PlaceTopCenter() => Position = OverlayPlacement.Compute(this, Width, Height);
@@ -378,7 +389,7 @@ public partial class OverlayWindow : Window
         if (kind == OverlayKind.Timer && sec != _lastTimerSec)
         {
             _lastTimerSec = sec;
-            IslandAnimator.TickPop(widthOnly ? RowTimer : OverlayTimer);
+            IslandAnimator.TickFade(widthOnly ? RowTimer : OverlayTimer);
         }
         var warn = NotifyTemplates.Normalize(p.Template) == NotifyTemplates.Warn;
         OverlayTitle.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? pal.Error : warn ? Color.Parse("#E6C35C") : pal.Text);
