@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
 
 namespace NotifyIsland;
 
@@ -24,6 +25,8 @@ public partial class SettingsWindow : Window
         AnchorVBox.ItemsSource = new[] { "Top", "Center", "Bottom" };
         LayerBox.ItemsSource = new[] { "Always on top", "Normal window", "Desktop (HWND_BOTTOM)" };
         LoadFromPrefs();
+        WeatherHub.Changed += OnWeatherStatus;
+        Closed += (_, _) => WeatherHub.Changed -= OnWeatherStatus;
         IslandAnimator.WireLayout(PreviewPill, Motion.MorphMs);
         _boot = true;
         PaintPreview();
@@ -72,6 +75,14 @@ public partial class SettingsWindow : Window
         WeatherStatus.Text = "Weather: " + WeatherHub.Status;
         SoundBox.IsChecked = p.SoundsEnabled;
         VolumeSlider.Value = p.SoundVolume;
+    }
+
+    private void OnWeatherStatus()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            WeatherStatus.Text = "Weather: " + WeatherHub.Status;
+        });
     }
 
     private void OnChanged(object? sender, SelectionChangedEventArgs e)
