@@ -4,10 +4,9 @@ Win11 top-center overlay. Fluent/Segoe, palettes, tray + settings, weather, icon
 
 ## Download (win-x64)
 
-- Installer: `NotifyIsland-Setup-win-x64.exe` (Inno Setup, per-user, no admin)
-- Portable: `NotifyIsland-portable-win-x64.zip`
-
-See the GitHub Release tagged `portable-win11-1.0.0`.
+- Installer: https://github.com/Leorik69/notifyisland-avalonia/releases/download/portable-win11-1.0.0/NotifyIsland-Setup-win-x64.exe
+- Portable zip: https://github.com/Leorik69/notifyisland-avalonia/releases/download/portable-win11-1.0.0/NotifyIsland-portable-win-x64.zip
+- Release page: https://github.com/Leorik69/notifyisland-avalonia/releases/tag/portable-win11-1.0.0
 
 ```
 dotnet run --project NotifyIsland.Av.csproj
