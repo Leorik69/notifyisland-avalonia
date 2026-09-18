@@ -15,6 +15,7 @@ jobs:
           python-version: "3.x"
       - run: python3 tools/test_overlay_states.py
       - run: python3 tools/test_motion_tokens.py
+      - run: python3 tools/test_p13_roadmap.py
 
   publish:
     runs-on: windows-latest
@@ -23,6 +24,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: python tools/test_overlay_states.py
+      - run: python tools/test_p13_roadmap.py
       - run: dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained true -o publish
       - uses: actions/upload-artifact@v4
         with:

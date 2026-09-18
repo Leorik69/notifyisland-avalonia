@@ -187,7 +187,7 @@ internal static class IslandIcons
         if (kind == OverlayKind.Error) return IslandGlyph.Error;
         if (kind == OverlayKind.Media) return p.Playing ? IslandGlyph.MediaPause : IslandGlyph.MediaPlay;
         if (kind == OverlayKind.Progress || t == NotifyTemplates.Download) return IslandGlyph.Download;
-        if (kind == OverlayKind.Timer || t == NotifyTemplates.Focus) return IslandGlyph.Timer;
+        if (kind == OverlayKind.Timer || kind == OverlayKind.TimerComplete || t == NotifyTemplates.Focus) return IslandGlyph.Timer;
         if (kind == OverlayKind.Stack || t == NotifyTemplates.Queue) return IslandGlyph.Notify;
         return NotifyTemplates.Glyph(t);
     }

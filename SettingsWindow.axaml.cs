@@ -117,6 +117,12 @@ public partial class SettingsWindow : Window
         Pair(OffXSlider, OffXNum, p.OffsetX);
         Pair(OffYSlider, OffYNum, p.OffsetY);
         LayerBox.SelectedIndex = p.Layer switch { "normal" => 1, "desktop" => 2, _ => 0 };
+        FillScreens();
+        ScreenBox.SelectedIndex = Math.Clamp(p.ScreenIndex + 1, 0, Math.Max(0, itemsCount(ScreenBox) - 1));
+        QuietFocusBox.IsChecked = p.SuppressFocusAssist;
+        QuietFullBox.IsChecked = p.SuppressFullscreen;
+        ReduceMotionBox.IsChecked = p.ReduceMotion;
+        DiagBox.IsChecked = p.Diagnostics;
         Pair(NotifySlider, NotifyNum, p.NotifyDurationMs);
         Pair(ChatSlider, ChatNum, p.ChatDurationMs);
         Pair(CallSlider, CallNum, p.CallDurationMs);
@@ -141,6 +147,21 @@ public partial class SettingsWindow : Window
         ToastStatus.Text = PrefsStore.Current.ListenToasts
             ? "Toasts: " + ToastHub.Status + " — " + ToastHub.Detail
             : "Toasts: Off";
+    }
+
+    private void FillScreens()
+    {
+        var items = new System.Collections.Generic.List<string> { "Primary (auto)" };
+        if (IslandHost.Overlay?.Screens is { } screens)
+        {
+            var i = 0;
+            foreach (var s in screens.All)
+            {
+                items.Add("Display " + i + " · " + s.Bounds.Width + "x" + s.Bounds.Height + " @" + s.Scaling.ToString("0.##") + "x");
+                i++;
+            }
+        }
+        ScreenBox.ItemsSource = items;
     }
 
     private void OnWeatherStatus() => Dispatcher.UIThread.Post(() => WeatherStatus.Text = "Weather: " + WeatherHub.Status);
@@ -294,6 +315,11 @@ public partial class SettingsWindow : Window
             p.OffsetX = OffXSlider.Value;
             p.OffsetY = OffYSlider.Value;
             p.Layer = LayerBox.SelectedIndex switch { 1 => "normal", 2 => "desktop", _ => "topmost" };
+            p.ScreenIndex = ScreenBox.SelectedIndex - 1;
+            p.SuppressFocusAssist = QuietFocusBox.IsChecked == true;
+            p.SuppressFullscreen = QuietFullBox.IsChecked == true;
+            p.ReduceMotion = ReduceMotionBox.IsChecked == true;
+            p.Diagnostics = DiagBox.IsChecked == true;
             p.NotifyDurationMs = (int)NotifySlider.Value;
             p.ChatDurationMs = (int)ChatSlider.Value;
             p.CallDurationMs = (int)CallSlider.Value;
@@ -437,6 +463,12 @@ public partial class SettingsWindow : Window
     }
 
     private void OnOpenToastPrivacy(object? sender, RoutedEventArgs e) => ToastIdentity.OpenPrivacySettings();
+
+    private static int itemsCount(ComboBox box)
+    {
+        if (box.ItemsSource is System.Collections.ICollection c) return c.Count;
+        return box.ItemCount;
+    }
 
     private static int IndexOf<T>(T[] items, Func<T, bool> pred)
     {

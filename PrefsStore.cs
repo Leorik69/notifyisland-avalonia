@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NotifyIsland.Core;
 
 namespace NotifyIsland;
 
@@ -62,6 +63,12 @@ public sealed class UserPrefs
     public int CallDurationMs { get; set; } = 6000;
     public int CompleteDurationMs { get; set; } = 2200;
     public int WarnDurationMs { get; set; } = 4000;
+    public int ScreenIndex { get; set; } = -1;
+    public bool SuppressFullscreen { get; set; } = true;
+    public bool SuppressFocusAssist { get; set; } = true;
+    public bool ReduceMotion { get; set; }
+    public bool Diagnostics { get; set; }
+    public int SettingsSchema { get; set; } = 13;
 }
 
 internal static class PrefsStore
@@ -94,8 +101,9 @@ internal static class PrefsStore
                 return;
             }
         }
-        catch
+        catch (Exception ex)
         {
+            IslandLog.Write("prefs", ex.Message);
         }
         Current = new UserPrefs();
         ActivePath = CanWrite(PortablePath()) ? PortablePath() : AppDataPath();
@@ -214,6 +222,12 @@ internal static class PrefsStore
         if (p.CompleteDurationMs < 500 || p.CompleteDurationMs > 30000) p.CompleteDurationMs = 2200;
         if (p.WarnDurationMs < 500 || p.WarnDurationMs > 30000) p.WarnDurationMs = 4000;
         p.BadgeApps = (p.BadgeApps ?? "").Trim();
+        if (p.SettingsSchema < 13)
+        {
+            p.SettingsSchema = 13;
+            if (p.ScreenIndex < -1) p.ScreenIndex = -1;
+        }
+        p.ScreenIndex = Math.Clamp(p.ScreenIndex, -1, 15);
         p.Animation = p.Animation.ToLowerInvariant() switch
         {
             "pulse" => "pulse",

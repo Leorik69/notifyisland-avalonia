@@ -1,3 +1,5 @@
+using System;
+
 namespace NotifyIsland.Core;
 
 public sealed class OverlayDispatcher
@@ -7,13 +9,19 @@ public sealed class OverlayDispatcher
 
     public NotificationQueue Queue => _queue;
     public event Action? Changed;
+    public event Action<NotificationEvent>? ActionInvoked;
 
     public OverlayDispatcher(OverlayMachine machine) => _machine = machine;
 
     public OverlaySnapshot Notify(NotificationRequest request)
     {
+        if (QuietHours.ShouldSuppressNotify() && request.Urgency != NotifyUrgency.Error)
+        {
+            IslandLog.Write("dispatch", "suppressed " + request.Id + " " + QuietHours.Label);
+            return _machine.Snapshot();
+        }
         _queue.Enqueue(request);
-        IslandLog.Write("dispatch", "notify " + request.Id + " tpl=" + request.Template);
+        IslandLog.Write("dispatch", "notify " + request.Id + " tpl=" + request.Template + " u=" + request.Urgency);
         var kind = _machine.Snapshot().Kind;
         OverlaySnapshot snap;
         if (kind is OverlayKind.Notification or OverlayKind.Stack)
@@ -26,7 +34,8 @@ public sealed class OverlayDispatcher
                 Line2 = string.IsNullOrWhiteSpace(request.Body) ? request.Title : request.Title + " · " + request.Body,
                 Template = NotifyTemplates.Queue,
                 AppId = request.AppId,
-                DurationMs = request.DurationMs
+                DurationMs = request.DurationMs,
+                Urgency = request.Urgency
             });
         }
         else
@@ -43,6 +52,7 @@ public sealed class OverlayDispatcher
         var wasFront = _queue.Front?.Request.Id.Value == id.Value;
         _queue.Dismiss(id);
         IslandLog.Write("dispatch", "dismiss " + id);
+        ActionInvoked?.Invoke(new NotificationEvent { Id = id, Action = NotificationAction.Dismiss });
         if (wasFront || _machine.Snapshot().Kind is OverlayKind.Notification or OverlayKind.Stack)
         {
             var next = _queue.Front;
@@ -54,6 +64,18 @@ public sealed class OverlayDispatcher
                 _machine.Dispatch(OverlayCommand.Notify, ToPayload(next.Request));
             }
         }
+        Changed?.Invoke();
+        return _machine.Snapshot();
+    }
+
+    public OverlaySnapshot InvokeAction(NotificationAction action)
+    {
+        var front = _queue.Front;
+        var id = front?.Request.Id ?? NotificationId.Parse("ui");
+        IslandLog.Write("dispatch", "action " + action + " " + id);
+        ActionInvoked?.Invoke(new NotificationEvent { Id = id, Action = action });
+        if (action is NotificationAction.Dismiss or NotificationAction.Cancel)
+            return Dismiss(id);
         Changed?.Invoke();
         return _machine.Snapshot();
     }
@@ -83,6 +105,10 @@ public sealed class OverlayDispatcher
         Body = req.Body,
         Template = req.Template,
         AppId = req.AppId,
-        DurationMs = req.DurationMs
+        DurationMs = req.DurationMs,
+        Progress = req.Progress,
+        EtaSeconds = req.EtaSeconds,
+        Cancellable = req.Cancellable,
+        Urgency = req.Urgency
     };
 }

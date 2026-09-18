@@ -18,7 +18,16 @@ public enum NotificationAction
     None,
     Content,
     Dismiss,
-    Mute
+    Mute,
+    Cancel
+}
+
+public enum NotifyUrgency
+{
+    Normal,
+    Success,
+    Warning,
+    Error
 }
 
 public sealed class NotificationRequest
@@ -32,10 +41,20 @@ public sealed class NotificationRequest
     public int DurationMs { get; init; } = 4000;
     public bool Replace { get; init; } = true;
     public NotificationAction DefaultAction { get; init; } = NotificationAction.Content;
+    public NotifyUrgency Urgency { get; init; } = NotifyUrgency.Normal;
+    public double Progress { get; init; }
+    public double EtaSeconds { get; init; }
+    public bool Cancellable { get; init; }
 }
 
 public sealed class NotificationRecord
 {
     public required NotificationRequest Request { get; init; }
     public DateTimeOffset EnqueuedUtc { get; init; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class NotificationEvent
+{
+    public required NotificationId Id { get; init; }
+    public required NotificationAction Action { get; init; }
 }

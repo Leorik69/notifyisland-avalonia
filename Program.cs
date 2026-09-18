@@ -10,6 +10,7 @@ internal static class Program
     public static bool OpenSettingsOnStart { get; private set; }
     public static bool MotionDebug { get; private set; }
     public static bool ForceDirectComposition { get; private set; }
+    public static bool Diagnostics { get; private set; }
 
     public static string CompositionLabel =>
         ForceDirectComposition ? "DirectComposition" : "WinUIComposition+DComp-fallback";
@@ -30,6 +31,8 @@ internal static class Program
             }
             if (string.Equals(a, "--dcomp", StringComparison.OrdinalIgnoreCase))
                 ForceDirectComposition = true;
+            if (string.Equals(a, "--diagnostics", StringComparison.OrdinalIgnoreCase))
+                Diagnostics = true;
         }
     }
 

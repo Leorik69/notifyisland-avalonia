@@ -2,25 +2,41 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
+using System.Resources;
 using System.Text.Json;
+using NotifyIsland.Core;
 
 namespace NotifyIsland;
 
 internal static class Ui
 {
+    private static readonly ResourceManager Resx = new("NotifyIsland.Loc.Strings", Assembly.GetExecutingAssembly());
     private static Dictionary<string, string> _map = new(StringComparer.OrdinalIgnoreCase);
+    private static CultureInfo _culture = new("ru");
 
     public static string Lang { get; private set; } = "ru";
 
     public static void Apply(string? pref)
     {
         Lang = Resolve(pref);
+        _culture = new CultureInfo(Lang == "en" ? "en" : "ru");
+        CultureInfo.CurrentUICulture = _culture;
         _map = Read(Lang);
         if (_map.Count == 0 && Lang != "en") _map = Read("en");
     }
 
     public static string T(string key)
     {
+        try
+        {
+            var fromResx = Resx.GetString(key, _culture);
+            if (!string.IsNullOrWhiteSpace(fromResx)) return fromResx;
+        }
+        catch (Exception ex)
+        {
+            IslandLog.Write("loc", ex.Message);
+        }
         if (_map.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v)) return v;
         return key;
     }
@@ -44,8 +60,9 @@ internal static class Ui
             var d = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
             return d ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
-        catch
+        catch (Exception ex)
         {
+            IslandLog.Write("loc", ex.Message);
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
     }

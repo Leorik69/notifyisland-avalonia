@@ -130,6 +130,12 @@
             </Grid>
             <Slider x:Name="OffYSlider" Minimum="-400" Maximum="400" PropertyChanged="OnSlider" />
             <ComboBox x:Name="LayerBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+            <TextBlock Text="Display" Opacity="0.8" />
+            <ComboBox x:Name="ScreenBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+            <CheckBox x:Name="QuietFocusBox" Content="Pause toasts during Focus Assist" IsCheckedChanged="OnCheck" />
+            <CheckBox x:Name="QuietFullBox" Content="Pause toasts during fullscreen / presentation" IsCheckedChanged="OnCheck" />
+            <CheckBox x:Name="ReduceMotionBox" Content="Reduce motion" IsCheckedChanged="OnCheck" />
+            <CheckBox x:Name="DiagBox" Content="Diagnostics HUD" IsCheckedChanged="OnCheck" />
             <TextBlock Text="Desktop layer uses HWND_BOTTOM. WorkerW is not used." FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
           </StackPanel>
         </Expander>

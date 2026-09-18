@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using NotifyIsland.Core;
 using NotifyIsland.Platform;
 
 namespace NotifyIsland;
@@ -7,14 +8,21 @@ namespace NotifyIsland;
 internal static class OverlayPlacement
 {
     public static IScreenPlacement Current { get; } = new HostPlacement();
+    public static double LastScale { get; private set; } = 1;
 
     public static PixelPoint Compute(Window window, double dipW, double dipH)
     {
-        var screen = window.Screens.Primary ?? window.Screens.ScreenFromWindow(window);
+        var screens = window.Screens.All;
+        Avalonia.Platform.Screen? screen = null;
+        var idx = PrefsStore.Current.ScreenIndex;
+        if (idx >= 0 && idx < screens.Count)
+            screen = screens[idx];
+        screen ??= window.Screens.Primary ?? window.Screens.ScreenFromWindow(window);
         if (screen is null) return window.Position;
         var prefs = PrefsStore.Current;
         var wa = screen.WorkingArea;
-        var scale = window.RenderScaling;
+        var scale = screen.Scaling > 0 ? screen.Scaling : window.RenderScaling;
+        LastScale = scale;
         var pw = (int)Math.Round(dipW * scale);
         var ph = (int)Math.Round(dipH * scale);
         var pad = (int)Math.Round(8 * scale);

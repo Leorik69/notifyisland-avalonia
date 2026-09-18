@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="title" xml:space="preserve"><value>Параметры NotifyIsland</value></data>
+  <data name="heading" xml:space="preserve"><value>Капсула</value></data>
+  <data name="lang" xml:space="preserve"><value>Язык интерфейса</value></data>
+  <data name="lang_h" xml:space="preserve"><value>По умолчанию русский. English — отдельная таблица строк.</value></data>
+  <data name="appearance" xml:space="preserve"><value>Вид</value></data>
+  <data name="expand_speed" xml:space="preserve"><value>Скорость раскрытия</value></data>
+  <data name="expand_speed_h" xml:space="preserve"><value>Коротко: 167 мс Fast, 250 мс если прыжок по ширине большой.</value></data>
+  <data name="collapse_speed" xml:space="preserve"><value>Скорость сворачивания</value></data>
+  <data name="collapse_speed_h" xml:space="preserve"><value>Медленнее раскрытия: сначала текст, потом ширина.</value></data>
+  <data name="motion_extra" xml:space="preserve"><value>Доп. анимация</value></data>
+  <data name="motion_extra_h" xml:space="preserve"><value>Invoke — масштаб 0.98. Breathe — только свечение.</value></data>
+  <data name="saved" xml:space="preserve"><value>Сохранено в </value></data>
+  <data name="screen" xml:space="preserve"><value>Монитор</value></data>
+  <data name="quiet" xml:space="preserve"><value>Пауза при Focus Assist и полноэкранном режиме</value></data>
+  <data name="reduce_motion" xml:space="preserve"><value>Меньше анимации</value></data>
+  <data name="diagnostics" xml:space="preserve"><value>Диагностика</value></data>
+</root>

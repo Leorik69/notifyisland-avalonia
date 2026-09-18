@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
+using NotifyIsland.Core;
 using Avalonia;
 using Avalonia.Animation;
 using Avalonia.Controls;
@@ -85,7 +86,7 @@ internal static class IslandAnimator
                 new KeyFrame { Cue = new Cue(1), Setters = { new Setter(Visual.OpacityProperty, 0.22) } },
             }
         };
-        try { await anim.RunAsync(glow); } catch { }
+        try { await anim.RunAsync(glow); } catch (Exception ex) { IslandLog.Write("anim", ex.Message); }
     }
 
     public static async void TickFade(Control target)
@@ -223,7 +224,7 @@ internal sealed class HwndMorph
         {
             IslandAnimator.WireOpacity(fadeContent, Motion.FadeMs);
             fadeContent.Opacity = 0;
-            try { await Task.Delay(Motion.FadeMs); } catch { }
+            try { await Task.Delay(Motion.FadeMs); } catch (Exception ex) { IslandLog.Write("anim", ex.Message); }
             if (!_running) return;
         }
         _clock.Restart();
