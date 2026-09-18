@@ -12,6 +12,7 @@ internal static class Program
     public static bool ForceDirectComposition { get; private set; }
     public static bool Diagnostics { get; private set; }
     public static string? RenderModeOverride { get; private set; }
+    public static string? SettingsShotPath { get; private set; }
 
     public static string CompositionLabel =>
         ForceDirectComposition ? "DirectComposition" : "WinUIComposition+DComp-fallback";
@@ -36,6 +37,11 @@ internal static class Program
                 Diagnostics = true;
             if (a.StartsWith("--render-mode=", StringComparison.OrdinalIgnoreCase))
                 RenderModeOverride = a.Split('=')[1];
+            if (a.StartsWith("--settings-shot=", StringComparison.OrdinalIgnoreCase))
+            {
+                SettingsShotPath = a.Split('=', 2)[1];
+                OpenSettingsOnStart = true;
+            }
         }
     }
 

@@ -2,11 +2,41 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="NotifyIsland.SettingsWindow"
         Title="NotifyIsland settings"
-        Width="560" Height="720"
-        CanResize="True" MinWidth="480" MinHeight="560"
+        Width="640" Height="720"
+        CanResize="True" MinWidth="580" MinHeight="560"
         WindowStartupLocation="CenterScreen"
         SystemDecorations="Full"
         ShowInTaskbar="True">
+  <Window.Styles>
+    <Style Selector="NumericUpDown">
+      <Setter Property="MinWidth" Value="172"/>
+      <Setter Property="MinHeight" Value="36"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Right"/>
+      <Setter Property="Padding" Value="8,4,4,4"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="ShowButtonSpinner" Value="True"/>
+      <Setter Property="ButtonSpinnerLocation" Value="Right"/>
+    </Style>
+    <Style Selector="NumericUpDown /template/ TextBox#PART_TextBox">
+      <Setter Property="MinWidth" Value="96"/>
+      <Setter Property="TextAlignment" Value="Right"/>
+      <Setter Property="Padding" Value="8,4,8,4"/>
+      <Setter Property="HorizontalContentAlignment" Value="Right"/>
+    </Style>
+    <Style Selector="NumericUpDown /template/ RepeatButton">
+      <Setter Property="MinWidth" Value="18"/>
+      <Setter Property="Width" Value="22"/>
+      <Setter Property="MaxWidth" Value="24"/>
+      <Setter Property="Padding" Value="0"/>
+    </Style>
+    <Style Selector="TextBlock.unit">
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Margin" Value="8,0,0,0"/>
+      <Setter Property="Opacity" Value="0.75"/>
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+  </Window.Styles>
   <DockPanel Margin="16">
     <TextBlock x:Name="HeadingText" DockPanel.Dock="Top" FontSize="20" FontWeight="SemiBold" Text="Капсула" Margin="0,0,0,8"
                FontFamily="Segoe UI Variable Display, Segoe UI" />
@@ -41,29 +71,34 @@
             <ComboBox x:Name="FontBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
             <TextBlock Text="Icons" Opacity="0.8" />
             <ComboBox x:Name="IconBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Opacity" VerticalAlignment="Center" />
               <NumericUpDown x:Name="OpacityNum" Grid.Column="1" Minimum="0.45" Maximum="1" Increment="0.01" FormatString="0.00" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="%" />
             </Grid>
             <Slider x:Name="OpacitySlider" Minimum="0.45" Maximum="1" PropertyChanged="OnSlider" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Glass (alpha only)" VerticalAlignment="Center" />
               <NumericUpDown x:Name="GlassNum" Grid.Column="1" Minimum="0" Maximum="1" Increment="0.05" FormatString="0.00" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="%" />
             </Grid>
             <Slider x:Name="GlassSlider" Minimum="0" Maximum="1" PropertyChanged="OnSlider" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Border" VerticalAlignment="Center" />
               <NumericUpDown x:Name="BorderNum" Grid.Column="1" Minimum="0" Maximum="3" Increment="0.1" FormatString="0.0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="px" />
             </Grid>
             <Slider x:Name="BorderSlider" Minimum="0" Maximum="3" PropertyChanged="OnSlider" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Glow" VerticalAlignment="Center" />
               <NumericUpDown x:Name="GlowNum" Grid.Column="1" Minimum="0" Maximum="1" Increment="0.05" FormatString="0.00" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="%" />
             </Grid>
             <Slider x:Name="GlowSlider" Minimum="0" Maximum="1" PropertyChanged="OnSlider" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Corner radius (0=auto)" VerticalAlignment="Center" />
               <NumericUpDown x:Name="RadiusNum" Grid.Column="1" Minimum="0" Maximum="28" Increment="1" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="px" />
             </Grid>
             <Slider x:Name="RadiusSlider" Minimum="0" Maximum="28" PropertyChanged="OnSlider" />
             <TextBlock x:Name="RenderModeLabel" Opacity="0.8" />
@@ -75,16 +110,18 @@
             <TextBlock x:Name="ExpandSpeedLabel" Opacity="0.8" />
             <TextBlock x:Name="ExpandSpeedHint" FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
             <ComboBox x:Name="ExpandSpeedBox" HorizontalAlignment="Stretch" SelectionChanged="OnExpandPreset" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <Slider x:Name="ExpandMsSlider" Minimum="120" Maximum="500" PropertyChanged="OnSlider" />
               <NumericUpDown x:Name="ExpandMsNum" Grid.Column="1" Minimum="120" Maximum="500" Increment="1" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="мс" />
             </Grid>
             <TextBlock x:Name="CollapseSpeedLabel" Opacity="0.8" />
             <TextBlock x:Name="CollapseSpeedHint" FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
             <ComboBox x:Name="CollapseSpeedBox" HorizontalAlignment="Stretch" SelectionChanged="OnCollapsePreset" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <Slider x:Name="CollapseMsSlider" Minimum="180" Maximum="600" PropertyChanged="OnSlider" />
               <NumericUpDown x:Name="CollapseMsNum" Grid.Column="1" Minimum="180" Maximum="600" Increment="1" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="мс" />
             </Grid>
           </StackPanel>
         </Expander>
@@ -95,25 +132,29 @@
             <ComboBox x:Name="ClockBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
             <TextBlock Text="Density" Opacity="0.8" />
             <ComboBox x:Name="DensityBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Idle width" VerticalAlignment="Center" />
               <NumericUpDown x:Name="WidthNum" Grid.Column="1" Minimum="140" Maximum="280" Increment="1" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="px" />
             </Grid>
             <Slider x:Name="WidthSlider" Minimum="140" Maximum="280" PropertyChanged="OnSlider" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Capsule height" VerticalAlignment="Center" />
               <NumericUpDown x:Name="HeightNum" Grid.Column="1" Minimum="32" Maximum="48" Increment="1" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="px" />
             </Grid>
             <Slider x:Name="HeightSlider" Minimum="32" Maximum="48" PropertyChanged="OnSlider" />
             <CheckBox x:Name="ExpandHeightBox" Content="Expand height (off = width only)" IsCheckedChanged="OnCheck" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Min width" VerticalAlignment="Center" />
               <NumericUpDown x:Name="MinWNum" Grid.Column="1" Minimum="120" Maximum="360" Increment="1" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="px" />
             </Grid>
             <Slider x:Name="MinWSlider" Minimum="120" Maximum="360" PropertyChanged="OnSlider" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Max width" VerticalAlignment="Center" />
               <NumericUpDown x:Name="MaxWNum" Grid.Column="1" Minimum="200" Maximum="640" Increment="1" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="px" />
             </Grid>
             <Slider x:Name="MaxWSlider" Minimum="200" Maximum="640" PropertyChanged="OnSlider" />
             <TextBlock Text="Text size" Opacity="0.8" />
@@ -130,14 +171,16 @@
           <StackPanel Spacing="8" Margin="0,8,0,0">
             <ComboBox x:Name="AnchorHBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
             <ComboBox x:Name="AnchorVBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="X offset" VerticalAlignment="Center" />
               <NumericUpDown x:Name="OffXNum" Grid.Column="1" Minimum="-400" Maximum="400" Increment="1" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="px" />
             </Grid>
             <Slider x:Name="OffXSlider" Minimum="-400" Maximum="400" PropertyChanged="OnSlider" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Y offset" VerticalAlignment="Center" />
               <NumericUpDown x:Name="OffYNum" Grid.Column="1" Minimum="-400" Maximum="400" Increment="1" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="px" />
             </Grid>
             <Slider x:Name="OffYSlider" Minimum="-400" Maximum="400" PropertyChanged="OnSlider" />
             <ComboBox x:Name="LayerBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
@@ -157,9 +200,10 @@
             <CheckBox x:Name="LocationBox" Content="Use Windows location when allowed" IsCheckedChanged="OnCheck" />
             <TextBox x:Name="CityBox" Watermark="City fallback" LostFocus="OnCityLost" />
             <ComboBox x:Name="WeatherPosBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Refresh (min)" VerticalAlignment="Center" />
               <NumericUpDown x:Name="WeatherMinNum" Grid.Column="1" Minimum="5" Maximum="60" Increment="1" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="мин" />
             </Grid>
             <Slider x:Name="WeatherMinSlider" Minimum="5" Maximum="60" PropertyChanged="OnSlider" />
             <TextBlock x:Name="WeatherStatus" FontSize="12" Opacity="0.75" TextWrapping="Wrap" />
@@ -173,16 +217,18 @@
             <CheckBox x:Name="SoundChatBox" Content="Chat" IsCheckedChanged="OnCheck" />
             <CheckBox x:Name="SoundErrorBox" Content="Error" IsCheckedChanged="OnCheck" />
             <CheckBox x:Name="SoundCompleteBox" Content="Complete" IsCheckedChanged="OnCheck" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Cue volume (app sounds)" VerticalAlignment="Center" />
               <NumericUpDown x:Name="VolumeNum" Grid.Column="1" Minimum="0" Maximum="1" Increment="0.02" FormatString="0.00" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="%" />
             </Grid>
             <Slider x:Name="VolumeSlider" Minimum="0" Maximum="1" PropertyChanged="OnSlider" />
             <Button Content="Preview notify sound" Click="OnPreviewSound" HorizontalAlignment="Left" />
             <TextBlock Text="System master volume (also in player panel)" Opacity="0.8" Margin="0,8,0,0" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <Slider x:Name="SysVolSlider" Minimum="0" Maximum="1" PropertyChanged="OnSysVol" />
               <NumericUpDown x:Name="SysVolNum" Grid.Column="1" Minimum="0" Maximum="1" Increment="0.01" FormatString="0.00" ValueChanged="OnSysVolNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="%" />
             </Grid>
             <CheckBox x:Name="SysMuteBox" Content="Mute system" IsCheckedChanged="OnSysMute" />
             <TextBlock x:Name="SysVolStatus" FontSize="12" Opacity="0.75" TextWrapping="Wrap" />
@@ -205,19 +251,22 @@
             <TextBlock x:Name="BadgeAppsLabel" Opacity="0.8" />
             <TextBlock x:Name="BadgeAppsHint" FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
             <TextBox x:Name="BadgeAppsBox" LostFocus="OnCityLost" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock x:Name="NotifyMsLabel" VerticalAlignment="Center" />
               <NumericUpDown x:Name="NotifyNum" Grid.Column="1" Minimum="1000" Maximum="8000" Increment="100" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="мс" />
             </Grid>
             <Slider x:Name="NotifySlider" Minimum="1000" Maximum="8000" PropertyChanged="OnSlider" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Chat ms" VerticalAlignment="Center" />
               <NumericUpDown x:Name="ChatNum" Grid.Column="1" Minimum="800" Maximum="8000" Increment="100" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="мс" />
             </Grid>
             <Slider x:Name="ChatSlider" Minimum="800" Maximum="8000" PropertyChanged="OnSlider" />
-            <Grid ColumnDefinitions="*,88">
+            <Grid ColumnDefinitions="*,172,48">
               <TextBlock Text="Call ms" VerticalAlignment="Center" />
               <NumericUpDown x:Name="CallNum" Grid.Column="1" Minimum="1000" Maximum="12000" Increment="100" FormatString="0" ValueChanged="OnNum" />
+              <TextBlock Grid.Column="2" Classes="unit" Text="мс" />
             </Grid>
             <Slider x:Name="CallSlider" Minimum="1000" Maximum="12000" PropertyChanged="OnSlider" />
             <Button Content="Preview notify animation" Click="OnPreviewAnim" HorizontalAlignment="Left" />

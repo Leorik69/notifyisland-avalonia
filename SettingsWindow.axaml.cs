@@ -1,8 +1,12 @@
 using System;
+using System.IO;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using NotifyIsland.Core;
 
@@ -57,8 +61,64 @@ public partial class SettingsWindow : Window
         IslandAnimator.WireChrome(PreviewPill);
         ApplyLang();
         _boot = true;
+        if (!string.IsNullOrEmpty(Program.SettingsShotPath))
+            TextSizeBox.SelectedIndex = 2;
+        ApplyNumericChrome();
         PaintPreview();
         PathHint.Text = Ui.T("saved") + PrefsStore.ActivePath;
+        if (!string.IsNullOrEmpty(Program.SettingsShotPath))
+            Opened += (_, _) => DispatcherTimer.RunOnce(CaptureSettingsShot, TimeSpan.FromMilliseconds(700));
+    }
+
+    private void ApplyNumericChrome()
+    {
+        var large = TextSizeBox.SelectedIndex == 2;
+        var w = large ? 200.0 : 172.0;
+        var unit = large ? 56.0 : 48.0;
+        var fs = large ? 16.0 : 14.0;
+        foreach (var g in this.GetLogicalDescendants().OfType<Grid>())
+        {
+            if (g.ColumnDefinitions.Count != 3) continue;
+            if (g.ColumnDefinitions[1].Width.IsStar) continue;
+            g.ColumnDefinitions[1].Width = new GridLength(w);
+            g.ColumnDefinitions[2].Width = new GridLength(unit);
+        }
+        foreach (var n in this.GetLogicalDescendants().OfType<NumericUpDown>())
+        {
+            n.MinWidth = w;
+            n.MinHeight = large ? 42 : 36;
+            n.FontSize = fs;
+            n.HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Right;
+        }
+        foreach (var u in this.GetLogicalDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("unit")))
+            u.FontSize = large ? 15 : 13;
+        if (large)
+        {
+            MinWidth = 620;
+            Width = Math.Max(Width, 680);
+        }
+    }
+
+    private void CaptureSettingsShot()
+    {
+        var path = Program.SettingsShotPath;
+        if (string.IsNullOrWhiteSpace(path)) return;
+        try
+        {
+            UpdateLayout();
+            var w = Math.Max(1, (int)Bounds.Width);
+            var h = Math.Max(1, (int)Math.Min(Bounds.Height, 920));
+            using var bmp = new RenderTargetBitmap(new PixelSize(w, h), new Vector(96, 96));
+            bmp.Render(this);
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            bmp.Save(path);
+        }
+        catch (Exception ex)
+        {
+            File.WriteAllText(path + ".err.txt", ex.ToString());
+        }
+        Environment.Exit(0);
     }
 
     private void Pair(Slider s, NumericUpDown n, double v)
@@ -173,6 +233,7 @@ public partial class SettingsWindow : Window
     private void OnChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (!_boot) return;
+        ApplyNumericChrome();
         Commit();
         IslandAnimator.FastInvoke(PreviewPill);
     }
