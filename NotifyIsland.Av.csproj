@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\tray.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <RootNamespace>NotifyIsland</RootNamespace>
     <AssemblyName>NotifyIsland</AssemblyName>
@@ -13,6 +14,9 @@
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.22" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />

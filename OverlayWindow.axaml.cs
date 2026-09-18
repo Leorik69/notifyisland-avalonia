@@ -16,16 +16,22 @@ public partial class OverlayWindow : Window
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(2.4) };
     private bool _demoOn;
+    private OverlayKind _lastKind = OverlayKind.Idle;
+    private double _lastW = OverlayTokens.CollapsedW;
+    private double _lastH = OverlayTokens.CollapsedH;
 
     public OverlayWindow()
     {
         InitializeComponent();
+        IslandHost.Overlay = this;
         Opened += (_, _) =>
         {
             Win32Overlay.ApplyNoActivate(this);
             PlaceTopCenter();
         };
         KeyDown += OnKey;
+        PrefsStore.Changed += OnPrefsChanged;
+        Closed += (_, _) => PrefsStore.Changed -= OnPrefsChanged;
         _clock.Tick += (_, _) => TickClock();
         _tick.Tick += (_, _) =>
         {
@@ -37,15 +43,43 @@ public partial class OverlayWindow : Window
         _demo.Tick += (_, _) => { _machine.Dispatch(OverlayCommand.DemoNext); ApplySize(); Paint(); };
         _clock.Start();
         _tick.Start();
+        ApplyTheme();
         TickClock();
         ApplySize();
         Paint();
         if (Program.DemoMode) StartDemo();
+        if (!PrefsStore.Current.OverlayVisible) Hide();
+    }
+
+    public bool DemoRunning => _demoOn;
+
+    public void ToggleDemo()
+    {
+        if (_demoOn) StopDemo();
+        else StartDemo();
+    }
+
+    public void PreviewAnimation()
+    {
+        _machine.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Preview", Body = "Theme animation" });
+        ApplySize();
+        Paint();
+        PlayMotion(true);
+    }
+
+    private void OnPrefsChanged()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            ApplyTheme();
+            Paint();
+            PlayMotion(false);
+        });
     }
 
     private void OnKey(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.F9) { if (_demoOn) StopDemo(); else StartDemo(); e.Handled = true; }
+        if (e.Key == Key.F9) { ToggleDemo(); e.Handled = true; }
         else if (e.Key == Key.Escape) { _machine.Dispatch(OverlayCommand.Collapse); ApplySize(); Paint(); e.Handled = true; }
     }
 
@@ -68,13 +102,74 @@ public partial class OverlayWindow : Window
             ClockText.IsVisible = true;
     }
 
+    private void ApplyTheme()
+    {
+        var pal = PaletteCatalog.Get(PrefsStore.Current.PaletteId);
+        var font = FontCatalog.Get(PrefsStore.Current.FontId);
+        var family = new FontFamily(font.Family);
+        var opacity = PrefsStore.Current.Opacity;
+        Pill.Background = new SolidColorBrush(pal.Background, opacity);
+        Pill.BorderBrush = new SolidColorBrush(pal.Border);
+        Pill.BorderThickness = new Thickness(1);
+        Pill.BoxShadow = new BoxShadows(new BoxShadow
+        {
+            Blur = 16,
+            Spread = 0,
+            OffsetX = 0,
+            OffsetY = 0,
+            Color = Color.FromArgb(90, pal.Glow.R, pal.Glow.G, pal.Glow.B)
+        });
+        Glow.Background = new SolidColorBrush(pal.Glow, 0.22);
+        ClockText.Foreground = new SolidColorBrush(pal.Text);
+        ClockText.FontFamily = family;
+        OverlayTitle.FontFamily = family;
+        OverlaySubtitle.FontFamily = family;
+        OverlayTimer.FontFamily = family;
+        OverlayTitle.Foreground = new SolidColorBrush(pal.Text);
+        OverlaySubtitle.Foreground = new SolidColorBrush(pal.TextSecondary);
+        OverlayProgress.Foreground = new SolidColorBrush(pal.Accent);
+        KindIcon.Fill = new SolidColorBrush(pal.Accent);
+        KindGlyph.Foreground = new SolidColorBrush(pal.Accent);
+        MediaPlayIcon.Fill = new SolidColorBrush(pal.Accent);
+        MediaPlayGlyph.Foreground = new SolidColorBrush(pal.Accent);
+    }
+
     private void ApplySize()
     {
         var snap = _machine.Snapshot();
-        Width = snap.Width; Height = snap.Height;
-        Pill.Width = snap.Width; Pill.Height = snap.Height;
-        Pill.CornerRadius = new CornerRadius(snap.Height / 2);
+        var toW = snap.Width;
+        var toH = snap.Height;
+        Width = toW;
+        Height = toH;
+        var anim = PrefsStore.Current.Animation;
+        if (anim == "morph" && (_lastW != toW || _lastH != toH))
+            IslandAnimator.Morph(Pill, _lastW, _lastH, toW, toH, OverlayTokens.MorphMs);
+        else
+        {
+            Pill.Width = toW;
+            Pill.Height = toH;
+        }
+        Pill.CornerRadius = new CornerRadius(toH / 2);
+        Glow.Width = toW + 10;
+        Glow.Height = toH + 8;
+        Glow.CornerRadius = new CornerRadius((toH + 8) / 2);
+        _lastW = toW;
+        _lastH = toH;
         PlaceTopCenter();
+        if (snap.Kind != _lastKind)
+        {
+            PlayMotion(true);
+            _lastKind = snap.Kind;
+        }
+    }
+
+    private void PlayMotion(bool kindChanged)
+    {
+        var anim = PrefsStore.Current.Animation;
+        if (anim == "none") return;
+        if (anim == "pulse" && kindChanged) IslandAnimator.Pulse(Pill);
+        if (anim == "breathe") IslandAnimator.Breathe(Glow);
+        if (anim == "morph" && kindChanged) IslandAnimator.Pulse(Pill);
     }
 
     private void PlaceTopCenter()
@@ -89,6 +184,7 @@ public partial class OverlayWindow : Window
 
     private void Paint()
     {
+        var pal = PaletteCatalog.Get(PrefsStore.Current.PaletteId);
         var snap = _machine.Snapshot();
         var kind = snap.Kind; var p = snap.Payload;
         var overlayOn = kind is OverlayKind.Notification or OverlayKind.Progress or OverlayKind.Media
@@ -101,9 +197,28 @@ public partial class OverlayWindow : Window
         OverlayProgress.IsVisible = kind is OverlayKind.Progress or OverlayKind.Media;
         OverlayTimer.IsVisible = kind == OverlayKind.Timer;
         OverlayTimer.Text = kind == OverlayKind.Timer ? TimeSpan.FromSeconds(Math.Ceiling(p.RemainingSeconds)).ToString(@"mm\:ss") : "";
-        OverlayTitle.Foreground = new SolidColorBrush(Color.Parse(kind == OverlayKind.Error ? OverlayTokens.ErrorHex : OverlayTokens.TextHex));
+        OverlayTitle.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? pal.Error : pal.Text);
         MediaPlay.IsVisible = kind == OverlayKind.Media;
-        MediaPlayGlyph.Text = p.Playing ? "||" : ">";
+        var glyph = IslandIcons.ForKind(kind, p.Playing);
+        var style = PrefsStore.Current.IconStyle;
+        if (style == "mdl2")
+        {
+            KindIcon.IsVisible = false;
+            KindGlyph.IsVisible = overlayOn;
+            KindGlyph.Text = IslandIcons.Mdl2(glyph);
+            MediaPlayIcon.IsVisible = false;
+            MediaPlayGlyph.IsVisible = true;
+            MediaPlayGlyph.Text = IslandIcons.Mdl2(p.Playing ? IslandGlyph.MediaPause : IslandGlyph.MediaPlay);
+        }
+        else
+        {
+            KindGlyph.IsVisible = false;
+            KindIcon.IsVisible = overlayOn;
+            KindIcon.Data = IslandIcons.Geometry(glyph, style);
+            MediaPlayGlyph.IsVisible = false;
+            MediaPlayIcon.IsVisible = true;
+            MediaPlayIcon.Data = IslandIcons.Geometry(p.Playing ? IslandGlyph.MediaPause : IslandGlyph.MediaPlay, style);
+        }
         ToolTip.SetTip(this, kind == OverlayKind.Idle ? "NotifyIsland" : OverlayTitle.Text);
     }
 
@@ -122,9 +237,10 @@ public partial class OverlayWindow : Window
     {
         if (!e.GetCurrentPoint(this).Properties.IsRightButtonPressed) return;
         var menu = new ContextMenu();
-        menu.Items.Add(Menu("Demo F9", () => { if (_demoOn) StopDemo(); else StartDemo(); }));
-        menu.Items.Add(Menu("Collapse", () => { _machine.Dispatch(OverlayCommand.Collapse); ApplySize(); Paint(); }));
-        menu.Items.Add(Menu("Exit", () => (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown()));
+        menu.Items.Add(Menu("Settings", IslandHost.OpenSettings));
+        menu.Items.Add(Menu(_demoOn ? "Stop demo" : "Demo F9", ToggleDemo));
+        menu.Items.Add(Menu("Hide overlay", IslandHost.ToggleOverlay));
+        menu.Items.Add(Menu("Exit", IslandHost.Exit));
         menu.Open(Pill);
         e.Handled = true;
     }

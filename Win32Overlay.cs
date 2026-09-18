@@ -19,6 +19,20 @@ internal static class Win32Overlay
     private const int DwmSbtNone = 1;
     private const int DwmwaColorNone = unchecked((int)0xFFFFFFFE);
 
+    public static void ApplyNormalChrome(Window window)
+    {
+        try
+        {
+            var hwnd = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+            if (hwnd == IntPtr.Zero) return;
+            var dark = 1;
+            DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
+        }
+        catch
+        {
+        }
+    }
+
     public static void ApplyNoActivate(Window window)
     {
         try

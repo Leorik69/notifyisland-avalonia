@@ -1,15 +1,12 @@
 # NotifyIsland (Avalonia)
 
-Прозрачная капсула top-center для Windows. Не WinUI.
+Win11 top-center overlay. Fluent/Segoe, palettes, tray + settings. Not Apple Dynamic Island.
 
 ```
 dotnet run --project NotifyIsland.Av.csproj
-```
-
-Demo всех состояний:
-
-```
 dotnet run --project NotifyIsland.Av.csproj -- --demo
 ```
 
-Или F9 / ПКМ → Demo. Portable: Actions → artifact `NotifyIsland-portable-win-x64`. Распаковать целиком.
+Tray: show/hide, settings, demo, exit. Settings persist to `notifyisland.settings.json` beside the exe (or `%LOCALAPPDATA%\NotifyIsland\`). F9 still toggles demo.
+
+Portable: Actions artifact `NotifyIsland-portable-win-x64`.
