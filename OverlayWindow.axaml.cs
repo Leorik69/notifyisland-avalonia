@@ -51,6 +51,7 @@ public partial class OverlayWindow : Window
             var before = _machine.Snapshot().Kind;
             _machine.Tick(200);
             Paint();
+            MaybeCompleteSound(_machine.Snapshot());
             if (before != _machine.Snapshot().Kind) ApplySize();
         };
         _demo.Tick += (_, _) =>
@@ -77,6 +78,8 @@ public partial class OverlayWindow : Window
             Dispatcher.UIThread.Post(IslandHost.OpenSettings, DispatcherPriority.Background);
         if (PrefsStore.Current.ListenToasts)
             _ = ToastHub.RefreshAsync(true);
+        WeatherHub.Changed += () => Dispatcher.UIThread.Post(() => { PaintWeather(); Paint(); });
+        WeatherHub.Start();
         if (!PrefsStore.Current.OverlayVisible) Hide();
     }
 
@@ -153,6 +156,7 @@ public partial class OverlayWindow : Window
             ApplySize();
             Paint();
             if (PrefsStore.Current.ListenToasts) _ = ToastHub.RefreshAsync(true);
+            _ = WeatherHub.RefreshAsync(false);
         });
     }
 
@@ -197,6 +201,7 @@ public partial class OverlayWindow : Window
         IslandAnimator.WireOpacity(RowTimer, Motion.FadeMs);
         IslandAnimator.WireOpacity(MediaPlay, Motion.FadeMs);
         IslandAnimator.WireOpacity(KindIcon, Motion.FadeMs);
+        IslandAnimator.WireOpacity(WeatherChip, Motion.FadeMs);
         IslandAnimator.WireProgress(OverlayProgress, Motion.ProgressMs);
         IslandAnimator.WireProgress(RowProgress, Motion.ProgressMs);
         IslandAnimator.WireOpacity(this, Motion.FadeMs);
@@ -238,6 +243,10 @@ public partial class OverlayWindow : Window
         KindGlyph.Foreground = new SolidColorBrush(pal.Accent);
         MediaPlayIcon.Fill = new SolidColorBrush(pal.Accent);
         MediaPlayGlyph.Foreground = new SolidColorBrush(pal.Accent);
+        WeatherIcon.Fill = new SolidColorBrush(pal.Accent);
+        WeatherGlyph.Foreground = new SolidColorBrush(pal.Accent);
+        WeatherTemp.Foreground = new SolidColorBrush(pal.Text);
+        WeatherTemp.FontFamily = family;
     }
 
     private void ApplySize(bool animate = true)
@@ -270,8 +279,35 @@ public partial class OverlayWindow : Window
         if (snap.Kind != _lastKind)
         {
             PlayMotion(snap.Kind);
+            IslandSounds.CueForKind(snap.Kind);
             _lastKind = snap.Kind;
         }
+        MaybeCompleteSound(snap);
+    }
+
+    private bool _completeArmed = true;
+
+    private void MaybeCompleteSound(OverlaySnapshot snap)
+    {
+        if (snap.Kind == OverlayKind.Progress && snap.Payload.Progress >= 0.995)
+        {
+            if (_completeArmed)
+            {
+                _completeArmed = false;
+                IslandSounds.Cue(IslandSound.Complete);
+            }
+            return;
+        }
+        if (snap.Kind == OverlayKind.Timer && snap.Payload.RemainingSeconds <= 0.05)
+        {
+            if (_completeArmed)
+            {
+                _completeArmed = false;
+                IslandSounds.Cue(IslandSound.Complete);
+            }
+            return;
+        }
+        if (snap.Kind is OverlayKind.Progress or OverlayKind.Timer) _completeArmed = true;
     }
 
     private void PlayMotion(OverlayKind kind)
@@ -356,7 +392,51 @@ public partial class OverlayWindow : Window
                     KindIcon.Data = IslandIcons.Geometry(glyph, style);
             }
         }
+        PaintWeather();
         ToolTip.SetTip(this, kind == OverlayKind.Idle ? "NotifyIsland" : OverlayTitle.Text);
+    }
+
+    private void PaintWeather()
+    {
+        var idle = _machine.Snapshot().Kind is OverlayKind.Idle or OverlayKind.Collapsed;
+        var wx = WeatherHub.Current;
+        var show = idle && PrefsStore.Current.ShowWeather && wx is { Ok: true };
+        WeatherChip.Opacity = show ? 1 : 0;
+        if (!show || wx is null) return;
+        WeatherTemp.Text = WeatherHub.TempLabel(wx);
+        var style = IslandIcons.Normalize(PrefsStore.Current.IconStyle);
+        var g = WeatherHub.GlyphFor(wx.WeatherCode);
+        if (style == "mdl2")
+        {
+            WeatherIcon.Opacity = 0;
+            WeatherGlyph.IsVisible = true;
+            WeatherGlyph.Text = IslandIcons.Mdl2Weather(g);
+        }
+        else
+        {
+            WeatherGlyph.IsVisible = false;
+            WeatherIcon.Opacity = 1;
+            WeatherIcon.Data = IslandIcons.WeatherGeometry(g, style);
+        }
+    }
+
+    private OverlayPayload ExpandPayload()
+    {
+        var wx = WeatherHub.Current;
+        if (wx is { Ok: true })
+        {
+            var city = string.IsNullOrWhiteSpace(wx.City) ? wx.Condition : wx.City;
+            return new OverlayPayload
+            {
+                Title = city,
+                Body = wx.Condition + " · " + WeatherHub.TempLabel(wx)
+            };
+        }
+        return new OverlayPayload
+        {
+            Title = DateTime.Now.ToString("dddd", CultureInfo.CurrentCulture),
+            Body = DateTime.Now.ToString("d MMM", CultureInfo.CurrentCulture)
+        };
     }
 
     private static string Fallback(OverlayKind kind) => kind switch
@@ -389,11 +469,7 @@ public partial class OverlayWindow : Window
             if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
             {
                 _hoverOpen = false;
-                _machine.Dispatch(OverlayCommand.Expand, new OverlayPayload
-                {
-                    Title = DateTime.Now.ToString("dddd", CultureInfo.CurrentCulture),
-                    Body = DateTime.Now.ToString("d MMM", CultureInfo.CurrentCulture)
-                });
+                _machine.Dispatch(OverlayCommand.Expand, ExpandPayload());
                 ApplySize(); Paint();
             }
             else if (kind == OverlayKind.Expanded)
@@ -440,11 +516,7 @@ public partial class OverlayWindow : Window
         var kind = _machine.Snapshot().Kind;
         if (kind is not (OverlayKind.Idle or OverlayKind.Collapsed)) return;
         _hoverOpen = true;
-        _machine.Dispatch(OverlayCommand.Expand, new OverlayPayload
-        {
-            Title = DateTime.Now.ToString("dddd", CultureInfo.CurrentCulture),
-            Body = DateTime.Now.ToString("t", CultureInfo.CurrentCulture)
-        });
+        _machine.Dispatch(OverlayCommand.Expand, ExpandPayload());
         ApplySize(); Paint();
     }
 

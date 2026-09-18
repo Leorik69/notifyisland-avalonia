@@ -10,6 +10,8 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <RootNamespace>NotifyIsland</RootNamespace>
     <AssemblyName>NotifyIsland</AssemblyName>
+    <Version>1.0.0</Version>
+    <InformationalVersion>1.0.0-win11</InformationalVersion>
     <PublishTrimmed>false</PublishTrimmed>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

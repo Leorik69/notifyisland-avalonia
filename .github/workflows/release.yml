@@ -1,0 +1,37 @@
+name: Release portable
+
+on:
+  push:
+    tags:
+      - "portable-*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+      - name: Pack zip and setup.exe
+        shell: pwsh
+        run: |
+          $Iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          $env:Path = "C:\Program Files (x86)\Inno Setup 6;" + $env:Path
+          ./setup/pack-release.ps1
+      - name: Upload GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || format('portable-{0}', github.sha) }}
+          generate_release_notes: true
+          files: |
+            dist/NotifyIsland-portable-win-x64.zip
+            dist/NotifyIsland-Setup-win-x64.exe
+          fail_on_unmatched_files: true

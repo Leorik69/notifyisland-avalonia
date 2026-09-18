@@ -25,6 +25,19 @@
         <ComboBox x:Name="FontBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
         <TextBlock Text="Icons" Opacity="0.8" />
         <ComboBox x:Name="IconBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+        <TextBlock Text="Weather" Opacity="0.8" Margin="0,8,0,0" FontWeight="SemiBold" />
+        <CheckBox x:Name="WeatherBox" Content="Show weather (Open-Meteo, no API key)" IsCheckedChanged="OnCheck" />
+        <CheckBox x:Name="LocationBox" Content="Use Windows location when allowed" IsCheckedChanged="OnCheck" />
+        <TextBlock Text="City fallback" Opacity="0.8" />
+        <TextBox x:Name="CityBox" Watermark="City name if location denied" LostFocus="OnCityLost" />
+        <TextBlock Text="Weather refresh (minutes)" Opacity="0.8" />
+        <Slider x:Name="WeatherMinSlider" Minimum="5" Maximum="60" PropertyChanged="OnSlider" />
+        <TextBlock x:Name="WeatherStatus" FontSize="12" Opacity="0.75" TextWrapping="Wrap" />
+        <TextBlock Text="Sounds" Opacity="0.8" Margin="0,8,0,0" FontWeight="SemiBold" />
+        <CheckBox x:Name="SoundBox" Content="Sounds on (quiet Win11 Media / generated fallback)" IsCheckedChanged="OnCheck" />
+        <TextBlock Text="Volume" Opacity="0.8" />
+        <Slider x:Name="VolumeSlider" Minimum="0" Maximum="1" PropertyChanged="OnSlider" />
+        <Button Content="Preview notify sound" Click="OnPreviewSound" HorizontalAlignment="Left" />
         <TextBlock Text="Motion extra" Opacity="0.8" />
         <ComboBox x:Name="AnimBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
         <TextBlock Text="Animation speed" Opacity="0.8" />

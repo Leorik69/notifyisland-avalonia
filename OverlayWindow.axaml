@@ -39,6 +39,16 @@
                    FontWeight="SemiBold"
                    Foreground="#FFFFFF"
                    Text="00:00" />
+        <StackPanel x:Name="WeatherChip" Orientation="Horizontal" Spacing="4"
+                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                    Opacity="0" IsHitTestVisible="False" Margin="0,0,2,0">
+          <Panel Width="14" Height="14">
+            <Path x:Name="WeatherIcon" Width="13" Height="13" Stretch="Uniform" />
+            <TextBlock x:Name="WeatherGlyph" FontFamily="Segoe MDL2 Assets" FontSize="12" IsVisible="False"
+                       VerticalAlignment="Center" HorizontalAlignment="Center" />
+          </Panel>
+          <TextBlock x:Name="WeatherTemp" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </StackPanel>
         <DockPanel x:Name="OverlayRow" LastChildFill="True" Opacity="0" IsHitTestVisible="False">
           <Panel DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
             <Path x:Name="KindIcon" Width="14" Height="14" Stretch="Uniform" />
