@@ -80,6 +80,7 @@ public partial class OverlayWindow : Window
             _ = ToastHub.RefreshAsync(true);
         WeatherHub.Changed += () => Dispatcher.UIThread.Post(() => { PaintWeather(); Paint(); });
         WeatherHub.Start();
+        AppBadgeHub.Changed += () => Dispatcher.UIThread.Post(() => { PaintBadge(); ApplySize(); Paint(); });
         if (!PrefsStore.Current.OverlayVisible) Hide();
     }
 
@@ -99,24 +100,27 @@ public partial class OverlayWindow : Window
         IslandAnimator.Pulse(Pill, Motion.PulseMs);
     }
 
-    public void ShowToast(string title, string body)
+    public void ShowToast(string title, string body, string? template = null)
     {
         var cur = _machine.Snapshot();
+        var tpl = NotifyTemplates.Normalize(template);
         if (cur.Kind is OverlayKind.Notification or OverlayKind.Stack)
         {
             _machine.Dispatch(OverlayCommand.Stack, new OverlayPayload
             {
                 Title = "Queue",
                 Subtitle = string.IsNullOrWhiteSpace(cur.Payload.Title) ? "Previous" : cur.Payload.Title,
-                Line2 = string.IsNullOrWhiteSpace(body) ? title : title + " · " + body
+                Line2 = string.IsNullOrWhiteSpace(body) ? title : title + " · " + body,
+                Template = NotifyTemplates.Queue
             });
         }
         else
         {
-            _machine.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = title, Body = body });
+            _machine.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = title, Body = body, Template = tpl });
         }
         ApplySize();
         Paint();
+        _ = AppBadgeHub.RefreshAsync();
     }
 
     public async void SetVisibleAnimated(bool visible)
@@ -157,6 +161,7 @@ public partial class OverlayWindow : Window
             Paint();
             if (PrefsStore.Current.ListenToasts) _ = ToastHub.RefreshAsync(true);
             _ = WeatherHub.RefreshAsync(false);
+            _ = AppBadgeHub.RefreshAsync();
         });
     }
 
@@ -169,12 +174,15 @@ public partial class OverlayWindow : Window
     private void StartDemo()
     {
         _demoOn = true; _demo.Start();
+        AppBadgeHub.SetPreview("Telegram", 2);
         _machine.Dispatch(OverlayCommand.DemoNext); ApplySize(); Paint();
     }
 
     private void StopDemo()
     {
         _demoOn = false; _demo.Stop();
+        AppBadgeHub.ClearPreview();
+        _ = AppBadgeHub.RefreshAsync();
         _machine.Dispatch(OverlayCommand.Clear); ApplySize(); Paint();
     }
 
@@ -207,13 +215,16 @@ public partial class OverlayWindow : Window
         IslandAnimator.WireOpacity(this, Motion.FadeMs);
 
         var pal = PaletteCatalog.Get(PrefsStore.Current.PaletteId);
+        var accent = PaletteCatalog.AccentOf(PrefsStore.Current);
         var font = FontCatalog.Get(PrefsStore.Current.FontId);
         var family = new FontFamily(font.Family);
         var prefs = PrefsStore.Current;
-        var opacity = prefs.Opacity;
+        var opacity = Math.Clamp(prefs.Opacity * (1 - prefs.Glass * 0.35), 0.35, 1);
         var glowA = (byte)Math.Clamp(40 + prefs.GlowStrength * 140, 0, 255);
         Pill.Background = new SolidColorBrush(pal.Background, opacity);
         Pill.BorderBrush = new SolidColorBrush(pal.Border);
+        var pad = prefs.Density == "compact" ? 8 : 12;
+        CapsuleGrid.Margin = new Thickness(pad, 0);
         Pill.BorderThickness = new Thickness(prefs.BorderThickness);
         Pill.BoxShadow = new BoxShadows(new BoxShadow
         {
@@ -235,26 +246,32 @@ public partial class OverlayWindow : Window
         OverlayTitle.Foreground = new SolidColorBrush(pal.Text);
         OverlaySubtitle.Foreground = new SolidColorBrush(pal.TextSecondary);
         OverlayStack.Foreground = new SolidColorBrush(pal.TextSecondary);
-        OverlayProgress.Foreground = new SolidColorBrush(pal.Accent);
+        OverlayProgress.Foreground = new SolidColorBrush(accent);
         RowText.Foreground = new SolidColorBrush(pal.Text);
         RowTimer.Foreground = new SolidColorBrush(pal.Text);
-        RowProgress.Foreground = new SolidColorBrush(pal.Accent);
-        KindIcon.Fill = new SolidColorBrush(pal.Accent);
-        KindGlyph.Foreground = new SolidColorBrush(pal.Accent);
-        MediaPlayIcon.Fill = new SolidColorBrush(pal.Accent);
-        MediaPlayGlyph.Foreground = new SolidColorBrush(pal.Accent);
-        WeatherIcon.Fill = new SolidColorBrush(pal.Accent);
-        WeatherGlyph.Foreground = new SolidColorBrush(pal.Accent);
+        RowProgress.Foreground = new SolidColorBrush(accent);
+        KindIcon.Fill = new SolidColorBrush(accent);
+        KindGlyph.Foreground = new SolidColorBrush(accent);
+        MediaPlayIcon.Fill = new SolidColorBrush(accent);
+        MediaPlayGlyph.Foreground = new SolidColorBrush(accent);
+        WeatherIcon.Fill = new SolidColorBrush(accent);
+        WeatherGlyph.Foreground = new SolidColorBrush(accent);
         WeatherTemp.Foreground = new SolidColorBrush(pal.Text);
         WeatherTemp.FontFamily = family;
+        BadgeCount.Foreground = new SolidColorBrush(pal.Text);
+        BadgeFallback.Fill = new SolidColorBrush(accent);
+        var gs = prefs.GlyphSize;
+        KindIcon.Width = KindIcon.Height = gs;
+        BadgeLogo.Width = BadgeLogo.Height = gs + 2;
     }
 
     private void ApplySize(bool animate = true)
     {
         var snap = _machine.Snapshot();
         var prefs = PrefsStore.Current;
+        var badgeOn = ShowBadgeNow();
         var toW = snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed
-            ? prefs.IdleWidth
+            ? prefs.IdleWidth + (badgeOn ? 36 : 0)
             : Math.Clamp(snap.Width, prefs.MinWidth, prefs.MaxWidth);
         var toH = prefs.ExpandHeight && snap.Kind is not (OverlayKind.Idle or OverlayKind.Collapsed)
             ? snap.Height
@@ -279,7 +296,7 @@ public partial class OverlayWindow : Window
         if (snap.Kind != _lastKind)
         {
             PlayMotion(snap.Kind);
-            IslandSounds.CueForKind(snap.Kind);
+            IslandSounds.CueForKind(snap.Kind, snap.Payload.Template);
             _lastKind = snap.Kind;
         }
         MaybeCompleteSound(snap);
@@ -319,6 +336,8 @@ public partial class OverlayWindow : Window
             IslandAnimator.Breathe(Glow, Motion.BreatheMs);
         if (kind is OverlayKind.Notification or OverlayKind.Stack)
             IslandAnimator.Pulse(Glow, Motion.PulseMs);
+        if (NotifyTemplates.Normalize(_machine.Snapshot().Payload.Template) == NotifyTemplates.Call)
+            IslandAnimator.Pulse(Pill, Motion.PulseMs);
     }
 
     private void PlaceTopCenter() => Position = OverlayPlacement.Compute(this, Width, Height);
@@ -361,12 +380,13 @@ public partial class OverlayWindow : Window
             _lastTimerSec = sec;
             IslandAnimator.TickPop(widthOnly ? RowTimer : OverlayTimer);
         }
-        OverlayTitle.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? pal.Error : pal.Text);
-        RowText.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? pal.Error : pal.Text);
+        var warn = NotifyTemplates.Normalize(p.Template) == NotifyTemplates.Warn;
+        OverlayTitle.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? pal.Error : warn ? Color.Parse("#E6C35C") : pal.Text);
+        RowText.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? pal.Error : warn ? Color.Parse("#E6C35C") : pal.Text);
         MediaPlay.Opacity = kind == OverlayKind.Media ? 1 : 0;
         MediaPlay.IsHitTestVisible = kind == OverlayKind.Media;
-        var glyph = IslandIcons.ForKind(kind, p.Playing);
-        var style = PrefsStore.Current.IconStyle;
+        var glyph = IslandIcons.ForPayload(kind, p);
+        var style = IslandIcons.Normalize(PrefsStore.Current.IconStyle);
         var key = style + ":" + glyph + ":" + overlayOn;
         if (style == "mdl2")
         {
@@ -393,14 +413,62 @@ public partial class OverlayWindow : Window
             }
         }
         PaintWeather();
+        PaintBadge();
         ToolTip.SetTip(this, kind == OverlayKind.Idle ? "NotifyIsland" : OverlayTitle.Text);
+    }
+
+    private bool ShowBadgeNow()
+    {
+        var prefs = PrefsStore.Current;
+        if (!prefs.ShowAppBadge) return false;
+        var b = AppBadgeHub.Current;
+        return b is { Count: > 0 } && (_demoOn && b.Preview || !_demoOn && !b.Preview && ToastHub.Allowed);
+    }
+
+    private void PaintBadge()
+    {
+        var idle = _machine.Snapshot().Kind is OverlayKind.Idle or OverlayKind.Collapsed;
+        var show = idle && ShowBadgeNow();
+        AppBadge.Opacity = show ? 1 : 0;
+        AppBadge.IsHitTestVisible = show;
+        if (!show) return;
+        var b = AppBadgeHub.Current!;
+        var style = PrefsStore.Current.BadgeStyle;
+        var n = b.Count > 9 ? "9+" : b.Count.ToString();
+        BadgeCount.Text = style == "dot" ? "●" : n;
+        BadgeCount.IsVisible = style != "icon-count" || true;
+        if (style == "count")
+        {
+            BadgeLogo.IsVisible = false;
+            BadgeFallback.IsVisible = false;
+            return;
+        }
+        if (style == "dot")
+        {
+            BadgeLogo.IsVisible = false;
+            BadgeFallback.IsVisible = false;
+            return;
+        }
+        if (b.Logo is not null)
+        {
+            BadgeLogo.Source = b.Logo;
+            BadgeLogo.IsVisible = true;
+            BadgeFallback.IsVisible = false;
+        }
+        else
+        {
+            BadgeLogo.IsVisible = false;
+            BadgeFallback.IsVisible = true;
+            BadgeFallback.Data = IslandIcons.Geometry(IslandGlyph.Chat, PrefsStore.Current.IconStyle);
+        }
     }
 
     private void PaintWeather()
     {
         var idle = _machine.Snapshot().Kind is OverlayKind.Idle or OverlayKind.Collapsed;
         var wx = WeatherHub.Current;
-        var show = idle && PrefsStore.Current.ShowWeather && wx is { Ok: true };
+        var pos = PrefsStore.Current.WeatherPosition;
+        var show = idle && PrefsStore.Current.ShowWeather && pos != "hide" && pos != "expand" && wx is { Ok: true };
         WeatherChip.Opacity = show ? 1 : 0;
         if (!show || wx is null) return;
         WeatherTemp.Text = WeatherHub.TempLabel(wx);

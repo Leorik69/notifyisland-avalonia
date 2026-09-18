@@ -38,8 +38,24 @@ public sealed class UserPrefs
     public bool UseWindowsLocation { get; set; } = true;
     public string WeatherCity { get; set; } = "";
     public int WeatherIntervalMin { get; set; } = 15;
+    public string WeatherPosition { get; set; } = "right";
     public bool SoundsEnabled { get; set; } = true;
     public double SoundVolume { get; set; } = 0.28;
+    public bool SoundNotify { get; set; } = true;
+    public bool SoundChat { get; set; } = true;
+    public bool SoundError { get; set; } = true;
+    public bool SoundComplete { get; set; } = true;
+    public bool ShowAppBadge { get; set; } = true;
+    public string BadgeStyle { get; set; } = "icon-count";
+    public string BadgeApps { get; set; } = "";
+    public string Density { get; set; } = "comfort";
+    public double GlyphSize { get; set; } = 14;
+    public double Glass { get; set; }
+    public string AccentHex { get; set; } = "";
+    public int ChatDurationMs { get; set; } = 2500;
+    public int CallDurationMs { get; set; } = 6000;
+    public int CompleteDurationMs { get; set; } = 2200;
+    public int WarnDurationMs { get; set; } = 4000;
 }
 
 internal static class PrefsStore
@@ -158,6 +174,20 @@ internal static class PrefsStore
         if (p.WeatherCity.Length > 80) p.WeatherCity = p.WeatherCity[..80];
         if (double.IsNaN(p.SoundVolume) || double.IsInfinity(p.SoundVolume)) p.SoundVolume = 0.28;
         p.SoundVolume = Math.Clamp(p.SoundVolume, 0, 1);
+        p.WeatherPosition = p.WeatherPosition?.ToLowerInvariant() switch { "hide" => "hide", "expand" => "expand", _ => "right" };
+        p.BadgeStyle = p.BadgeStyle?.ToLowerInvariant() switch { "count" => "count", "dot" => "dot", _ => "icon-count" };
+        p.Density = p.Density?.ToLowerInvariant() switch { "compact" => "compact", _ => "comfort" };
+        if (double.IsNaN(p.GlyphSize) || double.IsInfinity(p.GlyphSize)) p.GlyphSize = 14;
+        p.GlyphSize = Math.Clamp(p.GlyphSize, 12, 18);
+        if (double.IsNaN(p.Glass) || double.IsInfinity(p.Glass)) p.Glass = 0;
+        p.Glass = Math.Clamp(p.Glass, 0, 1);
+        p.AccentHex = (p.AccentHex ?? "").Trim();
+        if (p.AccentHex.Length > 0 && !p.AccentHex.StartsWith('#')) p.AccentHex = "#" + p.AccentHex;
+        if (p.ChatDurationMs < 500 || p.ChatDurationMs > 30000) p.ChatDurationMs = 2500;
+        if (p.CallDurationMs < 500 || p.CallDurationMs > 30000) p.CallDurationMs = 6000;
+        if (p.CompleteDurationMs < 500 || p.CompleteDurationMs > 30000) p.CompleteDurationMs = 2200;
+        if (p.WarnDurationMs < 500 || p.WarnDurationMs > 30000) p.WarnDurationMs = 4000;
+        p.BadgeApps = (p.BadgeApps ?? "").Trim();
         p.Animation = p.Animation.ToLowerInvariant() switch
         {
             "pulse" => "pulse",

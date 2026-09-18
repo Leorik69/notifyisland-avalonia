@@ -37,10 +37,29 @@ internal static class IslandSounds
         }
     }
 
-    public static void CueForKind(OverlayKind kind)
+    public static void CueForKind(OverlayKind kind, string? template = null)
     {
-        if (kind is OverlayKind.Notification or OverlayKind.Stack) Cue(IslandSound.Notify);
-        else if (kind == OverlayKind.Error) Cue(IslandSound.Error);
+        var t = NotifyTemplates.Normalize(template);
+        var prefs = PrefsStore.Current;
+        if (kind == OverlayKind.Error || t == "error")
+        {
+            if (prefs.SoundError) Cue(IslandSound.Error);
+            return;
+        }
+        if (t == NotifyTemplates.Complete)
+        {
+            if (prefs.SoundComplete) Cue(IslandSound.Complete);
+            return;
+        }
+        if (t == NotifyTemplates.Chat)
+        {
+            if (prefs.SoundChat) Cue(IslandSound.Notify);
+            return;
+        }
+        if (kind is OverlayKind.Notification or OverlayKind.Stack || t is NotifyTemplates.Call or NotifyTemplates.Mail or NotifyTemplates.Warn or NotifyTemplates.System or NotifyTemplates.Calendar)
+        {
+            if (prefs.SoundNotify) Cue(IslandSound.Notify);
+        }
     }
 
     private static string Resolve(IslandSound kind)
