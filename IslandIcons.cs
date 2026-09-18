@@ -13,9 +13,19 @@ internal enum IslandGlyph
     Overview,
 }
 
+internal enum WeatherGlyph
+{
+    Sun,
+    Partly,
+    Cloud,
+    Rain,
+    Snow,
+    Thunder,
+    Fog
+}
+
 internal static class IslandIcons
 {
-    // Compact Fluent-like path data (24×24 viewbox), not emoji.
     public const string Notify = "M12 3a7 7 0 0 0-7 7v3.2L3.4 16a1 1 0 0 0 .8 1.6h15.6a1 1 0 0 0 .8-1.6L19 13.2V10a7 7 0 0 0-7-7Zm0 18a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 21Z";
     public const string Progress = "M5 4h10l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm9 1.5V9h3.5L14 5.5ZM7 12h10v1.6H7V12Zm0 4h7v1.6H7V16Z";
     public const string MediaPlay = "M8 5.8v12.4a1 1 0 0 0 1.54.84l9.2-6.2a1 1 0 0 0 0-1.68l-9.2-6.2A1 1 0 0 0 8 5.8Z";
@@ -25,20 +35,57 @@ internal static class IslandIcons
     public const string Overview = "M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z";
     public const string MinimalDot = "M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z";
 
+    public const string NotifyFill = "M12 2a8 8 0 0 0-8 8v3.1L2.2 16.4A1.6 1.6 0 0 0 3.6 19h16.8a1.6 1.6 0 0 0 1.4-2.6L20 13.1V10a8 8 0 0 0-8-8Zm0 20a3.5 3.5 0 0 0 3.45-3h-6.9A3.5 3.5 0 0 0 12 22Z";
+    public const string ProgressFill = "M5 3h10.2L21 8.8V19a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm9.2 1.8V9h4.1L14.2 4.8ZM6.5 12.2h11v2h-11v-2Zm0 4h8v2h-8v-2Z";
+    public const string PlayFill = "M7.2 4.6v14.8a1.4 1.4 0 0 0 2.16 1.18l11-7.4a1.4 1.4 0 0 0 0-2.36l-11-7.4A1.4 1.4 0 0 0 7.2 4.6Z";
+    public const string PauseFill = "M6.4 4.2A1.8 1.8 0 0 1 8.2 2.4h1.6A1.8 1.8 0 0 1 11.6 4.2v15.6a1.8 1.8 0 0 1-1.8 1.8H8.2a1.8 1.8 0 0 1-1.8-1.8V4.2Zm6.8 0A1.8 1.8 0 0 1 15 2.4h1.6a1.8 1.8 0 0 1 1.8 1.8v15.6a1.8 1.8 0 0 1-1.8 1.8H15a1.8 1.8 0 0 1-1.8-1.8V4.2Z";
+    public const string TimerFill = "M9 1.6h6v2.2H9V1.6ZM12 4.4A8.8 8.8 0 1 0 20.8 13.2 8.8 8.8 0 0 0 12 4.4Zm1.1 4.2v4.4l3.3 2-.9 1.5-4.1-2.4V8.6h1.7Z";
+    public const string ErrorFill = "M11.1 2.4 22 21.2a1.2 1.2 0 0 1-1 1.8H3a1.2 1.2 0 0 1-1-1.8L12.9 2.4a1.1 1.1 0 0 1 1.82 0ZM11 9h2v5.2h-2V9Zm0 6.8h2V18h-2v-2.2Z";
+    public const string OverviewFill = "M3.4 3.4h7.6v7.6H3.4V3.4Zm9.6 0h7.6v7.6H13V3.4ZM3.4 13h7.6v7.6H3.4V13Zm9.6 0h7.6v7.6H13V13Z";
+
+    public const string SoftNotify = "M12 4.2c-3.2 0-5.8 2.5-5.8 5.7v2.6l-1.4 2.2c-.3.5 0 1.1.6 1.1h13.2c.6 0 .9-.6.6-1.1l-1.4-2.2V9.9c0-3.2-2.6-5.7-5.8-5.7Zm-2 13.4c.3 1.1 1.1 1.8 2 1.8s1.7-.7 2-1.8H10Z";
+    public const string SoftProgress = "M6.2 5.2h8.2L18.8 9v9.4c0 1-.8 1.8-1.8 1.8H6.2c-1 0-1.8-.8-1.8-1.8V7c0-1 .8-1.8 1.8-1.8Zm7.4 1.4V9h2.4l-2.4-2.4ZM8 12.2h8v1.4H8v-1.4Zm0 3.2h5.4v1.4H8V15.4Z";
+    public const string SoftPlay = "M9 7.2v9.6c0 .6.7 1 1.2.7l7.2-4.8c.5-.3.5-1.1 0-1.4L10.2 6.5c-.5-.3-1.2.1-1.2.7Z";
+    public const string SoftPause = "M8 7.2c0-.6.4-1 1-1h.8c.6 0 1 .4 1 1v9.6c0 .6-.4 1-1 1H9c-.6 0-1-.4-1-1V7.2Zm5.2 0c0-.6.4-1 1-1h.8c.6 0 1 .4 1 1v9.6c0 .6-.4 1-1 1h-.8c-.6 0-1-.4-1-1V7.2Z";
+    public const string SoftTimer = "M12 5.2a7.2 7.2 0 1 0 7.2 7.2A7.2 7.2 0 0 0 12 5.2Zm.7 3.4v3.4l2.4 1.4-.6 1-2.9-1.8V8.6h1.1ZM9.4 3.4h5.2v1.4H9.4V3.4Z";
+    public const string SoftError = "M12 5.2 19.4 18.6H4.6L12 5.2ZM11.2 9.6h1.6v4.2h-1.6V9.6Zm0 5.4h1.6v1.6h-1.6v-1.6Z";
+    public const string SoftOverview = "M5.2 5.2h5.6v5.6H5.2V5.2Zm8 0h5.6v5.6H13.2V5.2ZM5.2 13.2h5.6v5.6H5.2v-5.6Zm8 0h5.6v5.6H13.2v-5.6Z";
+
+    public const string WxSun = "M12 7.4a4.6 4.6 0 1 0 0 9.2 4.6 4.6 0 0 0 0-9.2ZM11.2 3h1.6v2.4h-1.6V3Zm0 15.6h1.6V21h-1.6v-2.4ZM3 11.2h2.4v1.6H3v-1.6Zm15.6 0H21v1.6h-2.4v-1.6ZM5.4 5.4l1.7-1.7 1.7 1.7-1.7 1.7-1.7-1.7Zm9.8 9.8 1.7-1.7 1.7 1.7-1.7 1.7-1.7-1.7ZM5.4 18.6l1.7 1.7 1.7-1.7-1.7-1.7-1.7 1.7Zm9.8-9.8 1.7 1.7 1.7-1.7-1.7-1.7-1.7 1.7Z";
+    public const string WxPartly = "M9.2 8.2a3.4 3.4 0 0 1 3.2-2.4 3.4 3.4 0 0 1 3.3 2.7 4.4 4.4 0 0 1 1.7 8.3H8.4a4.2 4.2 0 0 1 .8-8.6Z";
+    public const string WxCloud = "M8.2 10.2a4.2 4.2 0 0 1 4-3 4.1 4.1 0 0 1 3.9 2.8A4.6 4.6 0 0 1 17.4 19H7.4a4.2 4.2 0 0 1 .8-8.8Z";
+    public const string WxRain = "M8.4 8.6a3.8 3.8 0 0 1 3.6-2.6 3.8 3.8 0 0 1 3.6 2.6A4 4 0 0 1 16.8 17H7.6A4 4 0 0 1 8.4 8.6ZM9 18.2l.8 2.2h1.2L10 18.2H9Zm3.2 0 .8 2.2h1.2l-.8-2.2h-1.2Z";
+    public const string WxSnow = "M8.6 9a3.6 3.6 0 0 1 3.4-2.4A3.6 3.6 0 0 1 15.4 9 3.8 3.8 0 0 1 16.6 16.4H7.6A3.8 3.8 0 0 1 8.6 9ZM9.2 17.6l.8.8-.8.8.8.8.8-.8.8.8.8-.8-.8-.8.8-.8-.8-.8-.8.8-.8-.8-.8.8Zm4.4 0 .8.8-.8.8.8.8.8-.8.8.8.8-.8-.8-.8.8-.8-.8-.8-.8.8-.8-.8-.8.8Z";
+    public const string WxThunder = "M13.6 3.6 7.8 13.2h4.2L9.6 20.4 17.8 10h-4.4l2.2-6.4h-2Z";
+    public const string WxFog = "M5 9.2h14v1.6H5V9.2Zm1.4 3.2h11.2v1.6H6.4v-1.6ZM5 15.6h14V17.2H5v-1.6Z";
+
     public static StreamGeometry Geometry(IslandGlyph glyph, string iconStyle)
     {
-        var data = iconStyle == "minimal"
-            ? MinimalDot
-            : glyph switch
-            {
-                IslandGlyph.Notify => Notify,
-                IslandGlyph.Progress => Progress,
-                IslandGlyph.MediaPlay => MediaPlay,
-                IslandGlyph.MediaPause => MediaPause,
-                IslandGlyph.Timer => Timer,
-                IslandGlyph.Error => Error,
-                _ => Overview
-            };
+        var pack = Normalize(iconStyle);
+        if (pack == "minimal") return StreamGeometry.Parse(MinimalDot);
+        var data = pack switch
+        {
+            "fluent-fill" => Filled(glyph),
+            "weather-soft" => Soft(glyph),
+            _ => Outline(glyph)
+        };
+        return StreamGeometry.Parse(data);
+    }
+
+    public static StreamGeometry WeatherGeometry(WeatherGlyph glyph, string iconStyle)
+    {
+        var pack = Normalize(iconStyle);
+        var data = glyph switch
+        {
+            WeatherGlyph.Sun => WxSun,
+            WeatherGlyph.Partly => WxPartly,
+            WeatherGlyph.Rain => WxRain,
+            WeatherGlyph.Snow => WxSnow,
+            WeatherGlyph.Thunder => WxThunder,
+            WeatherGlyph.Fog => WxFog,
+            _ => WxCloud
+        };
+        if (pack == "minimal") data = MinimalDot;
         return StreamGeometry.Parse(data);
     }
 
@@ -53,6 +100,17 @@ internal static class IslandIcons
         _ => "\uE80F"
     };
 
+    public static string Mdl2Weather(WeatherGlyph glyph) => glyph switch
+    {
+        WeatherGlyph.Sun => "\uE706",
+        WeatherGlyph.Partly => "\uE708",
+        WeatherGlyph.Rain => "\uE753",
+        WeatherGlyph.Snow => "\uE9C8",
+        WeatherGlyph.Thunder => "\uE9D6",
+        WeatherGlyph.Fog => "\uE9CB",
+        _ => "\uE753"
+    };
+
     public static IslandGlyph ForKind(OverlayKind kind, bool playing = false) => kind switch
     {
         OverlayKind.Notification => IslandGlyph.Notify,
@@ -62,5 +120,47 @@ internal static class IslandIcons
         OverlayKind.Error => IslandGlyph.Error,
         OverlayKind.Stack => IslandGlyph.Notify,
         _ => IslandGlyph.Overview
+    };
+
+    public static string Normalize(string? style) => (style ?? "").ToLowerInvariant() switch
+    {
+        "mdl2" => "mdl2",
+        "minimal" => "minimal",
+        "fluent-fill" or "filled" or "fluentfill" => "fluent-fill",
+        "weather-soft" or "soft" => "weather-soft",
+        _ => "fluent"
+    };
+
+    private static string Outline(IslandGlyph g) => g switch
+    {
+        IslandGlyph.Notify => Notify,
+        IslandGlyph.Progress => Progress,
+        IslandGlyph.MediaPlay => MediaPlay,
+        IslandGlyph.MediaPause => MediaPause,
+        IslandGlyph.Timer => Timer,
+        IslandGlyph.Error => Error,
+        _ => Overview
+    };
+
+    private static string Filled(IslandGlyph g) => g switch
+    {
+        IslandGlyph.Notify => NotifyFill,
+        IslandGlyph.Progress => ProgressFill,
+        IslandGlyph.MediaPlay => PlayFill,
+        IslandGlyph.MediaPause => PauseFill,
+        IslandGlyph.Timer => TimerFill,
+        IslandGlyph.Error => ErrorFill,
+        _ => OverviewFill
+    };
+
+    private static string Soft(IslandGlyph g) => g switch
+    {
+        IslandGlyph.Notify => SoftNotify,
+        IslandGlyph.Progress => SoftProgress,
+        IslandGlyph.MediaPlay => SoftPlay,
+        IslandGlyph.MediaPause => SoftPause,
+        IslandGlyph.Timer => SoftTimer,
+        IslandGlyph.Error => SoftError,
+        _ => SoftOverview
     };
 }

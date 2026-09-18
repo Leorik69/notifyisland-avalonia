@@ -16,7 +16,7 @@ public partial class SettingsWindow : Window
         Opened += (_, _) => Win32Overlay.ApplyNormalChrome(this);
         PaletteBox.ItemsSource = Array.ConvertAll(PaletteCatalog.All, p => p.Name);
         FontBox.ItemsSource = Array.ConvertAll(FontCatalog.All, f => f.Name);
-        IconBox.ItemsSource = new[] { "Fluent paths", "Segoe MDL2", "Minimal" };
+        IconBox.ItemsSource = new[] { "Fluent outline", "Fluent filled", "Segoe MDL2", "Weather soft" };
         AnimBox.ItemsSource = new[] { "Morph + pulse", "Pulse", "Breathe", "Morph only" };
         SpeedBox.ItemsSource = new[] { "Fast (180ms)", "Normal (260ms)" };
         ClockBox.ItemsSource = new[] { "HH:mm", "HH:mm:ss", "h:mm tt" };
@@ -35,7 +35,13 @@ public partial class SettingsWindow : Window
         var p = PrefsStore.Current;
         PaletteBox.SelectedIndex = IndexOf(PaletteCatalog.All, x => x.Id == p.PaletteId);
         FontBox.SelectedIndex = IndexOf(FontCatalog.All, x => x.Id == p.FontId);
-        IconBox.SelectedIndex = p.IconStyle switch { "mdl2" => 1, "minimal" => 2, _ => 0 };
+        IconBox.SelectedIndex = p.IconStyle switch
+        {
+            "fluent-fill" => 1,
+            "mdl2" => 2,
+            "weather-soft" => 3,
+            _ => 0
+        };
         AnimBox.SelectedIndex = p.Animation switch { "pulse" => 1, "breathe" => 2, "none" => 3, _ => 0 };
         SpeedBox.SelectedIndex = p.AnimSpeed == "fast" ? 0 : 1;
         ClockBox.SelectedIndex = p.ClockFormat switch { "HH:mm:ss" => 1, "h:mm tt" => 2, _ => 0 };
@@ -59,6 +65,13 @@ public partial class SettingsWindow : Window
         AutoBox.IsChecked = p.AutoStart || AutoStart.IsEnabled();
         ToastBox.IsChecked = p.ListenToasts;
         ToastStatus.Text = "Toasts: " + ToastHub.Status;
+        WeatherBox.IsChecked = p.ShowWeather;
+        LocationBox.IsChecked = p.UseWindowsLocation;
+        CityBox.Text = p.WeatherCity;
+        WeatherMinSlider.Value = p.WeatherIntervalMin;
+        WeatherStatus.Text = "Weather: " + WeatherHub.Status;
+        SoundBox.IsChecked = p.SoundsEnabled;
+        VolumeSlider.Value = p.SoundVolume;
     }
 
     private void OnChanged(object? sender, SelectionChangedEventArgs e)
@@ -74,6 +87,14 @@ public partial class SettingsWindow : Window
         Commit();
     }
 
+    private void OnCityLost(object? sender, RoutedEventArgs e)
+    {
+        if (!_boot) return;
+        Commit();
+    }
+
+    private void OnPreviewSound(object? sender, RoutedEventArgs e) => IslandSounds.Cue(IslandSound.Notify);
+
     private void OnPreviewAnim(object? sender, RoutedEventArgs e)
     {
         IslandAnimator.Pulse(PreviewPill, Motion.PulseMs);
@@ -88,7 +109,13 @@ public partial class SettingsWindow : Window
             var fi = Math.Clamp(FontBox.SelectedIndex, 0, FontCatalog.All.Length - 1);
             p.PaletteId = PaletteCatalog.All[pi].Id;
             p.FontId = FontCatalog.All[fi].Id;
-            p.IconStyle = IconBox.SelectedIndex switch { 1 => "mdl2", 2 => "minimal", _ => "fluent" };
+            p.IconStyle = IconBox.SelectedIndex switch
+            {
+                1 => "fluent-fill",
+                2 => "mdl2",
+                3 => "weather-soft",
+                _ => "fluent"
+            };
             p.Animation = AnimBox.SelectedIndex switch { 1 => "pulse", 2 => "breathe", 3 => "none", _ => "morph" };
             p.AnimSpeed = SpeedBox.SelectedIndex == 0 ? "fast" : "normal";
             p.ClockFormat = ClockBox.SelectedIndex switch { 1 => "HH:mm:ss", 2 => "h:mm tt", _ => "HH:mm" };
@@ -112,9 +139,16 @@ public partial class SettingsWindow : Window
             p.ClickOpensActionCenter = ActionCenterBox.IsChecked == true;
             p.AutoStart = AutoBox.IsChecked == true;
             p.ListenToasts = ToastBox.IsChecked == true;
+            p.ShowWeather = WeatherBox.IsChecked == true;
+            p.UseWindowsLocation = LocationBox.IsChecked == true;
+            p.WeatherCity = CityBox.Text ?? "";
+            p.WeatherIntervalMin = (int)WeatherMinSlider.Value;
+            p.SoundsEnabled = SoundBox.IsChecked == true;
+            p.SoundVolume = VolumeSlider.Value;
         });
         AutoStart.Set(PrefsStore.Current.AutoStart);
         _ = UpdateToastAsync();
+        WeatherStatus.Text = "Weather: " + WeatherHub.Status;
         PaintPreview();
         PathHint.Text = "Saved to " + PrefsStore.ActivePath;
     }
@@ -148,7 +182,7 @@ public partial class SettingsWindow : Window
         PreviewClock.FontFamily = new FontFamily(font.Family);
         PreviewClock.Text = DateTime.Now.ToString(p.ClockFormat, System.Globalization.CultureInfo.InvariantCulture);
         PreviewIcon.Fill = new SolidColorBrush(pal.Accent);
-        PreviewIcon.Data = IslandIcons.Geometry(IslandGlyph.Notify, p.IconStyle);
+        PreviewIcon.Data = IslandIcons.Geometry(IslandGlyph.Notify, IslandIcons.Normalize(p.IconStyle));
     }
 
     private static int IndexOf<T>(T[] items, Func<T, bool> pred)

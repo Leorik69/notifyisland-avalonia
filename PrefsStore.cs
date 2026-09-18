@@ -34,6 +34,12 @@ public sealed class UserPrefs
     public double OffsetY { get; set; }
     public string Layer { get; set; } = "topmost";
     public bool ClickOpensActionCenter { get; set; } = true;
+    public bool ShowWeather { get; set; } = true;
+    public bool UseWindowsLocation { get; set; } = true;
+    public string WeatherCity { get; set; } = "";
+    public int WeatherIntervalMin { get; set; } = 15;
+    public bool SoundsEnabled { get; set; } = true;
+    public double SoundVolume { get; set; } = 0.28;
 }
 
 internal static class PrefsStore
@@ -146,12 +152,12 @@ internal static class PrefsStore
         };
         if (!PaletteCatalog.TryGet(p.PaletteId, out _)) p.PaletteId = "midnight";
         if (!FontCatalog.TryGet(p.FontId, out _)) p.FontId = "segoe-variable";
-        p.IconStyle = p.IconStyle.ToLowerInvariant() switch
-        {
-            "mdl2" => "mdl2",
-            "minimal" => "minimal",
-            _ => "fluent"
-        };
+        p.IconStyle = IslandIcons.Normalize(p.IconStyle);
+        if (p.WeatherIntervalMin < 5 || p.WeatherIntervalMin > 60) p.WeatherIntervalMin = 15;
+        p.WeatherCity = (p.WeatherCity ?? "").Trim();
+        if (p.WeatherCity.Length > 80) p.WeatherCity = p.WeatherCity[..80];
+        if (double.IsNaN(p.SoundVolume) || double.IsInfinity(p.SoundVolume)) p.SoundVolume = 0.28;
+        p.SoundVolume = Math.Clamp(p.SoundVolume, 0, 1);
         p.Animation = p.Animation.ToLowerInvariant() switch
         {
             "pulse" => "pulse",
