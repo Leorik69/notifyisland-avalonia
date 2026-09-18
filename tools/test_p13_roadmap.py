@@ -27,7 +27,7 @@ def main() -> int:
         ("InvokeAction", "Core/OverlayDispatcher.cs", "InvokeAction"),
         ("Urgency", "Core/NotificationModel.cs", "NotifyUrgency"),
         ("platform doc", "docs/platform-limitations.md", "Windows"),
-        ("version 1.3.0", "NotifyIsland.Av.csproj", "<Version>1.3.0</Version>"),
+        ("version 1.3.1", "NotifyIsland.Av.csproj", "<Version>1.3.1</Version>"),
         ("screen picker", "SettingsWindow.axaml", "ScreenBox"),
         ("diagnostics", "Program.cs", "--diagnostics"),
         ("CJK demo", "Demo/DemoScript.cs", "こんにちは"),

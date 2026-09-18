@@ -446,6 +446,11 @@ public partial class SettingsWindow : Window
         Title = Ui.T("title");
         HeadingText.Text = Ui.T("heading");
         AppearanceExp.Header = Ui.T("appearance");
+        CapsuleExp.Header = Ui.T("capsule");
+        PositionExp.Header = Ui.T("position");
+        WeatherExp.Header = Ui.T("weather");
+        SoundsExp.Header = Ui.T("sounds");
+        NotifyExp.Header = Ui.T("notify");
         LangLabel.Text = Ui.T("lang");
         LangHint.Text = Ui.T("lang_h");
         RenderModeLabel.Text = Ui.T("render_mode");
@@ -453,12 +458,39 @@ public partial class SettingsWindow : Window
         var rm = RenderModeBox.SelectedIndex;
         RenderModeBox.ItemsSource = new[] { Ui.T("render_fixed"), Ui.T("render_resize") };
         RenderModeBox.SelectedIndex = rm < 0 ? 0 : rm;
+        PaletteLabel.Text = Ui.T("palette");
+        AccentLabel.Text = Ui.T("accent");
+        FontLabel.Text = Ui.T("font");
+        IconsLabel.Text = Ui.T("icons");
+        OpacityLabel.Text = Ui.T("opacity");
+        GlassLabel.Text = Ui.T("glass");
+        BorderLabel.Text = Ui.T("border");
+        GlowLabel.Text = Ui.T("glow");
+        RadiusLabel.Text = Ui.T("radius");
         MotionExtraLabel.Text = Ui.T("motion_extra");
         MotionExtraHint.Text = Ui.T("motion_extra_h");
         ExpandSpeedLabel.Text = Ui.T("expand_speed");
         ExpandSpeedHint.Text = Ui.T("expand_speed_h");
         CollapseSpeedLabel.Text = Ui.T("collapse_speed");
         CollapseSpeedHint.Text = Ui.T("collapse_speed_h");
+        ClockLabel.Text = Ui.T("clock");
+        DensityLabel.Text = Ui.T("density");
+        IdleWLabel.Text = Ui.T("idle_w");
+        IdleHLabel.Text = Ui.T("idle_h");
+        ExpandHeightBox.Content = Ui.T("expand_h");
+        MinWLabel.Text = Ui.T("min_w");
+        MaxWLabel.Text = Ui.T("max_w");
+        TextSizeLabel.Text = Ui.T("text_size");
+        IconSizeLabel.Text = Ui.T("icon_size");
+        BadgeBox.Content = Ui.T("badge");
+        BadgeStyleLabel.Text = Ui.T("badge_style");
+        AnchorHLabel.Text = Ui.T("anchor_h");
+        AnchorVLabel.Text = Ui.T("anchor_v");
+        OffXLabel.Text = Ui.T("off_x");
+        OffYLabel.Text = Ui.T("off_y");
+        LayerLabel.Text = Ui.T("layer");
+        LayerHint.Text = Ui.T("layer_h");
+        ScreenLabel.Text = Ui.T("display");
         AutoBox.Content = Ui.T("autostart");
         ToastBox.Content = Ui.T("toasts");
         ToastHint.Text = Ui.T("toasts_h");
@@ -470,14 +502,39 @@ public partial class SettingsWindow : Window
         BadgeAppsHint.Text = Ui.T("badge_apps_h");
         BadgeAppsBox.Watermark = Ui.T("badge_apps");
         NotifyMsLabel.Text = Ui.T("notify_ms");
+        ChatMsLabel.Text = Ui.T("chat_ms");
+        CallMsLabel.Text = Ui.T("call_ms");
+        ClickLabel.Text = Ui.T("click");
         QuietFocusBox.Content = Ui.T("quiet_focus");
         QuietFullBox.Content = Ui.T("quiet_full");
         ReduceMotionBox.Content = Ui.T("reduce_motion");
         DiagBox.Content = Ui.T("diagnostics");
+        WeatherBox.Content = Ui.T("weather_on");
+        LocationBox.Content = Ui.T("location");
+        CityBox.Watermark = Ui.T("city");
+        WxMinLabel.Text = Ui.T("wx_min");
+        SoundBox.Content = Ui.T("sounds_on");
+        SoundNotifyBox.Content = Ui.T("snd_notify");
+        SoundChatBox.Content = Ui.T("snd_chat");
+        SoundErrorBox.Content = Ui.T("snd_error");
+        SoundCompleteBox.Content = Ui.T("snd_complete");
+        CueVolLabel.Text = Ui.T("cue_vol");
+        PreviewSoundBtn.Content = Ui.T("preview_sound");
+        SysVolLabel.Text = Ui.T("sys_vol");
+        SysMuteBox.Content = Ui.T("sys_mute");
+        PreviewAnimBtn.Content = Ui.T("preview_anim");
         WhatsNewTitle.Text = Ui.T("whats_new_title");
         WhatsNewBody.Text = Ui.T("whats_new_body");
         WhatsNewOk.Content = Ui.T("whats_new_ok");
         PathHint.Text = Ui.T("saved") + PrefsStore.ActivePath;
+        foreach (var u in this.GetLogicalDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("unit")))
+        {
+            var t = u.Text ?? "";
+            if (t is "%" or "pct") u.Text = Ui.T("unit_pct");
+            else if (t is "px") u.Text = Ui.T("unit_px");
+            else if (t is "мс" or "ms") u.Text = Ui.T("unit_ms");
+            else if (t is "мин" or "min") u.Text = Ui.T("unit_min");
+        }
     }
 
     private void OnWhatsNewOk(object? sender, RoutedEventArgs e)
@@ -523,7 +580,7 @@ public partial class SettingsWindow : Window
     {
         if (!SystemVolume.TryGet(out var s, out var mute))
         {
-            SysVolStatus.Text = "System volume: " + SystemVolume.Status;
+            SysVolStatus.Text = Ui.T("sys_vol_st") + SystemVolume.Status;
             return;
         }
         _syncing = true;
@@ -531,7 +588,7 @@ public partial class SettingsWindow : Window
         SysVolNum.Value = (decimal)s;
         SysMuteBox.IsChecked = mute;
         _syncing = false;
-        SysVolStatus.Text = "System volume: " + SystemVolume.Status;
+        SysVolStatus.Text = Ui.T("sys_vol_st") + SystemVolume.Status;
     }
 
     private void OnSysVol(object? sender, AvaloniaPropertyChangedEventArgs e)
@@ -541,7 +598,7 @@ public partial class SettingsWindow : Window
         _syncing = true;
         SysVolNum.Value = (decimal)SysVolSlider.Value;
         _syncing = false;
-        SysVolStatus.Text = "System volume: " + SystemVolume.Status;
+        SysVolStatus.Text = Ui.T("sys_vol_st") + SystemVolume.Status;
     }
 
     private void OnSysVolNum(object? sender, NumericUpDownValueChangedEventArgs e)
@@ -552,7 +609,7 @@ public partial class SettingsWindow : Window
         _syncing = true;
         SysVolSlider.Value = v;
         _syncing = false;
-        SysVolStatus.Text = "System volume: " + SystemVolume.Status;
+        SysVolStatus.Text = Ui.T("sys_vol_st") + SystemVolume.Status;
     }
 
     private void OnSysMute(object? sender, RoutedEventArgs e)
