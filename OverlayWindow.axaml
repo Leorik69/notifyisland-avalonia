@@ -2,54 +2,91 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="NotifyIsland.OverlayWindow"
         Title="NotifyIsland"
-        Width="180" Height="34"
+        Width="180" Height="40"
         CanResize="False"
         ShowInTaskbar="False"
         Topmost="True"
         ShowActivated="False"
         SystemDecorations="None"
         TransparencyLevelHint="Transparent"
-        TransparencyBackgroundFallback="#080808"
+        TransparencyBackgroundFallback="Transparent"
         Background="Transparent"
         WindowStartupLocation="Manual">
-  <Border x:Name="Pill"
-          Width="180" Height="34"
-          CornerRadius="17"
-          Background="#080808"
-          BorderBrush="#28FFFFFF"
-          BorderThickness="1"
-          HorizontalAlignment="Center"
-          VerticalAlignment="Center"
-          PointerPressed="OnPillPressed">
-    <Grid Margin="12,0">
-      <TextBlock x:Name="ClockText"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center"
-                 FontFamily="Inter, Segoe UI Variable, Segoe UI"
-                 FontSize="13"
-                 FontWeight="SemiBold"
-                 Foreground="#FFFFFF"
-                 Text="00:00" />
-      <StackPanel x:Name="OverlayPanel"
-                  Spacing="4"
-                  VerticalAlignment="Center"
-                  IsVisible="False">
-        <DockPanel>
-          <Button x:Name="MediaPlay" DockPanel.Dock="Right" Padding="6,2" Click="OnMediaPlay"
-                  ToolTip.Tip="Воспроизведение"
-                  AutomationProperties.Name="Воспроизведение">
-            <TextBlock x:Name="MediaPlayGlyph" Text="▶" FontSize="11" Foreground="#3D9CF0" />
+  <Panel>
+    <Border x:Name="Glow"
+            Width="188" Height="48"
+            CornerRadius="24"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            IsHitTestVisible="False"
+            Opacity="0.28" />
+    <Border x:Name="Pill"
+            Width="180" Height="40"
+            CornerRadius="20"
+            ClipToBounds="True"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            PointerPressed="OnPillPressed"
+            PointerEntered="OnPillEntered"
+            PointerExited="OnPillExited">
+      <Grid Margin="12,0">
+        <TextBlock x:Name="ClockText"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   TextAlignment="Center"
+                   FontFamily="Segoe UI Variable Display, Segoe UI Variable, Segoe UI"
+                   FontSize="13"
+                   FontWeight="SemiBold"
+                   Foreground="#FFFFFF"
+                   Text="00:00" />
+        <StackPanel x:Name="WeatherChip" Orientation="Horizontal" Spacing="4"
+                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                    Opacity="0" IsHitTestVisible="False" Margin="0,0,2,0">
+          <Panel Width="14" Height="14">
+            <Path x:Name="WeatherIcon" Width="13" Height="13" Stretch="Uniform" />
+            <TextBlock x:Name="WeatherGlyph" FontFamily="Segoe MDL2 Assets" FontSize="12" IsVisible="False"
+                       VerticalAlignment="Center" HorizontalAlignment="Center" />
+          </Panel>
+          <TextBlock x:Name="WeatherTemp" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </StackPanel>
+        <DockPanel x:Name="OverlayRow" LastChildFill="True" Opacity="0" IsHitTestVisible="False">
+          <Panel DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
+            <Path x:Name="KindIcon" Width="14" Height="14" Stretch="Uniform" />
+            <TextBlock x:Name="KindGlyph" FontFamily="Segoe MDL2 Assets" FontSize="13" IsVisible="False"
+                       VerticalAlignment="Center" HorizontalAlignment="Center" />
+          </Panel>
+          <Button x:Name="MediaPlay" DockPanel.Dock="Right" Padding="4,0" Margin="8,0,0,0" Click="OnMediaPlay"
+                  Opacity="0" IsHitTestVisible="False" VerticalAlignment="Center"
+                  ToolTip.Tip="Play" AutomationProperties.Name="Play">
+            <Panel Width="12" Height="12">
+              <Path x:Name="MediaPlayIcon" Width="10" Height="10" Stretch="Uniform" />
+              <TextBlock x:Name="MediaPlayGlyph" FontFamily="Segoe MDL2 Assets" FontSize="11" IsVisible="False" />
+            </Panel>
           </Button>
-          <StackPanel Spacing="2">
+          <ProgressBar x:Name="RowProgress" DockPanel.Dock="Right" Width="52" Height="3" Margin="8,0,0,0"
+                       Minimum="0" Maximum="100" Opacity="0" VerticalAlignment="Center" />
+          <TextBlock x:Name="RowTimer" DockPanel.Dock="Right" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold"
+                     Opacity="0" VerticalAlignment="Center" />
+          <TextBlock x:Name="RowText" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" />
+        </DockPanel>
+        <DockPanel x:Name="OverlayPanel" LastChildFill="True" Opacity="0" IsHitTestVisible="False">
+          <StackPanel Spacing="2" VerticalAlignment="Center">
             <TextBlock x:Name="OverlayTitle" FontSize="13" FontWeight="SemiBold" Foreground="#FFFFFF"
-                       TextTrimming="CharacterEllipsis" Text="Обзор" />
+                       FontFamily="Segoe UI Variable Display, Segoe UI Variable, Segoe UI"
+                       TextTrimming="CharacterEllipsis" Text="Overview" />
             <TextBlock x:Name="OverlaySubtitle" FontSize="11" Foreground="#C8C8CC"
+                       FontFamily="Segoe UI Variable, Segoe UI"
                        TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="OverlayStack" FontSize="11" Foreground="#C8C8CC" Opacity="0"
+                       FontFamily="Segoe UI Variable, Segoe UI"
+                       TextTrimming="CharacterEllipsis" />
+            <ProgressBar x:Name="OverlayProgress" Height="4" Minimum="0" Maximum="100" Foreground="#3D9CF0" Opacity="0" />
+            <TextBlock x:Name="OverlayTimer" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" Opacity="0"
+                       FontFamily="Segoe UI Variable Display, Segoe UI" />
           </StackPanel>
         </DockPanel>
-        <ProgressBar x:Name="OverlayProgress" Height="4" Minimum="0" Maximum="100" Foreground="#3D9CF0" />
-        <TextBlock x:Name="OverlayTimer" FontSize="18" FontWeight="SemiBold" Foreground="#FFFFFF" IsVisible="False" />
-      </StackPanel>
-    </Grid>
-  </Border>
+      </Grid>
+    </Border>
+  </Panel>
 </Window>

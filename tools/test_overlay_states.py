@@ -5,7 +5,7 @@ from pathlib import Path
 ISLAND = Path(__file__).resolve().parents[1]
 CS = (ISLAND / "OverlayMachine.cs").read_text(encoding="utf-8")
 TOKENS = (ISLAND / "OverlayTokens.cs").read_text(encoding="utf-8")
-KINDS = ("Idle","Collapsed","Expanded","Notification","Progress","Media","Timer","Error")
+KINDS = ("Idle","Collapsed","Expanded","Notification","Progress","Media","Timer","Error","Stack")
 
 class Payload:
     def __init__(self, title="", subtitle="", body="", progress=0.0, playing=False, remaining=0.0):
@@ -48,6 +48,10 @@ class Machine:
             self.kind = "Error"; self.payload = data
             if not self.payload.body and not self.payload.title: self.payload.title = "Ошибка"
             self.notify_ms = 0
+        elif cmd == "Stack":
+            self.kind = "Stack"; self.payload = data
+            if not self.payload.title: self.payload.title = "Очередь"
+            self.notify_ms = 0
         elif cmd == "Clear": self.kind = "Idle"; self.return_to = "Idle"; self.notify_ms = 0; self.payload = Payload()
     def tick(self, ms: int) -> None:
         dt = max(0, ms)
@@ -76,6 +80,7 @@ def test_transitions() -> None:
     m.dispatch("SetMedia", Payload()); assert m.payload.title == "Без названия"
     m.dispatch("SetTimer", Payload(remaining=10)); m.tick(2500); assert abs(m.payload.remaining - 7.5) < 0.05
     m.dispatch("SetError", Payload()); assert m.payload.title == "Ошибка"
+    m.dispatch("Stack", Payload(title="Q")); assert m.kind == "Stack"
     m.dispatch("Collapse"); assert m.kind == "Collapsed"
 
 def test_invalid_data() -> None:
