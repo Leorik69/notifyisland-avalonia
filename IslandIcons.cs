@@ -19,6 +19,17 @@ internal enum IslandGlyph
     Complete,
     Warn,
     System,
+    Volume,
+    Mute,
+    SkipNext,
+    Music,
+    Person,
+    Image,
+    Video,
+    Folder,
+    Link,
+    Star,
+    Shield,
 }
 
 internal enum WeatherGlyph
@@ -73,7 +84,19 @@ internal static class IslandIcons
     public const string Download = "M11 4h2v9.2l3-3 1.4 1.4L12 17.2 6.6 11.6 8 10.2l3 3V4ZM5 18h14v2H5v-2Z";
     public const string Complete = "M4 12a8 8 0 1 1 16 0 8 8 0 0 1-16 0Zm11.2-2.4-1.4-1.4-4.1 4.1-2-2-1.4 1.4 3.4 3.4 5.5-5.5Z";
     public const string Warn = "M12 3.4 21 20H3L12 3.4ZM11 9h2v5h-2V9Zm0 6.5h2V18h-2v-2.5Z";
-    public const string System = "M4 7h16v10H4V7Zm2 2v6h12V9H6Zm5 11h2v2h-2v-2Z";
+    public const string Volume = "M4 9h3.2L12 5.2v13.6L7.2 15H4V9Zm10.2.4 1.4-1.4A6.2 6.2 0 0 1 17 12a6.2 6.2 0 0 1-1.4 4l-1.4-1.4A4.2 4.2 0 0 0 15.2 12a4.2 4.2 0 0 0-1-2.6Z";
+    public const string Mute = "M4 9h3.2L12 5.2v5.2L6.4 16H4V9Zm12.6-3.2 1.4 1.4-3.2 3.2 3.2 3.2-1.4 1.4-3.2-3.2-3.2 3.2-1.4-1.4 3.2-3.2-3.2-3.2 1.4-1.4 3.2 3.2 3.2-3.2Z";
+    public const string SkipNext = "M6 6.2 13.2 12 6 17.8V6.2ZM15 6h2v12h-2V6Z";
+    public const string Music = "M9 6h10v2h-8v8.2A3.2 3.2 0 1 1 9 13.2V6Zm-1.2 9.4a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z";
+    public const string Person = "M12 4a3.4 3.4 0 1 1 0 6.8A3.4 3.4 0 0 1 12 4ZM6.4 18.6c.6-3 3-4.6 5.6-4.6s5 1.6 5.6 4.6H6.4Z";
+    public const string Image = "M4 6h16v12H4V6Zm2 2v8h12V8H6Zm2.2 6.2 2.2-2.6 2.2 2.6 2.8-3.6 2.6 3.6H8.2Z";
+    public const string Video = "M3.6 7h12v10h-12V7Zm13.2 2 4 2.4v5.2l-4 2.4V9Z";
+    public const string Folder = "M3.6 6h6.2l2 2H20.4v10.4H3.6V6Z";
+    public const string Link = "M9.2 12.8a3.6 3.6 0 0 1 0-5.1l2.4-2.4a3.6 3.6 0 0 1 5.1 5.1l-1.2 1.2-1.2-1.2 1.2-1.2a1.8 1.8 0 0 0-2.5-2.5L10.4 9a1.8 1.8 0 0 0 0 2.5l-1.2 1.3Zm5.6-1.6a3.6 3.6 0 0 1 0 5.1l-2.4 2.4a3.6 3.6 0 1 1-5.1-5.1l1.2-1.2 1.2 1.2-1.2 1.2a1.8 1.8 0 0 0 2.5 2.5l2.4-2.4a1.8 1.8 0 0 0 0-2.5l1.4-1.2Z";
+    public const string Star = "M12 3.6 14.4 9l6 .6-4.5 4 1.3 5.8L12 16.8 6.8 19.4 8.1 13.6 3.6 9.6l6-.6L12 3.6Z";
+    public const string Shield = "M12 3.2 19.2 6v6.2c0 4.2-3 7.4-7.2 8.6-4.2-1.2-7.2-4.4-7.2-8.6V6L12 3.2Z";
+    public const string SysDevice = "M4 7h16v10H4V7Zm2 2v6h12V9H6Zm5 11h2v2h-2v-2Z";
+
 
     public static StreamGeometry Geometry(IslandGlyph glyph, string iconStyle)
     {
@@ -122,6 +145,17 @@ internal static class IslandIcons
         IslandGlyph.Complete => "\uE73E",
         IslandGlyph.Warn => "\uE7BA",
         IslandGlyph.System => "\uE770",
+        IslandGlyph.Volume => "\uE767",
+        IslandGlyph.Mute => "\uE74F",
+        IslandGlyph.SkipNext => "\uE893",
+        IslandGlyph.Music => "\uE8D6",
+        IslandGlyph.Person => "\uE77B",
+        IslandGlyph.Image => "\uEB9F",
+        IslandGlyph.Video => "\uE714",
+        IslandGlyph.Folder => "\uE8B7",
+        IslandGlyph.Link => "\uE71B",
+        IslandGlyph.Star => "\uE734",
+        IslandGlyph.Shield => "\uEA18",
         _ => "\uE80F"
     };
 
@@ -184,7 +218,18 @@ internal static class IslandIcons
         IslandGlyph.Download => Download,
         IslandGlyph.Complete => Complete,
         IslandGlyph.Warn => Warn,
-        IslandGlyph.System => System,
+        IslandGlyph.System => SysDevice,
+        IslandGlyph.Volume => Volume,
+        IslandGlyph.Mute => Mute,
+        IslandGlyph.SkipNext => SkipNext,
+        IslandGlyph.Music => Music,
+        IslandGlyph.Person => Person,
+        IslandGlyph.Image => Image,
+        IslandGlyph.Video => Video,
+        IslandGlyph.Folder => Folder,
+        IslandGlyph.Link => Link,
+        IslandGlyph.Star => Star,
+        IslandGlyph.Shield => Shield,
         _ => Overview
     };
 
@@ -203,7 +248,18 @@ internal static class IslandIcons
         IslandGlyph.Download => Download,
         IslandGlyph.Complete => Complete,
         IslandGlyph.Warn => Warn,
-        IslandGlyph.System => System,
+        IslandGlyph.System => SysDevice,
+        IslandGlyph.Volume => Volume,
+        IslandGlyph.Mute => Mute,
+        IslandGlyph.SkipNext => SkipNext,
+        IslandGlyph.Music => Music,
+        IslandGlyph.Person => Person,
+        IslandGlyph.Image => Image,
+        IslandGlyph.Video => Video,
+        IslandGlyph.Folder => Folder,
+        IslandGlyph.Link => Link,
+        IslandGlyph.Star => Star,
+        IslandGlyph.Shield => Shield,
         _ => OverviewFill
     };
 
@@ -215,14 +271,6 @@ internal static class IslandIcons
         IslandGlyph.MediaPause => SoftPause,
         IslandGlyph.Timer => SoftTimer,
         IslandGlyph.Error => SoftError,
-        IslandGlyph.Chat => Chat,
-        IslandGlyph.Mail => Mail,
-        IslandGlyph.Calendar => Calendar,
-        IslandGlyph.Call => Call,
-        IslandGlyph.Download => Download,
-        IslandGlyph.Complete => Complete,
-        IslandGlyph.Warn => Warn,
-        IslandGlyph.System => System,
-        _ => SoftOverview
+        _ => Outline(g)
     };
 }

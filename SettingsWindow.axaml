@@ -8,7 +8,7 @@
         SystemDecorations="Full"
         ShowInTaskbar="True">
   <DockPanel Margin="16">
-    <TextBlock DockPanel.Dock="Top" FontSize="20" FontWeight="SemiBold" Text="Overlay" Margin="0,0,0,8"
+    <TextBlock x:Name="HeadingText" DockPanel.Dock="Top" FontSize="20" FontWeight="SemiBold" Text="Капсула" Margin="0,0,0,8"
                FontFamily="Segoe UI Variable Display, Segoe UI" />
     <TextBlock x:Name="PathHint" DockPanel.Dock="Bottom" FontSize="11" Opacity="0.65" TextWrapping="Wrap" Margin="0,8,0,0" />
     <ScrollViewer>
@@ -20,8 +20,11 @@
           </StackPanel>
         </Border>
 
-        <Expander Header="Appearance" IsExpanded="True">
+        <Expander x:Name="AppearanceExp" Header="Вид" IsExpanded="True">
           <StackPanel Spacing="8" Margin="0,8,0,0">
+            <TextBlock x:Name="LangLabel" Opacity="0.8" />
+            <TextBlock x:Name="LangHint" FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
+            <ComboBox x:Name="LangBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
             <TextBlock Text="Palette" Opacity="0.8" />
             <ComboBox x:Name="PaletteBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
             <TextBlock Text="Custom accent (#RRGGBB, empty = palette)" Opacity="0.8" />
@@ -55,10 +58,23 @@
               <NumericUpDown x:Name="RadiusNum" Grid.Column="1" Minimum="0" Maximum="28" Increment="1" FormatString="0" ValueChanged="OnNum" />
             </Grid>
             <Slider x:Name="RadiusSlider" Minimum="0" Maximum="28" PropertyChanged="OnSlider" />
-            <TextBlock Text="Motion extra" Opacity="0.8" />
+            <TextBlock x:Name="MotionExtraLabel" Opacity="0.8" />
+            <TextBlock x:Name="MotionExtraHint" FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
             <ComboBox x:Name="AnimBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
-            <TextBlock Text="Animation speed" Opacity="0.8" />
-            <ComboBox x:Name="SpeedBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+            <TextBlock x:Name="ExpandSpeedLabel" Opacity="0.8" />
+            <TextBlock x:Name="ExpandSpeedHint" FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
+            <ComboBox x:Name="ExpandSpeedBox" HorizontalAlignment="Stretch" SelectionChanged="OnExpandPreset" />
+            <Grid ColumnDefinitions="*,88">
+              <Slider x:Name="ExpandMsSlider" Minimum="120" Maximum="500" PropertyChanged="OnSlider" />
+              <NumericUpDown x:Name="ExpandMsNum" Grid.Column="1" Minimum="120" Maximum="500" Increment="1" FormatString="0" ValueChanged="OnNum" />
+            </Grid>
+            <TextBlock x:Name="CollapseSpeedLabel" Opacity="0.8" />
+            <TextBlock x:Name="CollapseSpeedHint" FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
+            <ComboBox x:Name="CollapseSpeedBox" HorizontalAlignment="Stretch" SelectionChanged="OnCollapsePreset" />
+            <Grid ColumnDefinitions="*,88">
+              <Slider x:Name="CollapseMsSlider" Minimum="180" Maximum="600" PropertyChanged="OnSlider" />
+              <NumericUpDown x:Name="CollapseMsNum" Grid.Column="1" Minimum="180" Maximum="600" Increment="1" FormatString="0" ValueChanged="OnNum" />
+            </Grid>
           </StackPanel>
         </Expander>
 
@@ -89,11 +105,10 @@
               <NumericUpDown x:Name="MaxWNum" Grid.Column="1" Minimum="200" Maximum="640" Increment="1" FormatString="0" ValueChanged="OnNum" />
             </Grid>
             <Slider x:Name="MaxWSlider" Minimum="200" Maximum="640" PropertyChanged="OnSlider" />
-            <Grid ColumnDefinitions="*,88">
-              <TextBlock Text="Glyph size" VerticalAlignment="Center" />
-              <NumericUpDown x:Name="GlyphNum" Grid.Column="1" Minimum="12" Maximum="18" Increment="1" FormatString="0" ValueChanged="OnNum" />
-            </Grid>
-            <Slider x:Name="GlyphSlider" Minimum="12" Maximum="18" PropertyChanged="OnSlider" />
+            <TextBlock Text="Text size" Opacity="0.8" />
+            <ComboBox x:Name="TextSizeBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+            <TextBlock Text="Icon size" Opacity="0.8" />
+            <ComboBox x:Name="IconSizeBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
             <CheckBox x:Name="BadgeBox" Content="Show app badge left of clock" IsCheckedChanged="OnCheck" />
             <TextBlock Text="Badge style" Opacity="0.8" />
             <ComboBox x:Name="BadgeStyleBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
@@ -142,22 +157,33 @@
             <CheckBox x:Name="SoundErrorBox" Content="Error" IsCheckedChanged="OnCheck" />
             <CheckBox x:Name="SoundCompleteBox" Content="Complete" IsCheckedChanged="OnCheck" />
             <Grid ColumnDefinitions="*,88">
-              <TextBlock Text="Volume" VerticalAlignment="Center" />
+              <TextBlock Text="Cue volume (app sounds)" VerticalAlignment="Center" />
               <NumericUpDown x:Name="VolumeNum" Grid.Column="1" Minimum="0" Maximum="1" Increment="0.02" FormatString="0.00" ValueChanged="OnNum" />
             </Grid>
             <Slider x:Name="VolumeSlider" Minimum="0" Maximum="1" PropertyChanged="OnSlider" />
             <Button Content="Preview notify sound" Click="OnPreviewSound" HorizontalAlignment="Left" />
+            <TextBlock Text="System master volume (also in player panel)" Opacity="0.8" Margin="0,8,0,0" />
+            <Grid ColumnDefinitions="*,88">
+              <Slider x:Name="SysVolSlider" Minimum="0" Maximum="1" PropertyChanged="OnSysVol" />
+              <NumericUpDown x:Name="SysVolNum" Grid.Column="1" Minimum="0" Maximum="1" Increment="0.01" FormatString="0.00" ValueChanged="OnSysVolNum" />
+            </Grid>
+            <CheckBox x:Name="SysMuteBox" Content="Mute system" IsCheckedChanged="OnSysMute" />
+            <TextBlock x:Name="SysVolStatus" FontSize="12" Opacity="0.75" TextWrapping="Wrap" />
           </StackPanel>
         </Expander>
 
         <Expander Header="Notifications">
           <StackPanel Spacing="8" Margin="0,8,0,0">
-            <CheckBox x:Name="ActionCenterBox" Content="Click capsule opens Notification Center" IsCheckedChanged="OnCheck" />
+            <TextBlock Text="Capsule click" Opacity="0.8" />
+            <ComboBox x:Name="ClickBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+            <CheckBox x:Name="ActionCenterBox" Content="Legacy: click opens Notification Center" IsVisible="False" IsCheckedChanged="OnCheck" />
             <CheckBox x:Name="HoverBox" Content="Hover peek" IsCheckedChanged="OnCheck" />
             <CheckBox x:Name="AutoBox" Content="Start with Windows" IsCheckedChanged="OnCheck" />
             <CheckBox x:Name="ToastBox" Content="Listen to Windows toasts" IsCheckedChanged="OnCheck" />
             <TextBlock x:Name="ToastStatus" FontSize="12" Opacity="0.75" TextWrapping="Wrap" />
+            <Button Content="Enable notification access" Click="OnEnableToast" HorizontalAlignment="Left" />
             <Button Content="Open Windows notification settings" Click="OnOpenToastSettings" HorizontalAlignment="Left" />
+            <Button Content="Open notification privacy" Click="OnOpenToastPrivacy" HorizontalAlignment="Left" />
             <TextBox x:Name="BadgeAppsBox" Watermark="Badge apps filter (empty = all AUMID)" LostFocus="OnCityLost" />
             <Grid ColumnDefinitions="*,88">
               <TextBlock Text="Notify ms" VerticalAlignment="Center" />

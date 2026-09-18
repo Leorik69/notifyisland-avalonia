@@ -12,6 +12,7 @@ public partial class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         PrefsStore.Load();
+        Ui.Apply(PrefsStore.Current.UiLanguage);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;

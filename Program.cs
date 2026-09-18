@@ -8,6 +8,11 @@ internal static class Program
 {
     public static bool DemoMode { get; private set; }
     public static bool OpenSettingsOnStart { get; private set; }
+    public static bool MotionDebug { get; private set; }
+    public static bool ForceDirectComposition { get; private set; }
+
+    public static string CompositionLabel =>
+        ForceDirectComposition ? "DirectComposition" : "WinUIComposition+DComp-fallback";
 
     public static void AbsorbArgs(string[] args)
     {
@@ -18,6 +23,13 @@ internal static class Program
                 DemoMode = true;
             if (string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase))
                 OpenSettingsOnStart = true;
+            if (string.Equals(a, "--motion-debug", StringComparison.OrdinalIgnoreCase))
+            {
+                MotionDebug = true;
+                DemoMode = true;
+            }
+            if (string.Equals(a, "--dcomp", StringComparison.OrdinalIgnoreCase))
+                ForceDirectComposition = true;
         }
     }
 
@@ -35,7 +47,9 @@ internal static class Program
             .WithInterFont()
             .With(new Win32PlatformOptions
             {
-                CompositionMode = new[] { Win32CompositionMode.WinUIComposition, Win32CompositionMode.DirectComposition }
+                CompositionMode = ForceDirectComposition
+                    ? new[] { Win32CompositionMode.DirectComposition }
+                    : new[] { Win32CompositionMode.WinUIComposition, Win32CompositionMode.DirectComposition }
             })
             .LogToTrace();
 }
