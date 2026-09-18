@@ -68,7 +68,7 @@ public sealed class UserPrefs
     public bool SuppressFocusAssist { get; set; } = true;
     public bool ReduceMotion { get; set; }
     public bool Diagnostics { get; set; }
-    public int SettingsSchema { get; set; } = 13;
+    public int SettingsSchema { get; set; } = 14;
     public string LastSeenVersion { get; set; } = "";
     /// <summary>Default architecture is fixedHost. resizeHost is an emergency fallback only.</summary>
     public string RenderMode { get; set; } = "fixedHost";
@@ -210,10 +210,14 @@ internal static class PrefsStore
         p.GlyphSize = TypeScale.GlyphPx(p.IconScale);
         p.ClockFormat = p.ClockFormat switch
         {
-            "HH:mm:ss" => "HH:mm:ss",
             "h:mm tt" => "h:mm tt",
             _ => "HH:mm"
         };
+        if (p.SettingsSchema < 14)
+        {
+            p.ClockFormat = "HH:mm";
+            p.SettingsSchema = 14;
+        }
         if (!PaletteCatalog.TryGet(p.PaletteId, out _)) p.PaletteId = "midnight";
         if (!FontCatalog.TryGet(p.FontId, out _)) p.FontId = "segoe-variable";
         p.IconStyle = IslandIcons.Normalize(p.IconStyle);

@@ -127,7 +127,7 @@ public partial class OverlayWindow : Window
         Win32Overlay.ApplyNoActivate(this);
     }
 
-    private void PlacePillInsideStrip(double toW, double toH)
+    internal void PlacePillInsideStrip(double toW, double toH)
     {
         var left = OverlayPlacement.PillLeftDip(Width, toW);
         var top = Math.Max(0, (Height - toH) / 2);
@@ -135,6 +135,9 @@ public partial class OverlayWindow : Window
         Pill.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left;
         Pill.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top;
         Pill.Margin = m;
+        Glow.Width = toW + 10 + PrefsStore.Current.GlowStrength * 8;
+        Glow.Height = toH + 8;
+        Glow.CornerRadius = new CornerRadius(toH / 2 + 4);
         Glow.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left;
         Glow.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top;
         Glow.Margin = new Thickness(Math.Max(0, left - 5), Math.Max(0, top - 4), 0, 0);
@@ -303,6 +306,8 @@ public partial class OverlayWindow : Window
     private void TickClock()
     {
         var fmt = PrefsStore.Current.ClockFormat;
+        if (string.IsNullOrWhiteSpace(fmt) || fmt.Contains("ss", StringComparison.Ordinal))
+            fmt = "HH:mm";
         ClockText.Text = DateTime.Now.ToString(fmt, CultureInfo.InvariantCulture);
         if (_machine.Snapshot().Kind is OverlayKind.Idle or OverlayKind.Collapsed)
             ClockText.Opacity = 1;
@@ -326,7 +331,6 @@ public partial class OverlayWindow : Window
         IslandAnimator.WireOpacity(WeatherChip, Motion.FadeMs);
         IslandAnimator.WireProgress(OverlayProgress);
         IslandAnimator.WireProgress(RowProgress);
-        IslandAnimator.WireOpacity(this, Motion.FadeMs);
 
         var pal = PaletteCatalog.Get(PrefsStore.Current.PaletteId);
         var accent = PaletteCatalog.AccentOf(PrefsStore.Current);
@@ -416,12 +420,12 @@ public partial class OverlayWindow : Window
         Glow.CornerRadius = new CornerRadius(radius + 4);
         var doAnim = animate && !prefs.ReduceMotion && prefs.Animation != "none";
         var collapse = toW + 4 < _lastW;
-        Glow.Width = Math.Max(_lastW, toW) + 10 + prefs.GlowStrength * 8;
+        Glow.Width = (doAnim ? Math.Max(32, _lastW) : toW) + 10 + prefs.GlowStrength * 8;
         if (PrefsStore.UseFixedHost)
         {
             if (!_stripReady)
                 EnsureFixedHost(true);
-            PlacePillInsideStrip(doAnim ? Math.Max(_lastW, toW) : toW, toH);
+            PlacePillInsideStrip(doAnim ? Math.Max(32, _lastW) : toW, toH);
             if (doAnim)
             {
                 _freezeText = true;

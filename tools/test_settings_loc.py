@@ -35,12 +35,12 @@ def main() -> int:
             failed += 1
         else:
             print("PASS key", key)
-    if "resizeHost" not in RU["whats_new_body"] or "не проверяли" not in RU["whats_new_body"]:
-        print("FAIL whats_new missing GPU/resizeHost")
+    if "Scale" not in RU["whats_new_body"] or "HH:mm" not in RU["whats_new_body"]:
+        print("FAIL whats_new 1.3.2")
         failed += 1
     else:
-        print("PASS whats_new GPU disclaimer")
-    if "unverified" not in EN["whats_new_body"] or "resizeHost" not in EN["whats_new_body"]:
+        print("PASS whats_new 1.3.2")
+    if "never scaled" not in EN["whats_new_body"]:
         print("FAIL en whats_new")
         failed += 1
     else:

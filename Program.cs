@@ -13,6 +13,7 @@ internal static class Program
     public static bool Diagnostics { get; private set; }
     public static string? RenderModeOverride { get; private set; }
     public static string? SettingsShotPath { get; private set; }
+    public static string? DumpFramesDir { get; private set; }
 
     public static string CompositionLabel =>
         ForceDirectComposition ? "DirectComposition" : "WinUIComposition+DComp-fallback";
@@ -41,6 +42,12 @@ internal static class Program
             {
                 SettingsShotPath = a.Split('=', 2)[1];
                 OpenSettingsOnStart = true;
+            }
+            if (a.StartsWith("--dump-frames=", StringComparison.OrdinalIgnoreCase))
+            {
+                DumpFramesDir = a.Split('=', 2)[1];
+                MotionDebug = true;
+                DemoMode = true;
             }
         }
     }

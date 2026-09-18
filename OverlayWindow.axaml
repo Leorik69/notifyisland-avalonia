@@ -13,24 +13,24 @@
         TransparencyBackgroundFallback="Transparent"
         Background="Transparent"
         WindowStartupLocation="Manual">
-  <Panel>
+  <Panel Background="Transparent">
     <Border x:Name="Glow"
             Width="188" Height="48"
             CornerRadius="24"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
             IsHitTestVisible="False"
             Opacity="0.28" />
     <Border x:Name="Pill"
             Width="180" Height="40"
             CornerRadius="20"
             ClipToBounds="True"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
             PointerPressed="OnPillPressed"
             PointerEntered="OnPillEntered"
             PointerExited="OnPillExited">
-      <Grid x:Name="CapsuleGrid" Margin="12,0">
+      <Grid x:Name="CapsuleGrid" Margin="12,0" ClipToBounds="True">
         <StackPanel x:Name="AppBadge" Orientation="Horizontal" Spacing="3"
                     HorizontalAlignment="Left" VerticalAlignment="Center"
                     Opacity="0">
@@ -49,7 +49,8 @@
                    Text="00:00" />
         <StackPanel x:Name="WeatherChip" Orientation="Horizontal" Spacing="4"
                     HorizontalAlignment="Right" VerticalAlignment="Center"
-                    Opacity="0" IsHitTestVisible="False" Margin="0,0,2,0">
+                    Opacity="0" IsHitTestVisible="False" Margin="0,0,2,0"
+                    ClipToBounds="True" MaxWidth="56">
           <Panel Width="14" Height="14">
             <Path x:Name="WeatherIcon" Width="13" Height="13" Stretch="Uniform" />
             <TextBlock x:Name="WeatherGlyph" FontFamily="Segoe MDL2 Assets" FontSize="12" IsVisible="False"

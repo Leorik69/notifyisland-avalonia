@@ -36,7 +36,7 @@ public partial class SettingsWindow : Window
         ExpandSpeedBox.ItemsSource = new[] { "Fast 167", "Normal 250", "Slow 333" };
         CollapseSpeedBox.ItemsSource = new[] { "Fast 250", "Normal 333", "Slow 400" };
         LangBox.ItemsSource = new[] { "Русский", "English", "System / Система" };
-        ClockBox.ItemsSource = new[] { "HH:mm", "HH:mm:ss", "h:mm tt" };
+        ClockBox.ItemsSource = new[] { "HH:mm", "h:mm tt" };
         DensityBox.ItemsSource = new[] { "Comfort", "Compact" };
         BadgeStyleBox.ItemsSource = new[] { "Icon + count", "Count only", "Dot" };
         TextSizeBox.ItemsSource = new[] { "Small", "Medium", "Large" };
@@ -162,7 +162,7 @@ public partial class SettingsWindow : Window
         Pair(CollapseMsSlider, CollapseMsNum, p.CollapseMs);
         ExpandSpeedBox.SelectedIndex = p.ExpandMs <= 180 ? 0 : p.ExpandMs >= 300 ? 2 : 1;
         CollapseSpeedBox.SelectedIndex = p.CollapseMs <= 270 ? 0 : p.CollapseMs >= 370 ? 2 : 1;
-        ClockBox.SelectedIndex = p.ClockFormat switch { "HH:mm:ss" => 1, "h:mm tt" => 2, _ => 0 };
+        ClockBox.SelectedIndex = p.ClockFormat == "h:mm tt" ? 1 : 0;
         DensityBox.SelectedIndex = p.Density == "compact" ? 1 : 0;
         BadgeStyleBox.SelectedIndex = p.BadgeStyle switch { "count" => 1, "dot" => 2, _ => 0 };
         TextSizeBox.SelectedIndex = p.TextScale switch { "small" => 0, "large" => 2, _ => 1 };
@@ -200,7 +200,7 @@ public partial class SettingsWindow : Window
         ReduceMotionBox.IsChecked = p.ReduceMotion;
         DiagBox.IsChecked = p.Diagnostics;
         RenderModeBox.SelectedIndex = p.RenderMode == "resizeHost" ? 1 : 0;
-        WhatsNewBox.IsVisible = p.LastSeenVersion != "1.3.1";
+        WhatsNewBox.IsVisible = p.LastSeenVersion != "1.3.2";
         Pair(NotifySlider, NotifyNum, p.NotifyDurationMs);
         Pair(ChatSlider, ChatNum, p.ChatDurationMs);
         Pair(CallSlider, CallNum, p.CallDurationMs);
@@ -362,7 +362,7 @@ public partial class SettingsWindow : Window
             p.UiLanguage = LangBox.SelectedIndex switch { 1 => "en", 2 => "system", _ => "ru" };
             p.ExpandMs = (int)ExpandMsSlider.Value;
             p.CollapseMs = (int)CollapseMsSlider.Value;
-            p.ClockFormat = ClockBox.SelectedIndex switch { 1 => "HH:mm:ss", 2 => "h:mm tt", _ => "HH:mm" };
+            p.ClockFormat = ClockBox.SelectedIndex == 1 ? "h:mm tt" : "HH:mm";
             p.Density = DensityBox.SelectedIndex == 1 ? "compact" : "comfort";
             p.BadgeStyle = BadgeStyleBox.SelectedIndex switch { 1 => "count", 2 => "dot", _ => "icon-count" };
             p.WeatherPosition = WeatherPosBox.SelectedIndex switch { 1 => "hide", 2 => "expand", _ => "right" };
@@ -539,7 +539,7 @@ public partial class SettingsWindow : Window
 
     private void OnWhatsNewOk(object? sender, RoutedEventArgs e)
     {
-        PrefsStore.Mutate(p => p.LastSeenVersion = "1.3.1");
+        PrefsStore.Mutate(p => p.LastSeenVersion = "1.3.2");
         WhatsNewBox.IsVisible = false;
     }
 

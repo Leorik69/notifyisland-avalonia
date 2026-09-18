@@ -17,6 +17,9 @@ def main() -> int:
         ("settle region", "ApplyPillHitRegion" in OVER),
         ("no per-frame host", "hwndResize=False" in ANIM),
         ("easing", "Motion.SoftOut.Ease" in ANIM and "Motion.PointToPoint.Ease" in ANIM),
+        ("no pill scale", "StartAnimation(\"Scale\"" not in ANIM.split("class FixedHostMorph")[-1]),
+        ("width clip geom", "geom=widthClip" in ANIM),
+        ("clock no ss", 'ClockFormat = "HH:mm"' in PREFS or 'fmt = "HH:mm"' in OVER),
         ("resize fallback kept", "class HwndMorph" in ANIM),
     ]
     for name, ok in checks:
