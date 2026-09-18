@@ -110,7 +110,6 @@ internal static class IslandAnimator
 internal sealed class HwndMorph
 {
     private readonly Window _window;
-    private readonly DispatcherTimer _timer;
     private readonly Stopwatch _clock = new();
     private double _w0, _w1, _h0, _h1;
     private int _x0, _x1, _y0, _y1;
@@ -118,15 +117,11 @@ internal sealed class HwndMorph
     private long _lastMs;
     private int _frames;
     private double _dtMin = 999, _dtMax, _dtSum;
+    private bool _running;
 
     public static string LastTiming { get; private set; } = "";
 
-    public HwndMorph(Window window)
-    {
-        _window = window;
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
-        _timer.Tick += (_, _) => Step();
-    }
+    public HwndMorph(Window window) => _window = window;
 
     public void To(double width, double height, int ms)
     {
@@ -140,11 +135,13 @@ internal sealed class HwndMorph
         _dtMin = 999; _dtMax = 0; _dtSum = 0;
         _clock.Restart();
         _lastMs = 0;
-        _timer.Start();
+        _running = true;
+        Dispatcher.UIThread.Post(Step, DispatcherPriority.Render);
     }
 
     private void Step()
     {
+        if (!_running) return;
         var now = _clock.ElapsedMilliseconds;
         if (_frames > 0)
         {
@@ -164,7 +161,7 @@ internal sealed class HwndMorph
             (int)Math.Round(_y0 + (_y1 - _y0) * t));
         if (t >= 1)
         {
-            _timer.Stop();
+            _running = false;
             _clock.Stop();
             _window.Width = _w1;
             _window.Height = _h1;
@@ -181,7 +178,9 @@ internal sealed class HwndMorph
             catch
             {
             }
+            return;
         }
+        Dispatcher.UIThread.Post(Step, DispatcherPriority.Render);
     }
 
     private static double EasePointToPoint(double t)

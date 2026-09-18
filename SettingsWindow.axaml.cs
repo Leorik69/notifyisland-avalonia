@@ -26,7 +26,7 @@ public partial class SettingsWindow : Window
         PaletteBox.ItemsSource = Array.ConvertAll(PaletteCatalog.All, p => p.Name);
         FontBox.ItemsSource = Array.ConvertAll(FontCatalog.All, f => f.Name);
         IconBox.ItemsSource = new[] { "Fluent outline", "Fluent filled", "Segoe MDL2", "Weather soft", "Fluent color" };
-        AnimBox.ItemsSource = new[] { "Morph + pulse", "Pulse", "Breathe", "Morph only" };
+        AnimBox.ItemsSource = new[] { "Morph + invoke", "Invoke", "Breathe", "Morph only" };
         SpeedBox.ItemsSource = new[] { "Fast (167ms)", "Normal (250ms)" };
         ClockBox.ItemsSource = new[] { "HH:mm", "HH:mm:ss", "h:mm tt" };
         DensityBox.ItemsSource = new[] { "Comfort", "Compact" };
