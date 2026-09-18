@@ -1,9 +1,11 @@
 bin/
 obj/
 publish/
+dist/
 *.user
 .vs/
 notifyisland.settings.json
 demo-err.txt
 demo-out.txt
+overlay-weather-*.png
 
