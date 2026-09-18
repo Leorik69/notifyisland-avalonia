@@ -357,7 +357,7 @@ internal sealed class FixedHostMorph
         _lastMs = 0;
         while (_running)
         {
-            await NextFrame();
+            await System.Threading.Tasks.Task.Delay(16);
             if (!_running) break;
             var now = _clock.ElapsedMilliseconds;
             if (_frames > 0)
@@ -417,19 +417,6 @@ internal sealed class FixedHostMorph
         catch
         {
         }
-    }
-
-    private System.Threading.Tasks.Task NextFrame()
-    {
-        var tcs = new System.Threading.Tasks.TaskCompletionSource(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
-        var top = TopLevel.GetTopLevel(_window);
-        if (top is null)
-        {
-            Dispatcher.UIThread.Post(() => tcs.TrySetResult(), DispatcherPriority.Render);
-            return tcs.Task;
-        }
-        top.RequestAnimationFrame(_ => tcs.TrySetResult());
-        return tcs.Task;
     }
 
     private void Dump(Control pill, double w)
