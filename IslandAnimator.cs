@@ -136,7 +136,19 @@ internal sealed class HwndMorph
         _clock.Restart();
         _lastMs = 0;
         _running = true;
-        Dispatcher.UIThread.Post(Step, DispatcherPriority.Render);
+        ScheduleNext();
+    }
+
+    private void ScheduleNext()
+    {
+        var now = _clock.ElapsedMilliseconds;
+        var due = (long)(_frames * 16.7);
+        var wait = (int)Math.Clamp(due - now, 1, 16);
+        Dispatcher.UIThread.Post(async () =>
+        {
+            await Task.Delay(wait).ConfigureAwait(true);
+            Step();
+        }, DispatcherPriority.Render);
     }
 
     private void Step()
@@ -180,7 +192,7 @@ internal sealed class HwndMorph
             }
             return;
         }
-        Dispatcher.UIThread.Post(Step, DispatcherPriority.Render);
+        ScheduleNext();
     }
 
     private static double EasePointToPoint(double t)
