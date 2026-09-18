@@ -1,8 +1,24 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="NotifyIsland.App"
+             Name="NotifyIsland"
              RequestedThemeVariant="Dark">
   <Application.Styles>
     <FluentTheme />
   </Application.Styles>
+  <TrayIcon.Icons>
+    <TrayIcons>
+      <TrayIcon Icon="/Assets/tray.png" ToolTipText="NotifyIsland">
+        <TrayIcon.Menu>
+          <NativeMenu>
+            <NativeMenuItem Header="Show / hide overlay" Click="OnTrayToggle" />
+            <NativeMenuItem Header="Settings" Click="OnTraySettings" />
+            <NativeMenuItem Header="Demo hub" Click="OnTrayDemo" />
+            <NativeMenuItemSeparator />
+            <NativeMenuItem Header="Exit" Click="OnTrayExit" />
+          </NativeMenu>
+        </TrayIcon.Menu>
+      </TrayIcon>
+    </TrayIcons>
+  </TrayIcon.Icons>
 </Application>

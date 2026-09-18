@@ -11,7 +11,8 @@ public enum OverlayKind
     Progress,
     Media,
     Timer,
-    Error
+    Error,
+    Stack
 }
 
 public enum OverlayCommand
@@ -23,6 +24,7 @@ public enum OverlayCommand
     SetMedia,
     SetTimer,
     SetError,
+    Stack,
     Clear,
     DemoNext
 }
@@ -35,6 +37,7 @@ public sealed class OverlayPayload
     public double Progress { get; set; }
     public bool Playing { get; set; }
     public double RemainingSeconds { get; set; }
+    public string Line2 { get; set; } = "";
 }
 
 public sealed class OverlaySnapshot
@@ -119,6 +122,17 @@ public sealed class OverlayMachine
                     _payload.Title = "Ошибка";
                 _notifyMs = 0;
                 break;
+            case OverlayCommand.Stack:
+                _kind = OverlayKind.Stack;
+                Apply(data);
+                if (string.IsNullOrWhiteSpace(_payload.Title))
+                    _payload.Title = "Очередь";
+                if (string.IsNullOrWhiteSpace(_payload.Subtitle))
+                    _payload.Subtitle = "Уведомление 1";
+                if (string.IsNullOrWhiteSpace(_payload.Line2))
+                    _payload.Line2 = "Уведомление 2";
+                _notifyMs = 0;
+                break;
             case OverlayCommand.Clear:
                 _kind = OverlayKind.Idle;
                 _returnTo = OverlayKind.Idle;
@@ -146,6 +160,8 @@ public sealed class OverlayMachine
         }
         if (_kind == OverlayKind.Timer && _payload.RemainingSeconds > 0)
             _payload.RemainingSeconds = Math.Max(0, _payload.RemainingSeconds - dt / 1000.0);
+        if (_kind == OverlayKind.Progress)
+            _payload.Progress = Math.Min(1, _payload.Progress + dt / 7000.0);
         return Snapshot();
     }
 
@@ -154,7 +170,7 @@ public sealed class OverlayMachine
         var steps = new OverlayCommand[]
         {
             OverlayCommand.Clear, OverlayCommand.Collapse, OverlayCommand.Expand,
-            OverlayCommand.Notify, OverlayCommand.SetProgress, OverlayCommand.SetMedia,
+            OverlayCommand.Notify, OverlayCommand.Stack, OverlayCommand.SetProgress, OverlayCommand.SetMedia,
             OverlayCommand.SetTimer, OverlayCommand.SetError
         };
         var cmd = steps[_demoIndex % steps.Length];
@@ -163,7 +179,8 @@ public sealed class OverlayMachine
         {
             OverlayCommand.Expand => new OverlayPayload { Title = "Сегодня", Body = "Ясно, 18°" },
             OverlayCommand.Notify => new OverlayPayload { Title = "Сообщение", Body = "Демо уведомление" },
-            OverlayCommand.SetProgress => new OverlayPayload { Title = "Копирование", Progress = 0.42 },
+            OverlayCommand.Stack => new OverlayPayload { Title = "Пачка", Subtitle = "Почта · 2 новых", Line2 = "Календарь · через 10 мин" },
+            OverlayCommand.SetProgress => new OverlayPayload { Title = "Копирование", Progress = 0.08 },
             OverlayCommand.SetMedia => new OverlayPayload { Title = "Night Drive", Subtitle = "Local Radio", Progress = 0.33, Playing = true },
             OverlayCommand.SetTimer => new OverlayPayload { Title = "Фокус", RemainingSeconds = 90 },
             OverlayCommand.SetError => new OverlayPayload { Title = "Сеть", Body = "Нет ответа сервера" },
@@ -180,6 +197,7 @@ public sealed class OverlayMachine
         _payload.Progress = data.Progress;
         _payload.Playing = data.Playing;
         _payload.RemainingSeconds = data.RemainingSeconds;
+        _payload.Line2 = data.Line2;
     }
 
     internal static OverlayPayload Sanitize(OverlayPayload raw)
@@ -195,19 +213,22 @@ public sealed class OverlayMachine
         p = Math.Clamp(p, 0, 1);
         var rem = raw.RemainingSeconds;
         if (double.IsNaN(rem) || double.IsInfinity(rem) || rem < 0) rem = 0;
-        return new OverlayPayload { Title = t, Subtitle = s, Body = b, Progress = p, Playing = raw.Playing, RemainingSeconds = rem };
+        var l2 = (raw.Line2 ?? "").Trim();
+        if (l2.Length > 80) l2 = l2[..77] + "…";
+        return new OverlayPayload { Title = t, Subtitle = s, Body = b, Progress = p, Playing = raw.Playing, RemainingSeconds = rem, Line2 = l2 };
     }
 
     private static OverlayPayload Clone(OverlayPayload p) => new()
     {
         Title = p.Title, Subtitle = p.Subtitle, Body = p.Body,
-        Progress = p.Progress, Playing = p.Playing, RemainingSeconds = p.RemainingSeconds
+        Progress = p.Progress, Playing = p.Playing, RemainingSeconds = p.RemainingSeconds, Line2 = p.Line2
     };
 
     internal static double WidthFor(OverlayKind kind) => kind switch
     {
         OverlayKind.Expanded => 400,
         OverlayKind.Notification => 360,
+        OverlayKind.Stack => 400,
         OverlayKind.Progress => 380,
         OverlayKind.Media => 420,
         OverlayKind.Timer => 340,
@@ -219,6 +240,7 @@ public sealed class OverlayMachine
     {
         OverlayKind.Idle or OverlayKind.Collapsed => OverlayTokens.CollapsedH,
         OverlayKind.Media => 96,
+        OverlayKind.Stack => 108,
         OverlayKind.Expanded => 88,
         OverlayKind.Error => 80,
         _ => 78
