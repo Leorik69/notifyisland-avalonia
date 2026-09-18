@@ -9,17 +9,23 @@ internal static class Program
     public static bool DemoMode { get; private set; }
     public static bool OpenSettingsOnStart { get; private set; }
 
-    [STAThread]
-    public static void Main(string[] args)
+    public static void AbsorbArgs(string[] args)
     {
         foreach (var a in args)
         {
-            if (string.Equals(a, "--demo", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(a, "--demo", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(a, "-demo", StringComparison.OrdinalIgnoreCase))
                 DemoMode = true;
             if (string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase))
                 OpenSettingsOnStart = true;
         }
+    }
 
+    [STAThread]
+    public static void Main(string[] args)
+    {
+        AbsorbArgs(args);
+        AbsorbArgs(Environment.GetCommandLineArgs());
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

@@ -31,6 +31,11 @@ public partial class OverlayWindow : Window
         {
             Win32Overlay.ApplyNoActivate(this);
             PlaceTopCenter();
+            if (Program.DemoMode && !_demo.IsEnabled)
+            {
+                _demoOn = true;
+                _demo.Start();
+            }
         };
         KeyDown += OnKey;
         PrefsStore.Changed += OnPrefsChanged;
@@ -43,7 +48,18 @@ public partial class OverlayWindow : Window
             Paint();
             if (before != _machine.Snapshot().Kind) ApplySize();
         };
-        _demo.Tick += (_, _) => { _machine.Dispatch(OverlayCommand.DemoNext); ApplySize(); Paint(); };
+        _demo.Tick += (_, _) =>
+        {
+            try
+            {
+                _machine.Dispatch(OverlayCommand.DemoNext);
+                ApplySize();
+                Paint();
+            }
+            catch
+            {
+            }
+        };
         _winFit.Tick += (_, _) =>
         {
             _winFit.Stop();
