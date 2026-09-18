@@ -70,6 +70,7 @@ public sealed class UserPrefs
     public bool Diagnostics { get; set; }
     public int SettingsSchema { get; set; } = 13;
     public string LastSeenVersion { get; set; } = "";
+    /// <summary>Default architecture is fixedHost. resizeHost is an emergency fallback only.</summary>
     public string RenderMode { get; set; } = "fixedHost";
 }
 

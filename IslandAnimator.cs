@@ -330,12 +330,12 @@ internal sealed class FixedHostMorph
 
     public FixedHostMorph(Window window) => _window = window;
 
-    public void To(Control pill, Visual? fade, double fromW, double toW, double toH, int ms, bool collapse)
+    public void To(Control pill, Visual? fade, double fromW, double toW, double toH, int ms, bool collapse, double originX = 0.5)
     {
-        _ = Run(pill, fade, fromW, toW, toH, ms, collapse);
+        _ = Run(pill, fade, fromW, toW, toH, ms, collapse, originX);
     }
 
-    private async System.Threading.Tasks.Task Run(Control pill, Visual? fade, double fromW, double toW, double toH, int ms, bool collapse)
+    private async System.Threading.Tasks.Task Run(Control pill, Visual? fade, double fromW, double toW, double toH, int ms, bool collapse, double originX)
     {
         _running = true;
         _frames = 0;
@@ -344,9 +344,10 @@ internal sealed class FixedHostMorph
         _dtMax = 0;
         _dtSum = 0;
         _dur = Math.Max(16, ms);
-        pill.Width = Math.Max(fromW, toW);
+        var layoutW = Math.Max(fromW, toW);
+        pill.Width = layoutW;
         pill.Height = toH;
-        pill.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
+        pill.ClipToBounds = true;
         if (collapse && fade is not null)
         {
             try
@@ -369,13 +370,17 @@ internal sealed class FixedHostMorph
             var cv = ElementComposition.GetElementVisual(pill);
             if (cv is not null)
             {
-                var layoutW = Math.Max(1, pill.Width);
-                var start = (float)Math.Clamp(fromW / layoutW, 0.15, 2);
-                var end = (float)Math.Clamp(toW / layoutW, 0.15, 2);
-                cv.CenterPoint = new Vector3((float)(layoutW / 2), (float)(toH / 2), 0);
+                var start = (float)Math.Clamp(fromW / Math.Max(1, layoutW), 0.15, 2);
+                var end = (float)Math.Clamp(toW / Math.Max(1, layoutW), 0.15, 2);
+                cv.CenterPoint = new Vector3((float)(layoutW * originX), (float)(toH / 2), 0);
                 var anim = cv.Compositor.CreateVector3KeyFrameAnimation();
-                anim.InsertKeyFrame(0f, new Vector3(start, 1f, 1f));
-                anim.InsertKeyFrame(1f, new Vector3(end, 1f, 1f));
+                for (var i = 0; i <= 8; i++)
+                {
+                    var t = i / 8f;
+                    var e = (float)(collapse ? Motion.SoftOut.Ease(t) : Motion.PointToPoint.Ease(t));
+                    var sx = start + (end - start) * e;
+                    anim.InsertKeyFrame(t, new Vector3(sx, 1f, 1f));
+                }
                 anim.Duration = TimeSpan.FromMilliseconds(_dur);
                 cv.StartAnimation("Scale", anim);
             }
@@ -396,7 +401,7 @@ internal sealed class FixedHostMorph
         _running = false;
         var avg = _frames > 1 ? _dtSum / (_frames - 1) : 0;
         LastTiming = string.Format(CultureInfo.InvariantCulture,
-            "kind={0} path=fixedHost frames={1} avgDt={2:0.0}ms min={3:0.0} max={4:0.0} dropped={5} dur={6}ms dW={7:0} hwndResize=False ease={8} comp={9} target=16.7ms",
+            "kind={0} path=fixedHost frames={1} avgDt={2:0.0}ms min={3:0.0} max={4:0.0} dropped={5} dur={6}ms dW={7:0} hwndResize=False hwndMove=False settleRgn=True ease={8} comp={9} target=16.7ms",
             collapse ? "collapse" : "expand", _frames, avg, _dtMin >= 999 ? 0 : _dtMin, _dtMax, _dropped, _dur,
             toW - fromW, collapse ? "SoftOut" : "PointToPoint", Program.CompositionLabel);
         HwndMorph.LogLine(LastTiming);

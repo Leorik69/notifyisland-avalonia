@@ -48,7 +48,7 @@ public partial class OverlayWindow : Window
         Opened += (_, _) =>
         {
             Win32Overlay.ApplyNoActivate(this);
-            if (PrefsStore.UseFixedHost) EnsureFixedHost();
+            if (PrefsStore.UseFixedHost) EnsureFixedHost(true);
             else Position = OverlayPlacement.Compute(this, Width, Height);
             StartIpc();
             if (!Program.DemoMode && string.IsNullOrWhiteSpace(PrefsStore.Current.LastSeenVersion))
@@ -108,33 +108,53 @@ public partial class OverlayWindow : Window
     }
 
     private bool MorphBusy => _hwnd.IsRunning || _fixed.IsRunning;
+    private bool _stripReady;
 
-    private double HostW => Math.Max(PrefsStore.Current.MaxWidth, 520) + 48;
-    private double HostH => (PrefsStore.Current.ExpandHeight ? 120 : Math.Max(PrefsStore.Current.IdleHeight, 40)) + 24;
-
-    private void EnsureFixedHost()
+    private void EnsureFixedHost(bool force = false)
     {
-        if (Math.Abs(Width - HostW) > 2 || Math.Abs(Height - HostH) > 2)
+        if (!PrefsStore.UseFixedHost) return;
+        var strip = OverlayPlacement.ComputeStrip(this);
+        var sizeChanged = Math.Abs(Width - strip.DipW) > 2 || Math.Abs(Height - strip.DipH) > 2;
+        var moved = Position != strip.Position;
+        if (force || !_stripReady || sizeChanged)
         {
-            Width = HostW;
-            Height = HostH;
+            Width = strip.DipW;
+            Height = strip.DipH;
         }
-        Position = OverlayPlacement.Compute(this, HostW, HostH);
+        if (force || !_stripReady || moved)
+            Position = strip.Position;
+        _stripReady = true;
         Win32Overlay.ApplyNoActivate(this);
+    }
+
+    private void PlacePillInsideStrip(double toW, double toH)
+    {
+        var left = OverlayPlacement.PillLeftDip(Width, toW);
+        var top = Math.Max(0, (Height - toH) / 2);
+        var m = new Thickness(left, top, 0, 0);
+        Pill.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left;
+        Pill.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top;
+        Pill.Margin = m;
+        Glow.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left;
+        Glow.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top;
+        Glow.Margin = new Thickness(Math.Max(0, left - 5), Math.Max(0, top - 4), 0, 0);
     }
 
     private void ApplyPillHitRegion(double toW, double toH)
     {
-        var x = Math.Max(0, (Width - toW) / 2);
-        var y = Math.Max(0, (Height - toH) / 2);
-        Win32Overlay.ApplyPillRegion(this, x, y, toW, toH, toH / 2);
+        if (!PrefsStore.UseFixedHost) return;
+        var origin = Pill.TranslatePoint(new Point(0, 0), this) ?? new Point(OverlayPlacement.PillLeftDip(Width, toW), Math.Max(0, (Height - toH) / 2));
+        Win32Overlay.ApplyPillRegion(this, origin.X, origin.Y, toW, toH, toH / 2);
     }
 
     private void OnMorphDone()
     {
         _freezeText = false;
         if (PrefsStore.UseFixedHost)
+        {
+            PlacePillInsideStrip(_lastW, _lastH);
             ApplyPillHitRegion(_lastW, _lastH);
+        }
         Paint();
         if (Program.MotionDebug)
             MotionHud.Text = PrefsStore.UseFixedHost ? FixedHostMorph.LastTiming : HwndMorph.LastTiming;
@@ -236,8 +256,10 @@ public partial class OverlayWindow : Window
     {
         Dispatcher.UIThread.Post(() =>
         {
+            _stripReady = false;
             ApplyTheme();
             _machine.NotifyDurationMs = PrefsStore.Current.NotifyDurationMs;
+            if (PrefsStore.UseFixedHost) EnsureFixedHost(true);
             ApplySize();
             Paint();
             if (PrefsStore.Current.ListenToasts) _ = ToastHub.RefreshAsync(true);
@@ -397,7 +419,9 @@ public partial class OverlayWindow : Window
         Glow.Width = Math.Max(_lastW, toW) + 10 + prefs.GlowStrength * 8;
         if (PrefsStore.UseFixedHost)
         {
-            EnsureFixedHost();
+            if (!_stripReady)
+                EnsureFixedHost(true);
+            PlacePillInsideStrip(doAnim ? Math.Max(_lastW, toW) : toW, toH);
             if (doAnim)
             {
                 _freezeText = true;
@@ -406,12 +430,14 @@ public partial class OverlayWindow : Window
                     IslandAnimator.WireOpacity(OverlayRow, Motion.FadeMs);
                     OverlayRow.Opacity = 0;
                 }
-                _fixed.To(Pill, collapse ? OverlayRow : null, _lastW, toW, toH, Motion.WidthMorphMs(toW - _lastW), collapse);
+                var origin = PrefsStore.Current.AnchorH switch { "left" => 0.0, "right" => 1.0, _ => 0.5 };
+                _fixed.To(Pill, collapse ? OverlayRow : null, _lastW, toW, toH, Motion.WidthMorphMs(toW - _lastW), collapse, origin);
             }
             else
             {
                 Pill.Width = toW;
                 Glow.Width = toW + 10 + prefs.GlowStrength * 8;
+                PlacePillInsideStrip(toW, toH);
                 ApplyPillHitRegion(toW, toH);
             }
         }
@@ -516,7 +542,11 @@ public partial class OverlayWindow : Window
             IslandAnimator.Breathe(Glow);
     }
 
-    private void PlaceTopCenter() => Position = OverlayPlacement.Compute(this, Width, Height);
+    private void PlaceTopCenter()
+    {
+        if (PrefsStore.UseFixedHost) EnsureFixedHost();
+        else Position = OverlayPlacement.Compute(this, Width, Height);
+    }
 
     private void Paint()
     {
