@@ -8,6 +8,8 @@ namespace NotifyIsland;
 internal static class ToastHub
 {
     public static string Status { get; private set; } = "Off";
+    public static string Probe { get; private set; } = "";
+    public static string Detail { get; private set; } = "";
     public static bool Allowed => Status.Equals("Allowed", StringComparison.OrdinalIgnoreCase);
 
     public static async Task RefreshAsync(bool listen)
@@ -15,13 +17,16 @@ internal static class ToastHub
         if (!listen)
         {
             Status = "Off";
+            Detail = "Listener off";
             return;
         }
         try
         {
+            Probe = ToastIdentity.ProbePackage();
             var listener = Windows.UI.Notifications.Management.UserNotificationListener.Current;
             var access = await listener.RequestAccessAsync();
             Status = access.ToString();
+            Detail = "RequestAccessAsync=" + access + " · identity=" + Probe;
             if (access != Windows.UI.Notifications.Management.UserNotificationListenerAccessStatus.Allowed)
                 return;
             listener.NotificationChanged -= OnChanged;
@@ -30,6 +35,7 @@ internal static class ToastHub
         catch (Exception ex)
         {
             Status = "Unavailable (" + ex.GetType().Name + ")";
+            Detail = Status + " · identity=" + ToastIdentity.ProbePackage();
         }
     }
 

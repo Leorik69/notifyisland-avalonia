@@ -62,14 +62,28 @@
             <TextBlock x:Name="KindGlyph" FontFamily="Segoe MDL2 Assets" FontSize="13" IsVisible="False"
                        VerticalAlignment="Center" HorizontalAlignment="Center" />
           </Panel>
-          <Button x:Name="MediaPlay" DockPanel.Dock="Right" Padding="4,0" Margin="8,0,0,0" Click="OnMediaPlay"
-                  Opacity="0" IsHitTestVisible="False" VerticalAlignment="Center"
-                  ToolTip.Tip="Play" AutomationProperties.Name="Play">
-            <Panel Width="12" Height="12">
-              <Path x:Name="MediaPlayIcon" Width="10" Height="10" Stretch="Uniform" />
-              <TextBlock x:Name="MediaPlayGlyph" FontFamily="Segoe MDL2 Assets" FontSize="11" IsVisible="False" />
-            </Panel>
-          </Button>
+          <StackPanel x:Name="PlayerChrome" DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2"
+                      VerticalAlignment="Center">
+            <Slider x:Name="MasterVol" Width="56" Minimum="0" Maximum="1" Height="16"
+                    Opacity="0" IsHitTestVisible="False" VerticalAlignment="Center"
+                    PropertyChanged="OnMasterVol" />
+            <Button x:Name="MediaMute" Padding="3,0" Opacity="0" IsHitTestVisible="False"
+                    Click="OnMediaMute" ToolTip.Tip="Mute">
+              <Path x:Name="MediaMuteIcon" Width="10" Height="10" Stretch="Uniform" />
+            </Button>
+            <Button x:Name="MediaPlay" Padding="4,0" Click="OnMediaPlay"
+                    Opacity="0" IsHitTestVisible="False" VerticalAlignment="Center"
+                    ToolTip.Tip="Play" AutomationProperties.Name="Play">
+              <Panel Width="12" Height="12">
+                <Path x:Name="MediaPlayIcon" Width="10" Height="10" Stretch="Uniform" />
+                <TextBlock x:Name="MediaPlayGlyph" FontFamily="Segoe MDL2 Assets" FontSize="11" IsVisible="False" />
+              </Panel>
+            </Button>
+            <Button x:Name="MediaNext" Padding="3,0" Opacity="0" IsHitTestVisible="False"
+                    Click="OnMediaNext" ToolTip.Tip="Next">
+              <Path x:Name="MediaNextIcon" Width="10" Height="10" Stretch="Uniform" />
+            </Button>
+          </StackPanel>
           <ProgressBar x:Name="RowProgress" DockPanel.Dock="Right" Width="52" Height="3" Margin="8,0,0,0"
                        Minimum="0" Maximum="100" Opacity="0" VerticalAlignment="Center" />
           <TextBlock x:Name="RowTimer" DockPanel.Dock="Right" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold"
@@ -95,5 +109,8 @@
         </DockPanel>
       </Grid>
     </Border>
+    <TextBlock x:Name="MotionHud" FontSize="10" Foreground="#A0E0A0" Margin="0,-18,0,0"
+               HorizontalAlignment="Center" VerticalAlignment="Top" IsVisible="False"
+               IsHitTestVisible="False" />
   </Panel>
 </Window>

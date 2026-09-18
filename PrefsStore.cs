@@ -12,6 +12,9 @@ public sealed class UserPrefs
     public string IconStyle { get; set; } = "fluent";
     public double Opacity { get; set; } = 0.92;
     public string Animation { get; set; } = "morph";
+    public int ExpandMs { get; set; } = 167;
+    public int CollapseMs { get; set; } = 333;
+    public string UiLanguage { get; set; } = "ru";
     public string AnimSpeed { get; set; } = "normal";
     public bool OverlayVisible { get; set; } = true;
     public double BorderThickness { get; set; } = 1;
@@ -34,6 +37,9 @@ public sealed class UserPrefs
     public double OffsetY { get; set; }
     public string Layer { get; set; } = "topmost";
     public bool ClickOpensActionCenter { get; set; } = true;
+    public string ClickMode { get; set; } = "cycle-center-player";
+    public string TextScale { get; set; } = "medium";
+    public string IconScale { get; set; } = "medium";
     public bool ShowWeather { get; set; } = true;
     public bool UseWindowsLocation { get; set; } = true;
     public string WeatherCity { get; set; } = "";
@@ -134,7 +140,15 @@ internal static class PrefsStore
         if (string.IsNullOrWhiteSpace(p.IconStyle)) p.IconStyle = "fluent";
         if (string.IsNullOrWhiteSpace(p.Animation)) p.Animation = "morph";
         if (string.IsNullOrWhiteSpace(p.AnimSpeed)) p.AnimSpeed = "normal";
-        p.AnimSpeed = p.AnimSpeed.Equals("fast", StringComparison.OrdinalIgnoreCase) ? "fast" : "normal";
+        if (p.ExpandMs < 120 || p.ExpandMs > 500) p.ExpandMs = 167;
+        if (p.CollapseMs < 180 || p.CollapseMs > 600) p.CollapseMs = 333;
+        p.UiLanguage = (p.UiLanguage ?? "ru").ToLowerInvariant() switch
+        {
+            "en" or "english" => "en",
+            "system" or "auto" => "system",
+            _ => "ru"
+        };
+        p.AnimSpeed = p.ExpandMs <= 180 ? "fast" : "normal";
         if (double.IsNaN(p.Opacity) || double.IsInfinity(p.Opacity)) p.Opacity = 0.92;
         p.Opacity = Math.Clamp(p.Opacity, 0.45, 1.0);
         if (double.IsNaN(p.BorderThickness) || double.IsInfinity(p.BorderThickness)) p.BorderThickness = 1;
@@ -160,6 +174,18 @@ internal static class PrefsStore
         p.OffsetX = Math.Clamp(p.OffsetX, -800, 800);
         p.OffsetY = Math.Clamp(p.OffsetY, -800, 800);
         p.Layer = p.Layer?.ToLowerInvariant() switch { "normal" => "normal", "desktop" => "desktop", _ => "topmost" };
+        p.ClickMode = (p.ClickMode ?? "").ToLowerInvariant() switch
+        {
+            "off" or "expand" => "off",
+            "player" => "player",
+            "center" => "center",
+            "cycle-player-center" => "cycle-player-center",
+            _ => "cycle-center-player"
+        };
+        p.ClickOpensActionCenter = p.ClickMode is not "off" and not "player";
+        p.TextScale = TypeScale.Normalize(p.TextScale);
+        p.IconScale = TypeScale.Normalize(p.IconScale);
+        p.GlyphSize = TypeScale.GlyphPx(p.IconScale);
         p.ClockFormat = p.ClockFormat switch
         {
             "HH:mm:ss" => "HH:mm:ss",

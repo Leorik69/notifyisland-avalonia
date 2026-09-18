@@ -6,14 +6,7 @@ ANIM = (ROOT / "IslandAnimator.cs").read_text(encoding="utf-8")
 OVERLAY = (ROOT / "OverlayWindow.axaml.cs").read_text(encoding="utf-8")
 SETTINGS = (ROOT / "SettingsWindow.axaml.cs").read_text(encoding="utf-8")
 WEATHER = (ROOT / "WeatherHub.cs").read_text(encoding="utf-8")
-
-FADE, FAST, NORMAL = 83, 167, 250
-
-
-def width_morph_ms(anim_speed: str, delta_px: float) -> int:
-    if anim_speed == "fast":
-        return FAST
-    return FAST if abs(delta_px) < 80 else NORMAL
+PREFS = (ROOT / "PrefsStore.cs").read_text(encoding="utf-8")
 
 
 def main() -> int:
@@ -21,15 +14,16 @@ def main() -> int:
     checks = [
         ("FadeMs = 83", MOTION),
         ("FastMs = 167", MOTION),
-        ("NormalMs = 250", MOTION),
-        ("SplineEasing(0, 0, 0, 1)", MOTION),
-        ("SplineEasing(0.55, 0.55, 0, 1)", MOTION),
-        ("SplineEasing(1, 0, 1, 1)", MOTION),
-        ("WidthMorphMs", MOTION),
-        ("DispatcherPriority.Render", ANIM),
+        ("CollapseMs = 333", MOTION),
+        ("ExpandMs", PREFS),
+        ("CollapseMs", PREFS),
+        ("SlideFromBadge", ANIM),
+        ("PopChat", ANIM),
+        ("towardBadge", ANIM),
         ("FromSeconds(3.2)", OVERLAY),
         ("_commitDelay", SETTINGS),
         ("WeatherKey", WEATHER),
+        ("UiLanguage", PREFS),
     ]
     if ANIM.count("ApplyNoActivate") != 1:
         print("FAIL  ApplyNoActivate should run once at morph end")
@@ -41,26 +35,6 @@ def main() -> int:
         failed += 1
     else:
         print("PASS  no layout Width morph")
-    if "TickPop" in OVERLAY or "TickPop" in ANIM:
-        print("FAIL  TickPop still present")
-        failed += 1
-    else:
-        print("PASS  no TickPop")
-    table = [
-        ("fast", 10, FAST),
-        ("fast", 200, FAST),
-        ("normal", 40, FAST),
-        ("normal", 79, FAST),
-        ("normal", 80, NORMAL),
-        ("normal", 180, NORMAL),
-    ]
-    for speed, delta, want in table:
-        got = width_morph_ms(speed, delta)
-        if got != want:
-            print(f"FAIL  WidthMorphMs({speed}, {delta})={got} want {want}")
-            failed += 1
-        else:
-            print(f"PASS  WidthMorphMs({speed}, {delta})={got}")
     for needle, src in checks:
         if needle not in src:
             print(f"FAIL  missing {needle}")

@@ -6,49 +6,40 @@ Fluent Win11 overlay — not Apple Dynamic Island chrome.
 
 **One short height for every state.** Idle / notify / progress / media / timer all use **Capsule height** (default 40px). Expand is **width only**; extra text truncates on one row. Radius = height/2.
 
-Settings:
-- Capsule height (px)
-- **Expand height** checkbox — **off by default**. When on, notify/progress may grow taller.
-- Min / max width for expanded states
+## Placement / click cycle
 
-## Placement / layer / click
+Click cycle (setting): Notification Center → SMTC player + **system** master volume → back. Shift/Alt/Ctrl+click still expands. Order can be reversed or disabled.
 
-Left-center-right + offsets; top-center-bottom + offsets. Always-on-top | normal | desktop (`HWND_BOTTOM`). Click opens Notification Center (`ms-actioncenter:`); toggleable. Shift/Alt/Ctrl+click still expands. Media play control is not stolen.
+## Motion (1.2.0)
 
-## Weather
+Separate persistable **expand** and **collapse** durations (presets Fast/Normal/Slow + ms). Expand: Point-to-Point, HWND grows first. Collapse: 83 ms fade of the row, then Soft-Out shrink toward the badge slot; HWND shrinks only after the inner pill finishes. `--motion-debug` logs kind, dt, dropped frames, hwndStart/hwndEnd.
 
-- **API:** Open-Meteo forecast + geocoding, no API key.
-- **Place:** Windows location when allowed; otherwise **City fallback** in settings.
-- **Idle:** compact chip (condition glyph + temperature) on the right of the clock. Clock stays centered.
-- **Expanded (width-only one row):** city · condition · temp.
-- **Refresh:** 5–60 minutes (default 15).
-- **Offline:** last `notifyisland.weather.json` cache, or hide weather. Never fake a live reading.
+### Toast / kind motion — **implemented** (F9 demo even if listener is Denied)
 
-## Icon packs
+- Slide-in from badge side (composition Offset + fade) on notify/stack/error.
+- Chat: PopChat scale 0.86→1 on the kind icon.
+- Call: Breathe on glow only.
+- Download/progress: FastInvoke on the bar (Value still Point-to-Point 250).
+- Warn/error: WarnFlash on row text.
+- Badge count tick: 83 ms opacity tick when the count changes.
+- Dismiss-to-badge: collapse transform origin at the left badge slot.
 
-Settings dropdown (`iconStyle`): `fluent`, `fluent-fill`, `mdl2`, `weather-soft`, `fluent-color`. Extra glyphs: chat, mail, calendar, call, download. Not Apple SF Symbols.
+## Weather / icons / badge / kinds
 
-## App badge
+Open-Meteo. Icon packs Fluent (+ volume/skip/music/person/image/video/folder/link/star/shield). Badge left of clock. F9 kinds include chat/mail/calendar/call/download/…
 
-Idle: app icon + count **left of the clock**, weather right. Survives after the toast morphs back. Real logos only when `UserNotificationListener` is Allowed. F9 can show a labeled preview badge. Styles: icon+count / count / dot.
+## Settings
 
-## Notify kinds
+Russian default (`loc/ru.json`), English table (`loc/en.json`), system culture option. Each control has a title + helper. Text size and icon size S/M/L separate.
 
-F9 cycles chat, mail, calendar, call (visual), download, complete, warn, focus, system, queue, plus media/error. Per-type duration and sound flags.
+## Sounds vs system volume
 
-## Settings UX
+App cue volume stays separate. System master volume is Core Audio `IAudioEndpointVolume` in the player panel and in settings.
 
-Accordion sections. Every slider has a numeric field. Extra palettes (graphite, high contrast, mica dark), custom accent hex, glass alpha, density, glyph size.
+## Toasts
 
-
-## Sounds
-
-`soundsEnabled` + `soundVolume` (quiet; playback capped). Cues: notify, error, complete. Windows Media WAVs when present, else generated PCM.
+`RequestAccessAsync` status is shown verbatim. Never fake Allowed. Sparse package register button + ms-settings:privacy-notifications.
 
 ## Persist
 
-`notifyisland.settings.json` next to the exe or `%LOCALAPPDATA%\NotifyIsland\settings.json`.
-
-## Motion
-
-Morph 180/260ms on width (and height only if Expand height is on).
+`notifyisland.settings.json`. Version 1.2.0.

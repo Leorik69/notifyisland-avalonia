@@ -25,11 +25,21 @@ public partial class OverlayWindow : Window
     private bool _hiding;
     private bool _hoverOpen;
     private string _iconKey = "";
+    private int _clickPhase;
+    private bool _freezeText;
+    private string _frozenRow = "";
+    private bool _volSync;
 
     public OverlayWindow()
     {
         InitializeComponent();
         _hwnd = new HwndMorph(this);
+        _hwnd.Completed += () =>
+        {
+            _freezeText = false;
+            Paint();
+            if (Program.MotionDebug) MotionHud.Text = HwndMorph.LastTiming;
+        };
         IslandHost.Overlay = this;
         Opened += (_, _) =>
         {
@@ -68,6 +78,7 @@ public partial class OverlayWindow : Window
         _clock.Start();
         _tick.Start();
         ApplyTheme();
+        MotionHud.IsVisible = Program.MotionDebug;
         _machine.NotifyDurationMs = PrefsStore.Current.NotifyDurationMs;
         TickClock();
         ApplySize(false);
@@ -259,9 +270,28 @@ public partial class OverlayWindow : Window
         WeatherTemp.FontFamily = family;
         BadgeCount.Foreground = new SolidColorBrush(pal.Text);
         BadgeFallback.Fill = new SolidColorBrush(accent);
-        var gs = prefs.GlyphSize;
+        var gs = TypeScale.GlyphPx(prefs.IconScale);
+        var ts = TypeScale.TextPx(prefs.TextScale);
         KindIcon.Width = KindIcon.Height = gs;
+        KindGlyph.FontSize = gs;
         BadgeLogo.Width = BadgeLogo.Height = gs + 2;
+        BadgeFallback.Width = BadgeFallback.Height = gs;
+        WeatherIcon.Width = WeatherIcon.Height = gs - 1;
+        WeatherGlyph.FontSize = gs;
+        MediaPlayIcon.Width = MediaPlayIcon.Height = Math.Max(8, gs - 4);
+        MediaNextIcon.Width = MediaNextIcon.Height = Math.Max(8, gs - 4);
+        MediaMuteIcon.Width = MediaMuteIcon.Height = Math.Max(8, gs - 4);
+        MediaMuteIcon.Data = IslandIcons.Geometry(IslandGlyph.Volume, prefs.IconStyle);
+        MediaNextIcon.Data = IslandIcons.Geometry(IslandGlyph.SkipNext, prefs.IconStyle);
+        MediaNextIcon.Fill = new SolidColorBrush(accent);
+        MediaMuteIcon.Fill = new SolidColorBrush(accent);
+        ClockText.FontSize = ts;
+        RowText.FontSize = Math.Max(11, ts - 1);
+        RowTimer.FontSize = Math.Max(11, ts - 1);
+        OverlayTitle.FontSize = ts;
+        OverlaySubtitle.FontSize = Math.Max(10, ts - 2);
+        WeatherTemp.FontSize = Math.Max(10, ts - 2);
+        BadgeCount.FontSize = Math.Max(10, ts - 2);
     }
 
     private void ApplySize(bool animate = true)
@@ -275,17 +305,31 @@ public partial class OverlayWindow : Window
         var toH = prefs.ExpandHeight && snap.Kind is not (OverlayKind.Idle or OverlayKind.Collapsed)
             ? snap.Height
             : prefs.IdleHeight;
-        Pill.Width = toW;
         Pill.Height = toH;
         var radius = !prefs.ExpandHeight || prefs.CornerRadius <= 0 ? toH / 2 : prefs.CornerRadius;
         Pill.CornerRadius = new CornerRadius(radius);
-        Glow.Width = toW + 10 + prefs.GlowStrength * 8;
         Glow.Height = toH + 8 + prefs.GlowStrength * 6;
         Glow.CornerRadius = new CornerRadius(radius + 4);
         if (animate)
-            _hwnd.To(toW, toH, Motion.WidthMorphMs(toW - _lastW));
+        {
+            _freezeText = true;
+            var collapse = toW + 4 < _lastW;
+            if (collapse)
+            {
+                IslandAnimator.WireOpacity(OverlayRow, Motion.FadeMs);
+                OverlayRow.Opacity = 0;
+            }
+            else
+            {
+                Pill.Width = Math.Max(_lastW, toW);
+                Glow.Width = Pill.Width + 10 + prefs.GlowStrength * 8;
+            }
+            _hwnd.To(Pill, collapse ? OverlayRow : null, toW, toH, Motion.WidthMorphMs(toW - _lastW), collapse && prefs.ShowAppBadge);
+        }
         else
         {
+            Pill.Width = toW;
+            Glow.Width = toW + 10 + prefs.GlowStrength * 8;
             Width = toW;
             Height = toH;
             Position = OverlayPlacement.Compute(this, toW, toH);
@@ -326,13 +370,18 @@ public partial class OverlayWindow : Window
         if (snap.Kind is OverlayKind.Progress or OverlayKind.Timer) _completeArmed = true;
     }
 
+    private int _badgeCount = -1;
     private bool _badgeVis;
 
     private void OnBadgeChanged()
     {
         var vis = ShowBadgeNow();
+        var n = AppBadgeHub.Current?.Count ?? 0;
         PaintBadge();
         Paint();
+        if (n != _badgeCount && n > 0)
+            IslandAnimator.TickFade(BadgeCount);
+        _badgeCount = n;
         if (vis != _badgeVis)
         {
             _badgeVis = vis;
@@ -342,12 +391,22 @@ public partial class OverlayWindow : Window
 
     private void PlayMotion(OverlayKind kind)
     {
-        var extra = PrefsStore.Current.Animation;
-        var invoke = kind is OverlayKind.Notification or OverlayKind.Stack or OverlayKind.Error
-            || NotifyTemplates.Normalize(_machine.Snapshot().Payload.Template) is NotifyTemplates.Call or NotifyTemplates.Chat;
-        if (invoke)
-            IslandAnimator.FastInvoke(Pill);
-        if (extra == "breathe" && invoke)
+        var tpl = NotifyTemplates.Normalize(_machine.Snapshot().Payload.Template);
+        if (kind is OverlayKind.Notification or OverlayKind.Stack or OverlayKind.Error)
+            IslandAnimator.SlideFromBadge(OverlayRow);
+        if (kind == OverlayKind.Notification && tpl == NotifyTemplates.Chat)
+            IslandAnimator.PopChat(KindIcon);
+        else if (kind == OverlayKind.Notification && tpl == NotifyTemplates.Call)
+            IslandAnimator.Breathe(Glow);
+        else if (kind == OverlayKind.Error || tpl == NotifyTemplates.Warn)
+            IslandAnimator.WarnFlash(RowText);
+        else if (kind is OverlayKind.Notification or OverlayKind.Stack)
+            IslandAnimator.FastInvoke(KindIcon);
+        if (kind == OverlayKind.Progress || tpl == NotifyTemplates.Download)
+            IslandAnimator.FastInvoke(RowProgress);
+        if (kind == OverlayKind.Media)
+            IslandAnimator.FastInvoke(PlayerChrome);
+        if (PrefsStore.Current.Animation == "breathe" && kind is OverlayKind.Notification)
             IslandAnimator.Breathe(Glow);
     }
 
@@ -361,11 +420,14 @@ public partial class OverlayWindow : Window
         var overlayOn = kind is OverlayKind.Notification or OverlayKind.Progress or OverlayKind.Media
             or OverlayKind.Timer or OverlayKind.Error or OverlayKind.Expanded or OverlayKind.Stack;
         var widthOnly = !PrefsStore.Current.ExpandHeight;
-        OverlayRow.Opacity = overlayOn && widthOnly ? 1 : 0;
-        OverlayRow.IsHitTestVisible = overlayOn && widthOnly;
-        OverlayPanel.Opacity = overlayOn && !widthOnly ? 1 : 0;
-        OverlayPanel.IsHitTestVisible = overlayOn && !widthOnly;
-        ClockText.Opacity = overlayOn ? 0 : 1;
+        if (!(_freezeText && _hwnd.IsRunning))
+        {
+            OverlayRow.Opacity = overlayOn && widthOnly ? 1 : 0;
+            OverlayRow.IsHitTestVisible = overlayOn && widthOnly;
+            OverlayPanel.Opacity = overlayOn && !widthOnly ? 1 : 0;
+            OverlayPanel.IsHitTestVisible = overlayOn && !widthOnly;
+            ClockText.Opacity = overlayOn ? 0 : 1;
+        }
         var title = string.IsNullOrWhiteSpace(p.Title) ? Fallback(kind) : p.Title;
         var sub = string.IsNullOrWhiteSpace(p.Subtitle) ? p.Body : p.Subtitle;
         OverlayTitle.Text = title;
@@ -375,7 +437,13 @@ public partial class OverlayWindow : Window
         var row = title;
         if (!string.IsNullOrWhiteSpace(sub)) row += " · " + sub;
         if (kind == OverlayKind.Stack && !string.IsNullOrWhiteSpace(p.Line2)) row += " · " + p.Line2;
-        RowText.Text = row;
+        if (_freezeText && _hwnd.IsRunning && !string.IsNullOrEmpty(_frozenRow))
+            RowText.Text = _frozenRow;
+        else
+        {
+            RowText.Text = row;
+            _frozenRow = row;
+        }
         OverlayProgress.Opacity = !widthOnly && kind is OverlayKind.Progress or OverlayKind.Media ? 1 : 0;
         OverlayProgress.Value = p.Progress * 100;
         RowProgress.Opacity = widthOnly && kind is OverlayKind.Progress or OverlayKind.Media ? 1 : 0;
@@ -394,8 +462,16 @@ public partial class OverlayWindow : Window
         var warn = NotifyTemplates.Normalize(p.Template) == NotifyTemplates.Warn;
         OverlayTitle.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? pal.Error : warn ? Color.Parse("#E6C35C") : pal.Text);
         RowText.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? pal.Error : warn ? Color.Parse("#E6C35C") : pal.Text);
-        MediaPlay.Opacity = kind == OverlayKind.Media ? 1 : 0;
-        MediaPlay.IsHitTestVisible = kind == OverlayKind.Media;
+        var player = kind == OverlayKind.Media;
+        MediaPlay.Opacity = player ? 1 : 0;
+        MediaPlay.IsHitTestVisible = player;
+        MediaNext.Opacity = player ? 1 : 0;
+        MediaNext.IsHitTestVisible = player;
+        MediaMute.Opacity = player ? 1 : 0;
+        MediaMute.IsHitTestVisible = player;
+        MasterVol.Opacity = player ? 1 : 0;
+        MasterVol.IsHitTestVisible = player;
+        if (player) SyncMasterVolUi();
         var glyph = IslandIcons.ForPayload(kind, p);
         var style = IslandIcons.Normalize(PrefsStore.Current.IconStyle);
         var key = style + ":" + glyph + ":" + overlayOn;
@@ -439,7 +515,7 @@ public partial class OverlayWindow : Window
     private void PaintBadge()
     {
         var idle = _machine.Snapshot().Kind is OverlayKind.Idle or OverlayKind.Collapsed;
-        var show = idle && ShowBadgeNow();
+        var show = idle && ShowBadgeNow() && !_hwnd.IsRunning;
         AppBadge.Opacity = show ? 1 : 0;
         AppBadge.IsHitTestVisible = show;
         if (!show) return;
@@ -479,7 +555,7 @@ public partial class OverlayWindow : Window
         var idle = _machine.Snapshot().Kind is OverlayKind.Idle or OverlayKind.Collapsed;
         var wx = WeatherHub.Current;
         var pos = PrefsStore.Current.WeatherPosition;
-        var show = idle && PrefsStore.Current.ShowWeather && pos != "hide" && pos != "expand" && wx is { Ok: true };
+        var show = idle && PrefsStore.Current.ShowWeather && pos != "hide" && pos != "expand" && wx is { Ok: true } && !_hwnd.IsRunning;
         WeatherChip.Opacity = show ? 1 : 0;
         if (!show || wx is null) return;
         WeatherTemp.Text = WeatherHub.TempLabel(wx);
@@ -538,9 +614,8 @@ public partial class OverlayWindow : Window
         {
             var mods = e.KeyModifiers;
             var shift = mods.HasFlag(KeyModifiers.Shift) || mods.HasFlag(KeyModifiers.Alt) || mods.HasFlag(KeyModifiers.Control);
-            if (PrefsStore.Current.ClickOpensActionCenter && !shift)
+            if (!shift && TryHandleClickCycle())
             {
-                ActionCenter.TryOpen();
                 e.Handled = true;
                 return;
             }
@@ -585,8 +660,81 @@ public partial class OverlayWindow : Window
     private bool HitsMedia(PointerEventArgs e)
     {
         for (var v = e.Source as Visual; v is not null; v = v.GetVisualParent())
-            if (ReferenceEquals(v, MediaPlay)) return true;
+            if (ReferenceEquals(v, MediaPlay) || ReferenceEquals(v, MediaNext) ||
+                ReferenceEquals(v, MediaMute) || ReferenceEquals(v, MasterVol) ||
+                ReferenceEquals(v, PlayerChrome))
+                return true;
         return false;
+    }
+
+    private bool TryHandleClickCycle()
+    {
+        var mode = PrefsStore.Current.ClickMode;
+        if (mode is "off" or "expand") return false;
+        string[] steps = mode switch
+        {
+            "player" => new[] { "player" },
+            "center" => new[] { "center" },
+            "cycle-player-center" => new[] { "player", "center" },
+            _ => new[] { "center", "player" }
+        };
+        var step = steps[_clickPhase % steps.Length];
+        _clickPhase++;
+        if (step == "center")
+        {
+            if (_machine.Snapshot().Kind == OverlayKind.Media)
+            {
+                _machine.Dispatch(OverlayCommand.Collapse);
+                ApplySize(); Paint();
+            }
+            ActionCenter.TryOpen();
+            return true;
+        }
+        _ = ShowPlayerAsync();
+        return true;
+    }
+
+    private async System.Threading.Tasks.Task ShowPlayerAsync()
+    {
+        var smtc = await SmtcHub.RefreshAsync();
+        _machine.Dispatch(OverlayCommand.SetMedia, new OverlayPayload
+        {
+            Title = smtc.HasSession ? smtc.Title : "No media",
+            Subtitle = smtc.HasSession ? smtc.Artist : SmtcHub.Status,
+            Playing = smtc.Playing,
+            Template = "media"
+        });
+        ApplySize();
+        Paint();
+    }
+
+    private void SyncMasterVolUi()
+    {
+        if (!SystemVolume.TryGet(out var s, out var mute)) return;
+        _volSync = true;
+        MasterVol.Value = s;
+        MediaMuteIcon.Data = IslandIcons.Geometry(mute ? IslandGlyph.Mute : IslandGlyph.Volume, PrefsStore.Current.IconStyle);
+        _volSync = false;
+    }
+
+    private void OnMasterVol(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (_volSync || e.Property != Slider.ValueProperty) return;
+        SystemVolume.TrySet((float)MasterVol.Value);
+    }
+
+    private void OnMediaMute(object? sender, RoutedEventArgs e)
+    {
+        if (SystemVolume.TryGet(out _, out var mute))
+            SystemVolume.TrySetMute(!mute);
+        SyncMasterVolUi();
+        IslandHost.Settings?.SyncMasterVolume();
+    }
+
+    private async void OnMediaNext(object? sender, RoutedEventArgs e)
+    {
+        await SmtcHub.NextAsync();
+        await ShowPlayerAsync();
     }
 
     private void OnPillEntered(object? sender, PointerEventArgs e)
@@ -614,11 +762,23 @@ public partial class OverlayWindow : Window
         return item;
     }
 
-    private void OnMediaPlay(object? sender, RoutedEventArgs e)
+    private async void OnMediaPlay(object? sender, RoutedEventArgs e)
     {
-        var next = OverlayMachine.Sanitize(_machine.Snapshot().Payload);
-        next.Playing = !next.Playing;
-        _machine.Dispatch(OverlayCommand.SetMedia, next);
+        await SmtcHub.TogglePlayAsync();
+        var smtc = SmtcHub.Current;
+        if (smtc.HasSession)
+        {
+            _machine.Dispatch(OverlayCommand.SetMedia, new OverlayPayload
+            {
+                Title = smtc.Title, Subtitle = smtc.Artist, Playing = smtc.Playing, Template = "media"
+            });
+        }
+        else
+        {
+            var next = OverlayMachine.Sanitize(_machine.Snapshot().Payload);
+            next.Playing = !next.Playing;
+            _machine.Dispatch(OverlayCommand.SetMedia, next);
+        }
         Paint();
     }
 }

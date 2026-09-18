@@ -105,49 +105,148 @@ internal static class IslandAnimator
         apply();
         icon.Opacity = 1;
     }
+
+    public static void PopChat(Visual target)
+    {
+        try
+        {
+            var cv = ElementComposition.GetElementVisual(target);
+            if (cv is null) return;
+            var anim = cv.Compositor.CreateVector3KeyFrameAnimation();
+            anim.InsertKeyFrame(0f, new Vector3(0.86f, 0.86f, 1f));
+            anim.InsertKeyFrame(1f, Vector3.One);
+            anim.Duration = TimeSpan.FromMilliseconds(Motion.FastMs);
+            cv.StartAnimation("Scale", anim);
+        }
+        catch
+        {
+        }
+    }
+
+    public static void SlideFromBadge(Visual target)
+    {
+        try
+        {
+            var cv = ElementComposition.GetElementVisual(target);
+            if (cv is null) return;
+            var anim = cv.Compositor.CreateVector3KeyFrameAnimation();
+            anim.InsertKeyFrame(0f, new Vector3(-20f, 0f, 0f));
+            anim.InsertKeyFrame(1f, Vector3.Zero);
+            anim.Duration = TimeSpan.FromMilliseconds(Motion.FastMs);
+            cv.StartAnimation("Offset", anim);
+            var fade = cv.Compositor.CreateScalarKeyFrameAnimation();
+            fade.InsertKeyFrame(0f, 0f);
+            fade.InsertKeyFrame(1f, 1f);
+            fade.Duration = TimeSpan.FromMilliseconds(Motion.FadeMs);
+            cv.StartAnimation("Opacity", fade);
+        }
+        catch
+        {
+        }
+    }
+
+    public static void WarnFlash(Control target)
+    {
+        TickFade(target);
+        FastInvoke(target);
+    }
 }
 
 internal sealed class HwndMorph
 {
     private readonly Window _window;
     private readonly Stopwatch _clock = new();
-    private double _w0, _w1, _h0, _h1;
-    private int _x0, _x1, _y0, _y1;
+    private readonly ScaleTransform _scale = new(1, 1);
+    private Control? _pill;
+    private double _w0, _w1, _h0, _h1, _hostW, _hostH;
     private int _dur;
     private long _lastMs;
-    private int _frames;
+    private int _frames, _dropped;
     private double _dtMin = 999, _dtMax, _dtSum;
     private bool _running;
+    private bool _hwndStart, _hwndEnd, _innerLayout, _collapse;
+    private int _restarts;
 
+    public bool IsRunning => _running;
     public static string LastTiming { get; private set; } = "";
+    public event Action? Completed;
 
     public HwndMorph(Window window) => _window = window;
 
-    public void To(double width, double height, int ms)
+    public void To(Control pill, double width, double height, int ms)
+        => To(pill, null, width, height, ms);
+
+    public async void To(Control pill, Visual? fadeContent, double width, double height, int ms, bool towardBadge = false)
     {
-        var dest = OverlayPlacement.Compute(_window, width, height);
-        _w0 = _window.Width; _h0 = _window.Height;
-        _w1 = width; _h1 = height;
-        _x0 = _window.Position.X; _x1 = dest.X;
-        _y0 = _window.Position.Y; _y1 = dest.Y;
+        var collapse = width + 4 < Math.Max(_window.Width, _w1 > 0 ? _w1 : _window.Width);
+        if (_running && Math.Abs(width - _w1) < 8 && Math.Abs(height - _h1) < 2)
+        {
+            _restarts++;
+            Append("coalesce skip target=" + width.ToString("0", CultureInfo.InvariantCulture));
+            return;
+        }
+        if (_running) _restarts++;
+        _pill = pill;
+        _w0 = _window.Width;
+        _h0 = _window.Height;
+        _w1 = width;
+        _h1 = height;
+        _hostW = Math.Max(_w0, _w1);
+        _hostH = Math.Max(_h0, _h1);
         _dur = Math.Max(16, ms);
+        _collapse = collapse;
         _frames = 0;
-        _dtMin = 999; _dtMax = 0; _dtSum = 0;
-        _clock.Restart();
+        _dropped = 0;
+        _dtMin = 999;
+        _dtMax = 0;
+        _dtSum = 0;
+        _hwndStart = !collapse;
+        _hwndEnd = false;
+        _innerLayout = true;
         _lastMs = 0;
         _running = true;
-        ScheduleNext();
+        if (!collapse)
+        {
+            _window.Width = _hostW;
+            _window.Height = _hostH;
+            _window.Position = OverlayPlacement.Compute(_window, _hostW, _hostH);
+        }
+        pill.Width = _hostW;
+        pill.Height = _hostH;
+        pill.RenderTransformOrigin = towardBadge && collapse
+            ? new RelativePoint(0.12, 0.5, RelativeUnit.Relative)
+            : new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
+        _scale.ScaleX = Math.Clamp(_w0 / Math.Max(1, _hostW), 0.2, 1);
+        _scale.ScaleY = 1;
+        pill.RenderTransform = _scale;
+        if (collapse && fadeContent is not null)
+        {
+            IslandAnimator.WireOpacity(fadeContent, Motion.FadeMs);
+            fadeContent.Opacity = 0;
+            try { await Task.Delay(Motion.FadeMs); } catch { }
+            if (!_running) return;
+        }
+        _clock.Restart();
+        Pump();
     }
 
-    private void ScheduleNext()
+    private void Pump()
     {
-        var now = _clock.ElapsedMilliseconds;
-        var due = (long)(_frames * 16.7);
-        var wait = (int)Math.Clamp(due - now, 1, 16);
-        Dispatcher.UIThread.Post(async () =>
+        if (!_running) return;
+        var top = TopLevel.GetTopLevel(_window);
+        if (top is not null)
         {
-            await Task.Delay(wait).ConfigureAwait(true);
+            top.RequestAnimationFrame(_ =>
+            {
+                Step();
+                if (_running) Pump();
+            });
+            return;
+        }
+        Dispatcher.UIThread.Post(() =>
+        {
             Step();
+            if (_running) Pump();
         }, DispatcherPriority.Render);
     }
 
@@ -158,46 +257,56 @@ internal sealed class HwndMorph
         if (_frames > 0)
         {
             var dt = now - _lastMs;
+            if (dt < 12 && now < _dur)
+                return;
             _dtMin = Math.Min(_dtMin, dt);
             _dtMax = Math.Max(_dtMax, dt);
             _dtSum += dt;
+            if (dt > 20.7) _dropped++;
         }
         _lastMs = now;
         _frames++;
-        var t = Math.Min(1, now / (double)_dur);
-        t = EasePointToPoint(t);
-        _window.Width = _w0 + (_w1 - _w0) * t;
-        _window.Height = _h0 + (_h1 - _h0) * t;
-        _window.Position = new PixelPoint(
-            (int)Math.Round(_x0 + (_x1 - _x0) * t),
-            (int)Math.Round(_y0 + (_y1 - _y0) * t));
-        if (t >= 1)
+        var raw = Math.Min(1, now / (double)_dur);
+        var eased = _collapse
+            ? Motion.SoftOut.Ease(raw)
+            : Motion.PointToPoint.Ease(raw);
+        var visW = _w0 + (_w1 - _w0) * eased;
+        _scale.ScaleX = Math.Clamp(visW / Math.Max(1, _hostW), 0.2, 1);
+        if (raw < 1) return;
+        _running = false;
+        _clock.Stop();
+        _hwndEnd = true;
+        _window.Width = _w1;
+        _window.Height = _h1;
+        _window.Position = OverlayPlacement.Compute(_window, _w1, _h1);
+        if (_pill is not null)
         {
-            _running = false;
-            _clock.Stop();
-            _window.Width = _w1;
-            _window.Height = _h1;
-            _window.Position = new PixelPoint(_x1, _y1);
-            Win32Overlay.ApplyNoActivate(_window);
-            var avg = _frames > 1 ? _dtSum / (_frames - 1) : 0;
-            LastTiming = string.Format(CultureInfo.InvariantCulture,
-                "frames={0} avgDt={1:0.0}ms min={2:0.0} max={3:0.0} dur={4}ms target=16.7ms",
-                _frames, avg, _dtMin >= 999 ? 0 : _dtMin, _dtMax, _dur);
-            try
-            {
-                File.WriteAllText(Path.Combine(Path.GetTempPath(), "notifyisland-morph.log"), LastTiming + Environment.NewLine);
-            }
-            catch
-            {
-            }
-            return;
+            _pill.Width = _w1;
+            _pill.Height = _h1;
+            _scale.ScaleX = 1;
+            _pill.RenderTransform = _scale;
         }
-        ScheduleNext();
+        Win32Overlay.ApplyNoActivate(_window);
+        var avg = _frames > 1 ? _dtSum / (_frames - 1) : 0;
+        LastTiming = string.Format(CultureInfo.InvariantCulture,
+            "kind={0} frames={1} avgDt={2:0.0}ms min={3:0.0} max={4:0.0} dropped={5} dur={6}ms dW={7:0} hwndStart={8} hwndEnd={9} innerScale={10} fadeFirst={11} ease={12} restarts={13} comp={14} target=16.7ms",
+            _collapse ? "collapse" : "expand", _frames, avg, _dtMin >= 999 ? 0 : _dtMin, _dtMax, _dropped, _dur,
+            _w1 - _w0, _hwndStart, _hwndEnd, _innerLayout, _collapse, _collapse ? "SoftOut" : "PointToPoint",
+            _restarts, Program.CompositionLabel);
+        Append(LastTiming);
+        Completed?.Invoke();
     }
 
-    private static double EasePointToPoint(double t)
+    public static string LogPath => Path.Combine(Path.GetTempPath(), "notifyisland-morph.log");
+
+    private static void Append(string line)
     {
-        t = Math.Clamp(t, 0, 1);
-        return Motion.PointToPoint.Ease(t);
+        try
+        {
+            File.AppendAllText(LogPath, DateTime.Now.ToString("HH:mm:ss.fff ", CultureInfo.InvariantCulture) + line + Environment.NewLine);
+        }
+        catch
+        {
+        }
     }
 }
