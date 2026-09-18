@@ -48,6 +48,8 @@ public partial class OverlayWindow : Window
         ApplySize();
         Paint();
         if (Program.DemoMode) StartDemo();
+        if (Program.OpenSettingsOnStart)
+            Dispatcher.UIThread.Post(IslandHost.OpenSettings, DispatcherPriority.Background);
         if (!PrefsStore.Current.OverlayVisible) Hide();
     }
 
