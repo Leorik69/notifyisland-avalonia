@@ -1,0 +1,30 @@
+name: Portable win-x64
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  fsm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: python3 tools/test_overlay_states.py
+
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained true -o publish
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NotifyIsland-portable-win-x64
+          path: publish/**
+          if-no-files-found: error
