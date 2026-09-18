@@ -25,6 +25,9 @@ public sealed class UserPrefs
     public bool ListenToasts { get; set; }
     public int NotifyDurationMs { get; set; } = 4000;
     public string ExpandMode { get; set; } = "width";
+    public bool ExpandHeight { get; set; }
+    public double MinWidth { get; set; } = 160;
+    public double MaxWidth { get; set; } = 480;
     public string AnchorH { get; set; } = "center";
     public string AnchorV { get; set; } = "top";
     public double OffsetX { get; set; }
@@ -122,7 +125,12 @@ internal static class PrefsStore
         p.IdleWidth = Math.Clamp(p.IdleWidth, 140, 280);
         if (double.IsNaN(p.IdleHeight) || double.IsInfinity(p.IdleHeight)) p.IdleHeight = 40;
         p.IdleHeight = Math.Clamp(p.IdleHeight, 32, 48);
-        p.ExpandMode = string.Equals(p.ExpandMode, "both", StringComparison.OrdinalIgnoreCase) ? "both" : "width";
+        p.ExpandHeight = p.ExpandHeight || string.Equals(p.ExpandMode, "both", StringComparison.OrdinalIgnoreCase);
+        p.ExpandMode = p.ExpandHeight ? "both" : "width";
+        if (double.IsNaN(p.MinWidth) || double.IsInfinity(p.MinWidth)) p.MinWidth = 160;
+        if (double.IsNaN(p.MaxWidth) || double.IsInfinity(p.MaxWidth)) p.MaxWidth = 480;
+        p.MinWidth = Math.Clamp(p.MinWidth, 120, 400);
+        p.MaxWidth = Math.Clamp(p.MaxWidth, p.MinWidth + 20, 640);
         p.AnchorH = p.AnchorH?.ToLowerInvariant() switch { "left" => "left", "right" => "right", _ => "center" };
         p.AnchorV = p.AnchorV?.ToLowerInvariant() switch { "center" => "center", "bottom" => "bottom", _ => "top" };
         if (double.IsNaN(p.OffsetX) || double.IsInfinity(p.OffsetX)) p.OffsetX = 0;

@@ -20,7 +20,6 @@ public partial class SettingsWindow : Window
         AnimBox.ItemsSource = new[] { "Morph + pulse", "Pulse", "Breathe", "Morph only" };
         SpeedBox.ItemsSource = new[] { "Fast (180ms)", "Normal (260ms)" };
         ClockBox.ItemsSource = new[] { "HH:mm", "HH:mm:ss", "h:mm tt" };
-        ExpandBox.ItemsSource = new[] { "Width only", "Width and height" };
         AnchorHBox.ItemsSource = new[] { "Left", "Center", "Right" };
         AnchorVBox.ItemsSource = new[] { "Top", "Center", "Bottom" };
         LayerBox.ItemsSource = new[] { "Always on top", "Normal window", "Desktop (HWND_BOTTOM)" };
@@ -46,7 +45,9 @@ public partial class SettingsWindow : Window
         RadiusSlider.Value = p.CornerRadius;
         WidthSlider.Value = p.IdleWidth;
         HeightSlider.Value = p.IdleHeight;
-        ExpandBox.SelectedIndex = p.ExpandMode == "both" ? 1 : 0;
+        ExpandHeightBox.IsChecked = p.ExpandHeight;
+        MinWSlider.Value = p.MinWidth;
+        MaxWSlider.Value = p.MaxWidth;
         AnchorHBox.SelectedIndex = p.AnchorH switch { "left" => 0, "right" => 2, _ => 1 };
         AnchorVBox.SelectedIndex = p.AnchorV switch { "center" => 1, "bottom" => 2, _ => 0 };
         OffXSlider.Value = p.OffsetX;
@@ -97,7 +98,10 @@ public partial class SettingsWindow : Window
             p.CornerRadius = RadiusSlider.Value;
             p.IdleWidth = WidthSlider.Value;
             p.IdleHeight = HeightSlider.Value;
-            p.ExpandMode = ExpandBox.SelectedIndex == 1 ? "both" : "width";
+            p.ExpandHeight = ExpandHeightBox.IsChecked == true;
+            p.ExpandMode = p.ExpandHeight ? "both" : "width";
+            p.MinWidth = MinWSlider.Value;
+            p.MaxWidth = MaxWSlider.Value;
             p.AnchorH = AnchorHBox.SelectedIndex switch { 0 => "left", 2 => "right", _ => "center" };
             p.AnchorV = AnchorVBox.SelectedIndex switch { 1 => "center", 2 => "bottom", _ => "top" };
             p.OffsetX = OffXSlider.Value;
@@ -139,7 +143,7 @@ public partial class SettingsWindow : Window
         PreviewPill.BorderThickness = new Thickness(p.BorderThickness);
         var h = p.IdleHeight;
         PreviewPill.Height = h;
-        PreviewPill.CornerRadius = new CornerRadius(p.ExpandMode != "both" || p.CornerRadius <= 0 ? h / 2 : p.CornerRadius);
+        PreviewPill.CornerRadius = new CornerRadius(!p.ExpandHeight || p.CornerRadius <= 0 ? h / 2 : p.CornerRadius);
         PreviewClock.Foreground = new SolidColorBrush(pal.Text);
         PreviewClock.FontFamily = new FontFamily(font.Family);
         PreviewClock.Text = DateTime.Now.ToString(p.ClockFormat, System.Globalization.CultureInfo.InvariantCulture);

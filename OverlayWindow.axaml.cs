@@ -244,15 +244,15 @@ public partial class OverlayWindow : Window
     {
         var snap = _machine.Snapshot();
         var prefs = PrefsStore.Current;
-        var toW = snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed ? prefs.IdleWidth : snap.Width;
-        var toH = prefs.ExpandMode == "width" || snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed
-            ? prefs.IdleHeight
-            : snap.Height;
-        if (prefs.ExpandMode == "width")
-            toH = prefs.IdleHeight;
+        var toW = snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed
+            ? prefs.IdleWidth
+            : Math.Clamp(snap.Width, prefs.MinWidth, prefs.MaxWidth);
+        var toH = prefs.ExpandHeight && snap.Kind is not (OverlayKind.Idle or OverlayKind.Collapsed)
+            ? snap.Height
+            : prefs.IdleHeight;
         Pill.Width = toW;
         Pill.Height = toH;
-        var radius = prefs.CornerRadius <= 0 || prefs.ExpandMode == "width" ? toH / 2 : prefs.CornerRadius;
+        var radius = !prefs.ExpandHeight || prefs.CornerRadius <= 0 ? toH / 2 : prefs.CornerRadius;
         Pill.CornerRadius = new CornerRadius(radius);
         Glow.Width = toW + 10 + prefs.GlowStrength * 8;
         Glow.Height = toH + 8 + prefs.GlowStrength * 6;
@@ -294,7 +294,7 @@ public partial class OverlayWindow : Window
         var kind = snap.Kind; var p = snap.Payload;
         var overlayOn = kind is OverlayKind.Notification or OverlayKind.Progress or OverlayKind.Media
             or OverlayKind.Timer or OverlayKind.Error or OverlayKind.Expanded or OverlayKind.Stack;
-        var widthOnly = PrefsStore.Current.ExpandMode != "both";
+        var widthOnly = !PrefsStore.Current.ExpandHeight;
         OverlayRow.Opacity = overlayOn && widthOnly ? 1 : 0;
         OverlayRow.IsHitTestVisible = overlayOn && widthOnly;
         OverlayPanel.Opacity = overlayOn && !widthOnly ? 1 : 0;

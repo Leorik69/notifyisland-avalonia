@@ -41,10 +41,13 @@
         <Slider x:Name="RadiusSlider" Minimum="0" Maximum="28" PropertyChanged="OnSlider" />
         <TextBlock Text="Idle width" Opacity="0.8" />
         <Slider x:Name="WidthSlider" Minimum="140" Maximum="280" PropertyChanged="OnSlider" />
-        <TextBlock Text="Idle height" Opacity="0.8" />
+        <TextBlock Text="Capsule height (px)" Opacity="0.8" />
         <Slider x:Name="HeightSlider" Minimum="32" Maximum="48" PropertyChanged="OnSlider" />
-        <TextBlock Text="Expand mode" Opacity="0.8" />
-        <ComboBox x:Name="ExpandBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+        <CheckBox x:Name="ExpandHeightBox" Content="Expand height (taller notify/progress — off = width only)" IsCheckedChanged="OnCheck" />
+        <TextBlock Text="Min width" Opacity="0.8" />
+        <Slider x:Name="MinWSlider" Minimum="120" Maximum="360" PropertyChanged="OnSlider" />
+        <TextBlock Text="Max width" Opacity="0.8" />
+        <Slider x:Name="MaxWSlider" Minimum="200" Maximum="640" PropertyChanged="OnSlider" />
         <TextBlock Text="Horizontal position" Opacity="0.8" />
         <ComboBox x:Name="AnchorHBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
         <TextBlock Text="Vertical position" Opacity="0.8" />
