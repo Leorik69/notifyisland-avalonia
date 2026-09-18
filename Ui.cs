@@ -11,7 +11,7 @@ namespace NotifyIsland;
 
 internal static class Ui
 {
-    private static readonly ResourceManager Resx = new("NotifyIsland.Loc.Strings", Assembly.GetExecutingAssembly());
+    private static readonly ResourceManager Resx = new("NotifyIsland.loc.Strings", Assembly.GetExecutingAssembly());
     private static Dictionary<string, string> _map = new(StringComparer.OrdinalIgnoreCase);
     private static CultureInfo _culture = new("ru");
 
