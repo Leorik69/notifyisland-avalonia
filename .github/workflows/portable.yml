@@ -14,6 +14,7 @@ jobs:
         with:
           python-version: "3.x"
       - run: python3 tools/test_overlay_states.py
+      - run: python3 tools/test_motion_tokens.py
 
   publish:
     runs-on: windows-latest

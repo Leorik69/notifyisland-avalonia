@@ -14,6 +14,6 @@ internal static class OverlayTokens
     public const double ExpandedMaxW = 520;
     public const double ExpandedMinH = 70;
     public const double ExpandedMaxH = 180;
-    public const int MorphMs = 260;
+    public const int MorphMs = 250;
     public const int DefaultNotifyMs = 4000;
 }

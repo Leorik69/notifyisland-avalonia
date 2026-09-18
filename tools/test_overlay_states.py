@@ -68,7 +68,7 @@ def test_source_has_kinds() -> None:
         assert f"    {k}" in CS or f"{k}," in CS, k
     assert "Sanitize" in CS and "DemoNext" in CS
     assert 'FillHex = "#080808"' in TOKENS and 'AccentHex = "#3D9CF0"' in TOKENS
-    assert "MorphMs = 260" in TOKENS
+    assert "MorphMs = 250" in TOKENS
     assert "new WUC.Compositor()" not in CS
 
 def test_transitions() -> None:

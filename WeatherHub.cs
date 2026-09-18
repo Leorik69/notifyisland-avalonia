@@ -34,14 +34,26 @@ internal static class WeatherHub
     public static string Status { get; private set; } = "Off";
     public static event Action? Changed;
 
+    private static string _weatherKey = "";
+
     public static void Start()
     {
         if (_started) return;
         _started = true;
-        PrefsStore.Changed += () => Dispatcher.UIThread.Post(RestartTimer);
+        PrefsStore.Changed += () => Dispatcher.UIThread.Post(() =>
+        {
+            var key = WeatherKey(PrefsStore.Current);
+            if (key == _weatherKey) return;
+            _weatherKey = key;
+            RestartTimer();
+        });
+        _weatherKey = WeatherKey(PrefsStore.Current);
         RestartTimer();
         _ = RefreshAsync(false);
     }
+
+    private static string WeatherKey(UserPrefs p) =>
+        $"{p.ShowWeather}|{p.UseWindowsLocation}|{p.WeatherCity}|{p.WeatherIntervalMin}|{p.WeatherPosition}";
 
     public static async Task RefreshAsync(bool force)
     {
