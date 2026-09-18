@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="NotifyIsland.OverlayWindow"
+        Title="NotifyIsland"
+        Width="180" Height="34"
+        CanResize="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ShowActivated="False"
+        SystemDecorations="None"
+        TransparencyLevelHint="Transparent"
+        TransparencyBackgroundFallback="#080808"
+        Background="Transparent"
+        WindowStartupLocation="Manual">
+  <Border x:Name="Pill"
+          Width="180" Height="34"
+          CornerRadius="17"
+          Background="#080808"
+          BorderBrush="#28FFFFFF"
+          BorderThickness="1"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          PointerPressed="OnPillPressed">
+    <Grid Margin="12,0">
+      <TextBlock x:Name="ClockText"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"
+                 FontFamily="Inter, Segoe UI Variable, Segoe UI"
+                 FontSize="13"
+                 FontWeight="SemiBold"
+                 Foreground="#FFFFFF"
+                 Text="00:00" />
+      <StackPanel x:Name="OverlayPanel"
+                  Spacing="4"
+                  VerticalAlignment="Center"
+                  IsVisible="False">
+        <DockPanel>
+          <Button x:Name="MediaPlay" DockPanel.Dock="Right" Padding="6,2" Click="OnMediaPlay"
+                  ToolTip.Tip="Воспроизведение"
+                  AutomationProperties.Name="Воспроизведение">
+            <TextBlock x:Name="MediaPlayGlyph" Text="▶" FontSize="11" Foreground="#3D9CF0" />
+          </Button>
+          <StackPanel Spacing="2">
+            <TextBlock x:Name="OverlayTitle" FontSize="13" FontWeight="SemiBold" Foreground="#FFFFFF"
+                       TextTrimming="CharacterEllipsis" Text="Обзор" />
+            <TextBlock x:Name="OverlaySubtitle" FontSize="11" Foreground="#C8C8CC"
+                       TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </DockPanel>
+        <ProgressBar x:Name="OverlayProgress" Height="4" Minimum="0" Maximum="100" Foreground="#3D9CF0" />
+        <TextBlock x:Name="OverlayTimer" FontSize="18" FontWeight="SemiBold" Foreground="#FFFFFF" IsVisible="False" />
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>
