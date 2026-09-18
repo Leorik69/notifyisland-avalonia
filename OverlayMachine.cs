@@ -11,6 +11,7 @@ public enum OverlayKind
     Progress,
     Media,
     Timer,
+    TimerComplete,
     Error,
     Stack
 }
@@ -25,8 +26,7 @@ public enum OverlayCommand
     SetTimer,
     SetError,
     Stack,
-    Clear,
-    DemoNext
+    Clear
 }
 
 public sealed class OverlayPayload
@@ -40,6 +40,10 @@ public sealed class OverlayPayload
     public string Line2 { get; set; } = "";
     public string Template { get; set; } = "notify";
     public string AppId { get; set; } = "";
+    public int DurationMs { get; set; }
+    public NotifyIsland.Core.NotifyUrgency Urgency { get; set; }
+    public double EtaSeconds { get; set; }
+    public bool Cancellable { get; set; }
 }
 
 public sealed class OverlaySnapshot
@@ -57,7 +61,6 @@ public sealed class OverlayMachine
     private OverlayKind _returnTo = OverlayKind.Idle;
     private int _notifyMs;
     private readonly OverlayPayload _payload = new();
-    private int _demoIndex;
     private int _notifyDurationMs = OverlayTokens.DefaultNotifyMs;
 
     public int NotifyDurationMs
@@ -70,7 +73,7 @@ public sealed class OverlayMachine
     {
         Kind = _kind,
         Payload = Clone(_payload),
-        Width = WidthFor(_kind),
+        Width = WidthFor(_kind, _payload),
         Height = HeightFor(_kind),
         NotifyMsLeft = Math.Max(0, _notifyMs)
     };
@@ -98,7 +101,7 @@ public sealed class OverlayMachine
                     _payload.Title = "Уведомление";
                 if (string.IsNullOrWhiteSpace(_payload.Template) || _payload.Template == "notify")
                     _payload.Template = NotifyTemplates.Normalize(data.Template);
-                _notifyMs = NotifyTemplates.DurationMs(PrefsStore.Current, _payload.Template);
+                _notifyMs = data.DurationMs > 0 ? data.DurationMs : _notifyDurationMs;
                 break;
             case OverlayCommand.SetProgress:
                 _kind = OverlayKind.Progress;
@@ -122,6 +125,7 @@ public sealed class OverlayMachine
             case OverlayCommand.SetError:
                 _kind = OverlayKind.Error;
                 Apply(data);
+                _payload.Urgency = NotifyIsland.Core.NotifyUrgency.Error;
                 if (string.IsNullOrWhiteSpace(_payload.Body) && string.IsNullOrWhiteSpace(_payload.Title))
                     _payload.Title = "Ошибка";
                 _notifyMs = 0;
@@ -143,9 +147,6 @@ public sealed class OverlayMachine
                 _notifyMs = 0;
                 Apply(new OverlayPayload());
                 break;
-            case OverlayCommand.DemoNext:
-                RunDemoStep();
-                break;
         }
         return Snapshot();
     }
@@ -162,35 +163,26 @@ public sealed class OverlayMachine
                 _kind = _returnTo == OverlayKind.Notification ? OverlayKind.Idle : _returnTo;
             }
         }
-        if (_kind == OverlayKind.Timer && _payload.RemainingSeconds > 0)
-            _payload.RemainingSeconds = Math.Max(0, _payload.RemainingSeconds - dt / 1000.0);
-        if (_kind == OverlayKind.Progress)
-            _payload.Progress = Math.Min(1, _payload.Progress + dt / 7000.0);
-        return Snapshot();
-    }
-
-    private void RunDemoStep()
-    {
-        var steps = new (OverlayCommand cmd, OverlayPayload data)[]
+        if (_kind == OverlayKind.Timer)
         {
-            (OverlayCommand.Clear, new OverlayPayload()),
-            (OverlayCommand.Expand, new OverlayPayload { Title = "Сегодня", Body = "Ясно, 18°" }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "Telegram", Body = "Привет", Template = NotifyTemplates.Chat }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "Почта", Body = "Счёт за сентябрь", Template = NotifyTemplates.Mail }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "14:00", Body = "Созвон", Template = NotifyTemplates.Calendar }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "Входящий", Body = "Алексей", Template = NotifyTemplates.Call }),
-            (OverlayCommand.SetProgress, new OverlayPayload { Title = "Файл.zip", Progress = 0.12, Template = NotifyTemplates.Download }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "Готово", Body = "Скачано", Template = NotifyTemplates.Complete }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "Батарея", Body = "15%", Template = NotifyTemplates.Warn }),
-            (OverlayCommand.SetTimer, new OverlayPayload { Title = "Фокус", RemainingSeconds = 45, Template = NotifyTemplates.Focus }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "Сеть", Body = "Wi‑Fi подключён", Template = NotifyTemplates.System }),
-            (OverlayCommand.Stack, new OverlayPayload { Title = "Пачка", Subtitle = "Почта · 2", Line2 = "Календарь · 10 мин", Template = NotifyTemplates.Queue }),
-            (OverlayCommand.SetMedia, new OverlayPayload { Title = "Night Drive", Subtitle = "Local Radio", Progress = 0.33, Playing = true }),
-            (OverlayCommand.SetError, new OverlayPayload { Title = "Сеть", Body = "Нет ответа сервера" }),
-        };
-        var step = steps[_demoIndex % steps.Length];
-        _demoIndex++;
-        Dispatch(step.cmd, step.data);
+            if (_payload.RemainingSeconds > 0)
+                _payload.RemainingSeconds = Math.Max(0, _payload.RemainingSeconds - dt / 1000.0);
+            if (_payload.RemainingSeconds <= 0.05)
+            {
+                _kind = OverlayKind.TimerComplete;
+                _payload.RemainingSeconds = 0;
+                if (string.IsNullOrWhiteSpace(_payload.Title))
+                    _payload.Title = "00:00";
+                _payload.Urgency = NotifyIsland.Core.NotifyUrgency.Success;
+            }
+        }
+        if (_kind == OverlayKind.Progress)
+        {
+            _payload.Progress = Math.Min(1, _payload.Progress + dt / 7000.0);
+            if (_payload.EtaSeconds > 0)
+                _payload.EtaSeconds = Math.Max(0, _payload.EtaSeconds - dt / 1000.0);
+        }
+        return Snapshot();
     }
 
     private void Apply(OverlayPayload data)
@@ -204,6 +196,10 @@ public sealed class OverlayMachine
         _payload.Line2 = data.Line2;
         _payload.Template = NotifyTemplates.Normalize(data.Template);
         _payload.AppId = data.AppId ?? "";
+        _payload.DurationMs = data.DurationMs;
+        _payload.Urgency = data.Urgency;
+        _payload.EtaSeconds = data.EtaSeconds;
+        _payload.Cancellable = data.Cancellable;
     }
 
     internal static OverlayPayload Sanitize(OverlayPayload raw)
@@ -219,33 +215,41 @@ public sealed class OverlayMachine
         p = Math.Clamp(p, 0, 1);
         var rem = raw.RemainingSeconds;
         if (double.IsNaN(rem) || double.IsInfinity(rem) || rem < 0) rem = 0;
+        var eta = raw.EtaSeconds;
+        if (double.IsNaN(eta) || double.IsInfinity(eta) || eta < 0) eta = 0;
         var l2 = (raw.Line2 ?? "").Trim();
         if (l2.Length > 80) l2 = l2[..77] + "…";
         return new OverlayPayload
         {
             Title = t, Subtitle = s, Body = b, Progress = p, Playing = raw.Playing, RemainingSeconds = rem, Line2 = l2,
-            Template = NotifyTemplates.Normalize(raw.Template), AppId = (raw.AppId ?? "").Trim()
+            Template = NotifyTemplates.Normalize(raw.Template), AppId = (raw.AppId ?? "").Trim(),
+            DurationMs = raw.DurationMs, Urgency = raw.Urgency, EtaSeconds = eta, Cancellable = raw.Cancellable
         };
     }
 
-    private static OverlayPayload Clone(OverlayPayload p) => new()
+    internal static OverlayPayload Clone(OverlayPayload p) => new()
     {
         Title = p.Title, Subtitle = p.Subtitle, Body = p.Body,
         Progress = p.Progress, Playing = p.Playing, RemainingSeconds = p.RemainingSeconds, Line2 = p.Line2,
-        Template = p.Template, AppId = p.AppId
+        Template = p.Template, AppId = p.AppId, DurationMs = p.DurationMs,
+        Urgency = p.Urgency, EtaSeconds = p.EtaSeconds, Cancellable = p.Cancellable
     };
 
-    internal static double WidthFor(OverlayKind kind) => kind switch
+    internal static double WidthFor(OverlayKind kind, OverlayPayload p)
     {
-        OverlayKind.Expanded => 400,
-        OverlayKind.Notification => 360,
-        OverlayKind.Stack => 400,
-        OverlayKind.Progress => 380,
-        OverlayKind.Media => 420,
-        OverlayKind.Timer => 340,
-        OverlayKind.Error => 360,
-        _ => OverlayTokens.CollapsedW
-    };
+        var n = (p.Title?.Length ?? 0) + (p.Subtitle?.Length ?? 0) + (p.Body?.Length ?? 0) / 2;
+        var grown = Math.Clamp(240 + n * 3.6, 240, 560);
+        return kind switch
+        {
+            OverlayKind.Expanded => Math.Max(400, grown * 0.85),
+            OverlayKind.Notification or OverlayKind.Error or OverlayKind.TimerComplete => grown,
+            OverlayKind.Stack => Math.Max(400, grown),
+            OverlayKind.Progress => Math.Max(380, grown),
+            OverlayKind.Media => 420,
+            OverlayKind.Timer => 340,
+            _ => OverlayTokens.CollapsedW
+        };
+    }
 
     internal static double HeightFor(OverlayKind kind) => kind switch
     {
@@ -254,6 +258,7 @@ public sealed class OverlayMachine
         OverlayKind.Stack => 108,
         OverlayKind.Expanded => 88,
         OverlayKind.Error => 80,
+        OverlayKind.TimerComplete => 78,
         _ => 78
     };
 }

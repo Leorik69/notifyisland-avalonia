@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NotifyIsland.Core;
 
 namespace NotifyIsland;
 
@@ -62,6 +63,15 @@ public sealed class UserPrefs
     public int CallDurationMs { get; set; } = 6000;
     public int CompleteDurationMs { get; set; } = 2200;
     public int WarnDurationMs { get; set; } = 4000;
+    public int ScreenIndex { get; set; } = -1;
+    public bool SuppressFullscreen { get; set; } = true;
+    public bool SuppressFocusAssist { get; set; } = true;
+    public bool ReduceMotion { get; set; }
+    public bool Diagnostics { get; set; }
+    public int SettingsSchema { get; set; } = 14;
+    public string LastSeenVersion { get; set; } = "";
+    /// <summary>Default architecture is fixedHost. resizeHost is an emergency fallback only.</summary>
+    public string RenderMode { get; set; } = "fixedHost";
 }
 
 internal static class PrefsStore
@@ -75,6 +85,17 @@ internal static class PrefsStore
 
     public static UserPrefs Current { get; private set; } = new();
     public static event Action? Changed;
+
+    public static bool UseFixedHost
+    {
+        get
+        {
+            var o = Program.RenderModeOverride;
+            if (!string.IsNullOrWhiteSpace(o))
+                return !o.Contains("resize", StringComparison.OrdinalIgnoreCase);
+            return Current.RenderMode != "resizeHost";
+        }
+    }
 
     public static string ActivePath { get; private set; } = PortablePath();
 
@@ -94,8 +115,9 @@ internal static class PrefsStore
                 return;
             }
         }
-        catch
+        catch (Exception ex)
         {
+            IslandLog.Write("prefs", ex.Message);
         }
         Current = new UserPrefs();
         ActivePath = CanWrite(PortablePath()) ? PortablePath() : AppDataPath();
@@ -188,10 +210,14 @@ internal static class PrefsStore
         p.GlyphSize = TypeScale.GlyphPx(p.IconScale);
         p.ClockFormat = p.ClockFormat switch
         {
-            "HH:mm:ss" => "HH:mm:ss",
             "h:mm tt" => "h:mm tt",
             _ => "HH:mm"
         };
+        if (p.SettingsSchema < 14)
+        {
+            p.ClockFormat = "HH:mm";
+            p.SettingsSchema = 14;
+        }
         if (!PaletteCatalog.TryGet(p.PaletteId, out _)) p.PaletteId = "midnight";
         if (!FontCatalog.TryGet(p.FontId, out _)) p.FontId = "segoe-variable";
         p.IconStyle = IslandIcons.Normalize(p.IconStyle);
@@ -214,12 +240,23 @@ internal static class PrefsStore
         if (p.CompleteDurationMs < 500 || p.CompleteDurationMs > 30000) p.CompleteDurationMs = 2200;
         if (p.WarnDurationMs < 500 || p.WarnDurationMs > 30000) p.WarnDurationMs = 4000;
         p.BadgeApps = (p.BadgeApps ?? "").Trim();
+        if (p.SettingsSchema < 13)
+        {
+            p.SettingsSchema = 13;
+            if (p.ScreenIndex < -1) p.ScreenIndex = -1;
+        }
+        p.ScreenIndex = Math.Clamp(p.ScreenIndex, -1, 15);
         p.Animation = p.Animation.ToLowerInvariant() switch
         {
             "pulse" => "pulse",
             "breathe" => "breathe",
             "none" => "none",
             _ => "morph"
+        };
+        p.RenderMode = (p.RenderMode ?? "").ToLowerInvariant() switch
+        {
+            "resizehost" or "resize" or "hwnd" => "resizeHost",
+            _ => "fixedHost"
         };
         if (p.NotifyDurationMs < 500 || p.NotifyDurationMs > 30000) p.NotifyDurationMs = 4000;
     }

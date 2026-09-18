@@ -5,7 +5,11 @@ from pathlib import Path
 ISLAND = Path(__file__).resolve().parents[1]
 CS = (ISLAND / "OverlayMachine.cs").read_text(encoding="utf-8")
 TOKENS = (ISLAND / "OverlayTokens.cs").read_text(encoding="utf-8")
-KINDS = ("Idle","Collapsed","Expanded","Notification","Progress","Media","Timer","Error","Stack")
+DEMO = (ISLAND / "Demo" / "DemoScript.cs").read_text(encoding="utf-8")
+CORE = (ISLAND / "Core" / "NotificationModel.cs").read_text(encoding="utf-8")
+QUEUE = (ISLAND / "Core" / "NotificationQueue.cs").read_text(encoding="utf-8")
+IPC = (ISLAND / "Integration" / "Windows" / "NamedPipeIpc.cs").read_text(encoding="utf-8")
+KINDS = ("Idle","Collapsed","Expanded","Notification","Progress","Media","Timer","TimerComplete","Error","Stack")
 
 class Payload:
     def __init__(self, title="", subtitle="", body="", progress=0.0, playing=False, remaining=0.0):
@@ -62,11 +66,14 @@ class Machine:
                 self.kind = "Idle" if self.return_to == "Notification" else self.return_to
         if self.kind == "Timer" and self.payload.remaining > 0:
             self.payload.remaining = max(0.0, self.payload.remaining - dt / 1000.0)
+            if self.payload.remaining <= 0.05:
+                self.kind = "TimerComplete"
 
 def test_source_has_kinds() -> None:
     for k in KINDS:
         assert f"    {k}" in CS or f"{k}," in CS, k
-    assert "Sanitize" in CS and "DemoNext" in CS
+    assert "Sanitize" in CS and "DemoNext" not in CS
+    assert "DemoScript" in DEMO and "OverlayCommand.Notify" in DEMO
     assert 'FillHex = "#080808"' in TOKENS and 'AccentHex = "#3D9CF0"' in TOKENS
     assert "MorphMs = 250" in TOKENS
     assert "new WUC.Compositor()" not in CS
@@ -95,12 +102,21 @@ def test_notify_timer_auto_return() -> None:
     m.dispatch("Notify", Payload(title="N")); m.tick(500); assert m.kind == "Notification"
     m.tick(500); assert m.kind == "Media"
 
+def test_timer_complete() -> None:
+    m = Machine(); m.dispatch("SetTimer", Payload(remaining=0.2)); m.tick(300); assert m.kind == "TimerComplete"
+
 def test_no_new_compositor_in_overlay() -> None:
     assert not re.search(r"new\s+(WUC\.)?Compositor\(\)", CS)
 
+def test_core_queue_and_ipc() -> None:
+    assert "NotificationRequest" in CORE and "NotificationId" in CORE and "NotificationAction" in CORE
+    assert "Replace" in QUEUE and "Dismiss" in QUEUE and "PopFront" in QUEUE
+    assert "NamedPipeServerStream" in IPC and "NotifyIsland" in IPC
+    assert "PrefsStore" not in CS
+
 def main() -> int:
     failed = 0
-    for fn in (test_source_has_kinds, test_transitions, test_invalid_data, test_notify_timer_auto_return, test_no_new_compositor_in_overlay):
+    for fn in (test_source_has_kinds, test_transitions, test_invalid_data, test_notify_timer_auto_return, test_timer_complete, test_no_new_compositor_in_overlay, test_core_queue_and_ipc):
         try:
             fn(); print(f"PASS  {fn.__name__}")
         except AssertionError as exc:

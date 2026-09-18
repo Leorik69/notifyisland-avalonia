@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
+using NotifyIsland.Core;
 
 namespace NotifyIsland;
 
@@ -23,13 +24,14 @@ internal static class Win32Overlay
     {
         try
         {
-            var hwnd = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
-            if (hwnd == IntPtr.Zero) return;
+            var hwnd = window.TryGetPlatformHandle()?.Handle ?? nint.Zero;
+            if (hwnd == nint.Zero) return;
             var dark = 1;
             DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
         }
-        catch
+        catch (Exception ex)
         {
+            IslandLog.Write("win32", "chrome " + ex.Message);
         }
     }
 
@@ -44,20 +46,21 @@ internal static class Win32Overlay
     {
         try
         {
-            var hwnd = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
-            if (hwnd == IntPtr.Zero) return;
+            var hwnd = window.TryGetPlatformHandle()?.Handle ?? nint.Zero;
+            if (hwnd == nint.Zero) return;
             var layer = PrefsStore.Current.Layer;
             window.Topmost = layer == "topmost";
             var after = layer switch
             {
-                "desktop" => (IntPtr)HwndBottom,
-                "normal" => (IntPtr)HwndNotopmost,
-                _ => (IntPtr)HwndTopmost
+                "desktop" => (nint)HwndBottom,
+                "normal" => (nint)HwndNotopmost,
+                _ => (nint)HwndTopmost
             };
             SetWindowPos(hwnd, after, 0, 0, 0, 0, SwpNomove | SwpNosize | SwpNoactivate);
         }
-        catch
+        catch (Exception ex)
         {
+            IslandLog.Write("win32", "layer " + ex.Message);
         }
     }
 
@@ -65,11 +68,11 @@ internal static class Win32Overlay
     {
         try
         {
-            var hwnd = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
-            if (hwnd == IntPtr.Zero) return;
+            var hwnd = window.TryGetPlatformHandle()?.Handle ?? nint.Zero;
+            if (hwnd == nint.Zero) return;
 
-            var ex = GetWindowLongPtr(hwnd, GwlExstyle);
-            SetWindowLongPtr(hwnd, GwlExstyle, ex | (IntPtr)(WsExNoactivate | WsExToolwindow | WsExLayered));
+            var ex = GetWindowLongPtrSafe(hwnd, GwlExstyle);
+            SetWindowLongPtrSafe(hwnd, GwlExstyle, ex | (nint)(WsExNoactivate | WsExToolwindow | WsExLayered));
 
             var margins = new Margins { CxLeftWidth = -1, CxRightWidth = -1, CyTopHeight = -1, CyBottomHeight = -1 };
             DwmExtendFrameIntoClientArea(hwnd, ref margins);
@@ -87,9 +90,66 @@ internal static class Win32Overlay
             DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
             ApplyLayer(window);
         }
-        catch
+        catch (Exception ex)
         {
+            IslandLog.Write("win32", "noactivate " + ex.Message);
         }
+    }
+
+    public static void ApplyPillRegion(Window window, double dipX, double dipY, double dipW, double dipH, double radiusDip)
+    {
+        try
+        {
+            var hwnd = window.TryGetPlatformHandle()?.Handle ?? nint.Zero;
+            if (hwnd == nint.Zero) return;
+            var s = window.RenderScaling;
+            var x = (int)Math.Round(dipX * s);
+            var y = (int)Math.Round(dipY * s);
+            var r = (int)Math.Round((dipX + dipW) * s);
+            var b = (int)Math.Round((dipY + dipH) * s);
+            var rad = Math.Max(2, (int)Math.Round(radiusDip * 2 * s));
+            var rgn = CreateRoundRectRgn(x, y, Math.Max(x + 1, r), Math.Max(y + 1, b), rad, rad);
+            if (rgn == nint.Zero) return;
+            SetWindowRgn(hwnd, rgn, true);
+        }
+        catch (Exception ex)
+        {
+            IslandLog.Write("win32", "rgn " + ex.Message);
+        }
+    }
+
+    public static void ClearRegion(Window window)
+    {
+        try
+        {
+            var hwnd = window.TryGetPlatformHandle()?.Handle ?? nint.Zero;
+            if (hwnd == nint.Zero) return;
+            SetWindowRgn(hwnd, nint.Zero, true);
+        }
+        catch (Exception ex)
+        {
+            IslandLog.Write("win32", "rgn-clear " + ex.Message);
+        }
+    }
+
+    private static nint GetWindowLongPtrSafe(nint hwnd, int index)
+    {
+        Marshal.SetLastPInvokeError(0);
+        var v = GetWindowLongPtr(hwnd, index);
+        var err = Marshal.GetLastWin32Error();
+        if (v == nint.Zero && err != 0)
+            IslandLog.Write("win32", "GetWindowLongPtr err=" + err);
+        return v;
+    }
+
+    private static nint SetWindowLongPtrSafe(nint hwnd, int index, nint value)
+    {
+        Marshal.SetLastPInvokeError(0);
+        var v = SetWindowLongPtr(hwnd, index, value);
+        var err = Marshal.GetLastWin32Error();
+        if (v == nint.Zero && err != 0)
+            IslandLog.Write("win32", "SetWindowLongPtr err=" + err);
+        return v;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -101,18 +161,24 @@ internal static class Win32Overlay
         public int CyBottomHeight;
     }
 
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
-    private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    private static extern nint GetWindowLongPtr(nint hWnd, int nIndex);
 
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
-    private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern nint SetWindowLongPtr(nint hWnd, int nIndex, nint dwNewLong);
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+    private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 
     [DllImport("dwmapi.dll")]
-    private static extern int DwmExtendFrameIntoClientArea(IntPtr hWnd, ref Margins pMarInset);
+    private static extern int DwmExtendFrameIntoClientArea(nint hWnd, ref Margins pMarInset);
 
     [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+    private static extern int DwmSetWindowAttribute(nint hwnd, int attr, ref int attrValue, int attrSize);
+
+    [DllImport("gdi32.dll")]
+    private static extern nint CreateRoundRectRgn(int x1, int y1, int x2, int y2, int w, int h);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowRgn(nint hWnd, nint hRgn, bool bRedraw);
 }

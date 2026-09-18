@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="title" xml:space="preserve"><value>NotifyIsland settings</value></data>
+  <data name="heading" xml:space="preserve"><value>Capsule</value></data>
+  <data name="lang" xml:space="preserve"><value>UI language</value></data>
+  <data name="lang_h" xml:space="preserve"><value>Russian is the default. English is a real string table.</value></data>
+  <data name="appearance" xml:space="preserve"><value>Look</value></data>
+  <data name="expand_speed" xml:space="preserve"><value>Expand speed</value></data>
+  <data name="expand_speed_h" xml:space="preserve"><value>Keep it snappy. 167 ms Fast, or 250 ms if the width jump is large.</value></data>
+  <data name="collapse_speed" xml:space="preserve"><value>Collapse speed</value></data>
+  <data name="collapse_speed_h" xml:space="preserve"><value>Slower than expand. Fade text, then shrink width.</value></data>
+  <data name="motion_extra" xml:space="preserve"><value>Extra motion</value></data>
+  <data name="motion_extra_h" xml:space="preserve"><value>Invoke is a 0.98 scale. Breathe is glow-only.</value></data>
+  <data name="saved" xml:space="preserve"><value>Saved to </value></data>
+  <data name="screen" xml:space="preserve"><value>Display</value></data>
+  <data name="quiet" xml:space="preserve"><value>Pause when Focus Assist or fullscreen</value></data>
+  <data name="reduce_motion" xml:space="preserve"><value>Reduce motion</value></data>
+  <data name="diagnostics" xml:space="preserve"><value>Diagnostics HUD</value></data>
+</root>

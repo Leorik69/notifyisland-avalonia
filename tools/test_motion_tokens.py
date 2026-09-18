@@ -24,6 +24,8 @@ def main() -> int:
         ("_commitDelay", SETTINGS),
         ("WeatherKey", WEATHER),
         ("UiLanguage", PREFS),
+        ("RenderMode", PREFS),
+        ("FixedHostMorph", ANIM),
     ]
     if ANIM.count("ApplyNoActivate") != 1:
         print("FAIL  ApplyNoActivate should run once at morph end")

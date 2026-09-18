@@ -17,6 +17,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: python tools/test_overlay_states.py
+      - run: python tools/test_p13_roadmap.py
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
       - name: Pack zip and setup.exe

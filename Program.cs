@@ -10,6 +10,10 @@ internal static class Program
     public static bool OpenSettingsOnStart { get; private set; }
     public static bool MotionDebug { get; private set; }
     public static bool ForceDirectComposition { get; private set; }
+    public static bool Diagnostics { get; private set; }
+    public static string? RenderModeOverride { get; private set; }
+    public static string? SettingsShotPath { get; private set; }
+    public static string? DumpFramesDir { get; private set; }
 
     public static string CompositionLabel =>
         ForceDirectComposition ? "DirectComposition" : "WinUIComposition+DComp-fallback";
@@ -30,6 +34,21 @@ internal static class Program
             }
             if (string.Equals(a, "--dcomp", StringComparison.OrdinalIgnoreCase))
                 ForceDirectComposition = true;
+            if (string.Equals(a, "--diagnostics", StringComparison.OrdinalIgnoreCase))
+                Diagnostics = true;
+            if (a.StartsWith("--render-mode=", StringComparison.OrdinalIgnoreCase))
+                RenderModeOverride = a.Split('=')[1];
+            if (a.StartsWith("--settings-shot=", StringComparison.OrdinalIgnoreCase))
+            {
+                SettingsShotPath = a.Split('=', 2)[1];
+                OpenSettingsOnStart = true;
+            }
+            if (a.StartsWith("--dump-frames=", StringComparison.OrdinalIgnoreCase))
+            {
+                DumpFramesDir = a.Split('=', 2)[1];
+                MotionDebug = true;
+                DemoMode = true;
+            }
         }
     }
 
@@ -38,6 +57,19 @@ internal static class Program
     {
         AbsorbArgs(args);
         AbsorbArgs(Environment.GetCommandLineArgs());
+        if (!string.IsNullOrEmpty(SettingsShotPath))
+        {
+            try
+            {
+                var d = System.IO.Path.GetDirectoryName(SettingsShotPath);
+                if (!string.IsNullOrEmpty(d)) System.IO.Directory.CreateDirectory(d);
+                System.IO.File.WriteAllText(SettingsShotPath + ".boot.txt",
+                    "shot=" + SettingsShotPath + " open=" + OpenSettingsOnStart);
+            }
+            catch
+            {
+            }
+        }
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

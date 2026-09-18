@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
+using NotifyIsland.Core;
 using Avalonia;
 using Avalonia.Animation;
 using Avalonia.Controls;
@@ -85,7 +86,7 @@ internal static class IslandAnimator
                 new KeyFrame { Cue = new Cue(1), Setters = { new Setter(Visual.OpacityProperty, 0.22) } },
             }
         };
-        try { await anim.RunAsync(glow); } catch { }
+        try { await anim.RunAsync(glow); } catch (Exception ex) { IslandLog.Write("anim", ex.Message); }
     }
 
     public static async void TickFade(Control target)
@@ -211,19 +212,14 @@ internal sealed class HwndMorph
             _window.Height = _hostH;
             _window.Position = OverlayPlacement.Compute(_window, _hostW, _hostH);
         }
-        pill.Width = _hostW;
-        pill.Height = _hostH;
-        pill.RenderTransformOrigin = towardBadge && collapse
-            ? new RelativePoint(0.12, 0.5, RelativeUnit.Relative)
-            : new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
-        _scale.ScaleX = Math.Clamp(_w0 / Math.Max(1, _hostW), 0.2, 1);
-        _scale.ScaleY = 1;
-        pill.RenderTransform = _scale;
+        pill.Width = _w0;
+        pill.Height = _h0;
+        pill.RenderTransform = null;
         if (collapse && fadeContent is not null)
         {
             IslandAnimator.WireOpacity(fadeContent, Motion.FadeMs);
             fadeContent.Opacity = 0;
-            try { await Task.Delay(Motion.FadeMs); } catch { }
+            try { await Task.Delay(Motion.FadeMs); } catch (Exception ex) { IslandLog.Write("anim", ex.Message); }
             if (!_running) return;
         }
         _clock.Restart();
@@ -271,7 +267,13 @@ internal sealed class HwndMorph
             ? Motion.SoftOut.Ease(raw)
             : Motion.PointToPoint.Ease(raw);
         var visW = _w0 + (_w1 - _w0) * eased;
-        _scale.ScaleX = Math.Clamp(visW / Math.Max(1, _hostW), 0.2, 1);
+        if (_pill is not null)
+        {
+            _pill.Width = visW;
+            _pill.Height = _h0 + (_h1 - _h0) * eased;
+            if (_pill is Border pb)
+                pb.CornerRadius = new CornerRadius(Math.Max(12, _pill.Height / 2));
+        }
         if (raw < 1) return;
         _running = false;
         _clock.Stop();
@@ -283,13 +285,12 @@ internal sealed class HwndMorph
         {
             _pill.Width = _w1;
             _pill.Height = _h1;
-            _scale.ScaleX = 1;
-            _pill.RenderTransform = _scale;
+            _pill.RenderTransform = null;
         }
         Win32Overlay.ApplyNoActivate(_window);
         var avg = _frames > 1 ? _dtSum / (_frames - 1) : 0;
         LastTiming = string.Format(CultureInfo.InvariantCulture,
-            "kind={0} frames={1} avgDt={2:0.0}ms min={3:0.0} max={4:0.0} dropped={5} dur={6}ms dW={7:0} hwndStart={8} hwndEnd={9} innerScale={10} fadeFirst={11} ease={12} restarts={13} comp={14} target=16.7ms",
+            "kind={0} path=resizeHost frames={1} avgDt={2:0.0}ms min={3:0.0} max={4:0.0} dropped={5} dur={6}ms dW={7:0} hwndStart={8} hwndEnd={9} innerScale={10} fadeFirst={11} ease={12} restarts={13} comp={14} target=16.7ms",
             _collapse ? "collapse" : "expand", _frames, avg, _dtMin >= 999 ? 0 : _dtMin, _dtMax, _dropped, _dur,
             _w1 - _w0, _hwndStart, _hwndEnd, _innerLayout, _collapse, _collapse ? "SoftOut" : "PointToPoint",
             _restarts, Program.CompositionLabel);
@@ -299,11 +300,141 @@ internal sealed class HwndMorph
 
     public static string LogPath => Path.Combine(Path.GetTempPath(), "notifyisland-morph.log");
 
+    internal static void LogLine(string line) => Append(line);
+
     private static void Append(string line)
     {
         try
         {
             File.AppendAllText(LogPath, DateTime.Now.ToString("HH:mm:ss.fff ", CultureInfo.InvariantCulture) + line + Environment.NewLine);
+        }
+        catch
+        {
+        }
+    }
+}
+
+internal sealed class FixedHostMorph
+{
+    private readonly Window _window;
+    private readonly Stopwatch _clock = new();
+    private bool _running;
+    private int _frames, _dropped, _dumpI;
+    private double _dtMin = 999, _dtMax, _dtSum;
+    private long _lastMs;
+    private int _dur;
+
+    public bool IsRunning => _running;
+    public static string LastTiming { get; private set; } = "";
+    public event Action? Completed;
+
+    public FixedHostMorph(Window window) => _window = window;
+
+    public void To(Control pill, Visual? fade, double fromW, double toW, double toH, int ms, bool collapse, double originX = 0.5)
+    {
+        _ = Run(pill, fade, fromW, toW, toH, ms, collapse);
+    }
+
+    private async System.Threading.Tasks.Task Run(Control pill, Visual? fade, double fromW, double toW, double toH, int ms, bool collapse)
+    {
+        _running = true;
+        _frames = 0;
+        _dropped = 0;
+        _dtMin = 999;
+        _dtMax = 0;
+        _dtSum = 0;
+        _dur = Math.Max(16, ms);
+        ClearScale(pill);
+        if (pill is Border b0)
+            ApplyGeom(b0, fromW, toH);
+        if (collapse && fade is not null)
+        {
+            IslandAnimator.WireOpacity(fade, Motion.FadeMs);
+            fade.Opacity = 0;
+            await System.Threading.Tasks.Task.Delay(Motion.FadeMs);
+        }
+        _clock.Restart();
+        _lastMs = 0;
+        while (_running)
+        {
+            await System.Threading.Tasks.Task.Delay(16);
+            if (!_running) break;
+            var now = _clock.ElapsedMilliseconds;
+            if (_frames > 0)
+            {
+                var dt = now - _lastMs;
+                _dtMin = Math.Min(_dtMin, dt);
+                _dtMax = Math.Max(_dtMax, dt);
+                _dtSum += dt;
+                if (dt > 20.7) _dropped++;
+            }
+            _lastMs = now;
+            _frames++;
+            var raw = Math.Min(1, now / (double)_dur);
+            var eased = collapse ? Motion.SoftOut.Ease(raw) : Motion.PointToPoint.Ease(raw);
+            var w = fromW + (toW - fromW) * eased;
+            if (pill is Border b)
+                ApplyGeom(b, w, toH);
+            Dump(pill, w);
+            if (raw >= 1) break;
+        }
+        if (pill is Border b1)
+            ApplyGeom(b1, toW, toH);
+        ClearScale(pill);
+        _running = false;
+        var avg = _frames > 1 ? _dtSum / (_frames - 1) : 0;
+        LastTiming = string.Format(CultureInfo.InvariantCulture,
+            "kind={0} path=fixedHost geom=widthClip scale=False frames={1} avgDt={2:0.0}ms min={3:0.0} max={4:0.0} dropped={5} dur={6}ms dW={7:0} hwndResize=False hwndMove=False settleRgn=True ease={8} comp={9} target=16.7ms",
+            collapse ? "collapse" : "expand", _frames, avg, _dtMin >= 999 ? 0 : _dtMin, _dtMax, _dropped, _dur,
+            toW - fromW, collapse ? "SoftOut" : "PointToPoint", Program.CompositionLabel);
+        HwndMorph.LogLine(LastTiming);
+        Completed?.Invoke();
+    }
+
+    private void ApplyGeom(Border pill, double w, double h)
+    {
+        w = Math.Max(32, w);
+        h = Math.Max(24, h);
+        var r = h / 2;
+        pill.Width = w;
+        pill.Height = h;
+        pill.CornerRadius = new CornerRadius(r);
+        pill.ClipToBounds = true;
+        pill.Clip = null;
+        pill.RenderTransform = null;
+        if (_window is OverlayWindow ov)
+            ov.PlacePillInsideStrip(w, h);
+    }
+
+    private static void ClearScale(Control pill)
+    {
+        pill.RenderTransform = null;
+        try
+        {
+            var cv = ElementComposition.GetElementVisual(pill);
+            if (cv is not null) cv.Scale = Vector3.One;
+        }
+        catch
+        {
+        }
+    }
+
+    private void Dump(Control pill, double w)
+    {
+        var dir = Program.DumpFramesDir;
+        if (string.IsNullOrWhiteSpace(dir) || _dumpI > 240) return;
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var pw = Math.Max(1, (int)Math.Ceiling(pill.Bounds.Width > 1 ? pill.Bounds.Width : w));
+            var ph = Math.Max(1, (int)Math.Ceiling(pill.Bounds.Height > 1 ? pill.Bounds.Height : 40));
+            using var bmp = new Avalonia.Media.Imaging.RenderTargetBitmap(new PixelSize(pw, ph), new Avalonia.Vector(96, 96));
+            bmp.Render(pill);
+            bmp.Save(Path.Combine(dir, "p" + _dumpI.ToString("0000", CultureInfo.InvariantCulture) + ".png"));
+            File.AppendAllText(Path.Combine(dir, "geom.txt"),
+                _dumpI.ToString(CultureInfo.InvariantCulture) + " w=" + w.ToString("0.0", CultureInfo.InvariantCulture) +
+                " bounds=" + pill.Bounds + Environment.NewLine);
+            _dumpI++;
         }
         catch
         {

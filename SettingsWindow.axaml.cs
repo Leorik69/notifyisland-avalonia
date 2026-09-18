@@ -1,9 +1,14 @@
 using System;
+using System.IO;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using NotifyIsland.Core;
 
 namespace NotifyIsland;
 
@@ -31,7 +36,7 @@ public partial class SettingsWindow : Window
         ExpandSpeedBox.ItemsSource = new[] { "Fast 167", "Normal 250", "Slow 333" };
         CollapseSpeedBox.ItemsSource = new[] { "Fast 250", "Normal 333", "Slow 400" };
         LangBox.ItemsSource = new[] { "Русский", "English", "System / Система" };
-        ClockBox.ItemsSource = new[] { "HH:mm", "HH:mm:ss", "h:mm tt" };
+        ClockBox.ItemsSource = new[] { "HH:mm", "h:mm tt" };
         DensityBox.ItemsSource = new[] { "Comfort", "Compact" };
         BadgeStyleBox.ItemsSource = new[] { "Icon + count", "Count only", "Dot" };
         TextSizeBox.ItemsSource = new[] { "Small", "Medium", "Large" };
@@ -41,6 +46,7 @@ public partial class SettingsWindow : Window
         AnchorHBox.ItemsSource = new[] { "Left", "Center", "Right" };
         AnchorVBox.ItemsSource = new[] { "Top", "Center", "Bottom" };
         LayerBox.ItemsSource = new[] { "Always on top", "Normal window", "Desktop (HWND_BOTTOM)" };
+        RenderModeBox.ItemsSource = new[] { "fixedHost", "resizeHost" };
         LoadFromPrefs();
         WeatherHub.Changed += OnWeatherStatus;
         Closed += (_, _) =>
@@ -55,8 +61,78 @@ public partial class SettingsWindow : Window
         IslandAnimator.WireChrome(PreviewPill);
         ApplyLang();
         _boot = true;
+        ApplyNumericChrome();
         PaintPreview();
-        PathHint.Text = "Saved to " + PrefsStore.ActivePath;
+        PathHint.Text = Ui.T("saved") + PrefsStore.ActivePath;
+        if (!string.IsNullOrEmpty(Program.SettingsShotPath))
+        {
+            WhatsNewBox.IsVisible = false;
+            try { File.WriteAllText(Program.SettingsShotPath + ".log.txt", "ctor " + Program.SettingsShotPath); } catch { }
+            Opened += (_, _) => DispatcherTimer.RunOnce(CaptureSettingsShot, TimeSpan.FromMilliseconds(900));
+        }
+    }
+
+    private void ApplyNumericChrome()
+    {
+        var large = TextSizeBox.SelectedIndex == 2 || !string.IsNullOrEmpty(Program.SettingsShotPath);
+        var w = large ? 200.0 : 172.0;
+        var unit = large ? 56.0 : 48.0;
+        var fs = large ? 16.0 : 14.0;
+        foreach (var g in this.GetLogicalDescendants().OfType<Grid>())
+        {
+            if (g.ColumnDefinitions.Count != 3) continue;
+            if (g.ColumnDefinitions[1].Width.IsStar) continue;
+            g.ColumnDefinitions[1].Width = new GridLength(w);
+            g.ColumnDefinitions[2].Width = new GridLength(unit);
+        }
+        foreach (var n in this.GetLogicalDescendants().OfType<NumericUpDown>())
+        {
+            n.MinWidth = w;
+            n.MinHeight = large ? 42 : 36;
+            n.FontSize = fs;
+            n.HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Right;
+        }
+        foreach (var u in this.GetLogicalDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("unit")))
+            u.FontSize = large ? 15 : 13;
+        if (large)
+        {
+            MinWidth = 620;
+            Width = Math.Max(Width, 680);
+        }
+    }
+
+    private int _shotTries;
+
+    private void CaptureSettingsShot()
+    {
+        var path = Program.SettingsShotPath;
+        if (string.IsNullOrWhiteSpace(path)) return;
+        try
+        {
+            File.AppendAllText(path + ".log.txt", "\ntry " + _shotTries + " bounds=" + Bounds);
+            AppearanceExp.IsExpanded = true;
+            OpacityNum.BringIntoView();
+            GlassNum.BringIntoView();
+            UpdateLayout();
+            if (_shotTries++ < 2)
+            {
+                DispatcherTimer.RunOnce(CaptureSettingsShot, TimeSpan.FromMilliseconds(280));
+                return;
+            }
+            var w = Math.Max(640, (int)Math.Ceiling(Bounds.Width));
+            var h = Math.Max(400, (int)Math.Min(Math.Ceiling(Bounds.Height), 920));
+            using var bmp = new RenderTargetBitmap(new PixelSize(w, h), new Vector(96, 96));
+            bmp.Render(this);
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            bmp.Save(path);
+            File.AppendAllText(path + ".log.txt", "\nsaved " + new FileInfo(path).Length);
+        }
+        catch (Exception ex)
+        {
+            File.WriteAllText(path + ".err.txt", ex.ToString());
+        }
+        Environment.Exit(0);
     }
 
     private void Pair(Slider s, NumericUpDown n, double v)
@@ -86,7 +162,7 @@ public partial class SettingsWindow : Window
         Pair(CollapseMsSlider, CollapseMsNum, p.CollapseMs);
         ExpandSpeedBox.SelectedIndex = p.ExpandMs <= 180 ? 0 : p.ExpandMs >= 300 ? 2 : 1;
         CollapseSpeedBox.SelectedIndex = p.CollapseMs <= 270 ? 0 : p.CollapseMs >= 370 ? 2 : 1;
-        ClockBox.SelectedIndex = p.ClockFormat switch { "HH:mm:ss" => 1, "h:mm tt" => 2, _ => 0 };
+        ClockBox.SelectedIndex = p.ClockFormat == "h:mm tt" ? 1 : 0;
         DensityBox.SelectedIndex = p.Density == "compact" ? 1 : 0;
         BadgeStyleBox.SelectedIndex = p.BadgeStyle switch { "count" => 1, "dot" => 2, _ => 0 };
         TextSizeBox.SelectedIndex = p.TextScale switch { "small" => 0, "large" => 2, _ => 1 };
@@ -117,6 +193,14 @@ public partial class SettingsWindow : Window
         Pair(OffXSlider, OffXNum, p.OffsetX);
         Pair(OffYSlider, OffYNum, p.OffsetY);
         LayerBox.SelectedIndex = p.Layer switch { "normal" => 1, "desktop" => 2, _ => 0 };
+        FillScreens();
+        ScreenBox.SelectedIndex = Math.Clamp(p.ScreenIndex + 1, 0, Math.Max(0, itemsCount(ScreenBox) - 1));
+        QuietFocusBox.IsChecked = p.SuppressFocusAssist;
+        QuietFullBox.IsChecked = p.SuppressFullscreen;
+        ReduceMotionBox.IsChecked = p.ReduceMotion;
+        DiagBox.IsChecked = p.Diagnostics;
+        RenderModeBox.SelectedIndex = p.RenderMode == "resizeHost" ? 1 : 0;
+        WhatsNewBox.IsVisible = p.LastSeenVersion != "1.3.2";
         Pair(NotifySlider, NotifyNum, p.NotifyDurationMs);
         Pair(ChatSlider, ChatNum, p.ChatDurationMs);
         Pair(CallSlider, CallNum, p.CallDurationMs);
@@ -143,11 +227,27 @@ public partial class SettingsWindow : Window
             : "Toasts: Off";
     }
 
+    private void FillScreens()
+    {
+        var items = new System.Collections.Generic.List<string> { "Primary (auto)" };
+        if (IslandHost.Overlay?.Screens is { } screens)
+        {
+            var i = 0;
+            foreach (var s in screens.All)
+            {
+                items.Add("Display " + i + " · " + s.Bounds.Width + "x" + s.Bounds.Height + " @" + s.Scaling.ToString("0.##") + "x");
+                i++;
+            }
+        }
+        ScreenBox.ItemsSource = items;
+    }
+
     private void OnWeatherStatus() => Dispatcher.UIThread.Post(() => WeatherStatus.Text = "Weather: " + WeatherHub.Status);
 
     private void OnChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (!_boot) return;
+        ApplyNumericChrome();
         Commit();
         IslandAnimator.FastInvoke(PreviewPill);
     }
@@ -262,7 +362,7 @@ public partial class SettingsWindow : Window
             p.UiLanguage = LangBox.SelectedIndex switch { 1 => "en", 2 => "system", _ => "ru" };
             p.ExpandMs = (int)ExpandMsSlider.Value;
             p.CollapseMs = (int)CollapseMsSlider.Value;
-            p.ClockFormat = ClockBox.SelectedIndex switch { 1 => "HH:mm:ss", 2 => "h:mm tt", _ => "HH:mm" };
+            p.ClockFormat = ClockBox.SelectedIndex == 1 ? "h:mm tt" : "HH:mm";
             p.Density = DensityBox.SelectedIndex == 1 ? "compact" : "comfort";
             p.BadgeStyle = BadgeStyleBox.SelectedIndex switch { 1 => "count", 2 => "dot", _ => "icon-count" };
             p.WeatherPosition = WeatherPosBox.SelectedIndex switch { 1 => "hide", 2 => "expand", _ => "right" };
@@ -294,6 +394,12 @@ public partial class SettingsWindow : Window
             p.OffsetX = OffXSlider.Value;
             p.OffsetY = OffYSlider.Value;
             p.Layer = LayerBox.SelectedIndex switch { 1 => "normal", 2 => "desktop", _ => "topmost" };
+            p.ScreenIndex = ScreenBox.SelectedIndex - 1;
+            p.SuppressFocusAssist = QuietFocusBox.IsChecked == true;
+            p.SuppressFullscreen = QuietFullBox.IsChecked == true;
+            p.ReduceMotion = ReduceMotionBox.IsChecked == true;
+            p.Diagnostics = DiagBox.IsChecked == true;
+            p.RenderMode = RenderModeBox.SelectedIndex == 1 ? "resizeHost" : "fixedHost";
             p.NotifyDurationMs = (int)NotifySlider.Value;
             p.ChatDurationMs = (int)ChatSlider.Value;
             p.CallDurationMs = (int)CallSlider.Value;
@@ -318,7 +424,7 @@ public partial class SettingsWindow : Window
         _ = UpdateToastAsync();
         WeatherStatus.Text = "Weather: " + WeatherHub.Status;
         PaintPreview();
-        PathHint.Text = "Saved to " + PrefsStore.ActivePath;
+        PathHint.Text = Ui.T("saved") + PrefsStore.ActivePath;
     }
 
     private void OnExpandPreset(object? sender, SelectionChangedEventArgs e)
@@ -340,15 +446,101 @@ public partial class SettingsWindow : Window
         Title = Ui.T("title");
         HeadingText.Text = Ui.T("heading");
         AppearanceExp.Header = Ui.T("appearance");
+        CapsuleExp.Header = Ui.T("capsule");
+        PositionExp.Header = Ui.T("position");
+        WeatherExp.Header = Ui.T("weather");
+        SoundsExp.Header = Ui.T("sounds");
+        NotifyExp.Header = Ui.T("notify");
         LangLabel.Text = Ui.T("lang");
         LangHint.Text = Ui.T("lang_h");
+        RenderModeLabel.Text = Ui.T("render_mode");
+        RenderModeHint.Text = Ui.T("render_mode_h");
+        var rm = RenderModeBox.SelectedIndex;
+        RenderModeBox.ItemsSource = new[] { Ui.T("render_fixed"), Ui.T("render_resize") };
+        RenderModeBox.SelectedIndex = rm < 0 ? 0 : rm;
+        PaletteLabel.Text = Ui.T("palette");
+        AccentLabel.Text = Ui.T("accent");
+        FontLabel.Text = Ui.T("font");
+        IconsLabel.Text = Ui.T("icons");
+        OpacityLabel.Text = Ui.T("opacity");
+        GlassLabel.Text = Ui.T("glass");
+        BorderLabel.Text = Ui.T("border");
+        GlowLabel.Text = Ui.T("glow");
+        RadiusLabel.Text = Ui.T("radius");
         MotionExtraLabel.Text = Ui.T("motion_extra");
         MotionExtraHint.Text = Ui.T("motion_extra_h");
         ExpandSpeedLabel.Text = Ui.T("expand_speed");
         ExpandSpeedHint.Text = Ui.T("expand_speed_h");
         CollapseSpeedLabel.Text = Ui.T("collapse_speed");
         CollapseSpeedHint.Text = Ui.T("collapse_speed_h");
+        ClockLabel.Text = Ui.T("clock");
+        DensityLabel.Text = Ui.T("density");
+        IdleWLabel.Text = Ui.T("idle_w");
+        IdleHLabel.Text = Ui.T("idle_h");
+        ExpandHeightBox.Content = Ui.T("expand_h");
+        MinWLabel.Text = Ui.T("min_w");
+        MaxWLabel.Text = Ui.T("max_w");
+        TextSizeLabel.Text = Ui.T("text_size");
+        IconSizeLabel.Text = Ui.T("icon_size");
+        BadgeBox.Content = Ui.T("badge");
+        BadgeStyleLabel.Text = Ui.T("badge_style");
+        AnchorHLabel.Text = Ui.T("anchor_h");
+        AnchorVLabel.Text = Ui.T("anchor_v");
+        OffXLabel.Text = Ui.T("off_x");
+        OffYLabel.Text = Ui.T("off_y");
+        LayerLabel.Text = Ui.T("layer");
+        LayerHint.Text = Ui.T("layer_h");
+        ScreenLabel.Text = Ui.T("display");
+        AutoBox.Content = Ui.T("autostart");
+        ToastBox.Content = Ui.T("toasts");
+        ToastHint.Text = Ui.T("toasts_h");
+        HoverBox.Content = Ui.T("hover");
+        HoverHint.Text = Ui.T("hover_h");
+        OpenToastBtn.Content = Ui.T("open_toast");
+        OpenPrivacyBtn.Content = Ui.T("open_privacy");
+        BadgeAppsLabel.Text = Ui.T("badge_apps");
+        BadgeAppsHint.Text = Ui.T("badge_apps_h");
+        BadgeAppsBox.Watermark = Ui.T("badge_apps");
+        NotifyMsLabel.Text = Ui.T("notify_ms");
+        ChatMsLabel.Text = Ui.T("chat_ms");
+        CallMsLabel.Text = Ui.T("call_ms");
+        ClickLabel.Text = Ui.T("click");
+        QuietFocusBox.Content = Ui.T("quiet_focus");
+        QuietFullBox.Content = Ui.T("quiet_full");
+        ReduceMotionBox.Content = Ui.T("reduce_motion");
+        DiagBox.Content = Ui.T("diagnostics");
+        WeatherBox.Content = Ui.T("weather_on");
+        LocationBox.Content = Ui.T("location");
+        CityBox.Watermark = Ui.T("city");
+        WxMinLabel.Text = Ui.T("wx_min");
+        SoundBox.Content = Ui.T("sounds_on");
+        SoundNotifyBox.Content = Ui.T("snd_notify");
+        SoundChatBox.Content = Ui.T("snd_chat");
+        SoundErrorBox.Content = Ui.T("snd_error");
+        SoundCompleteBox.Content = Ui.T("snd_complete");
+        CueVolLabel.Text = Ui.T("cue_vol");
+        PreviewSoundBtn.Content = Ui.T("preview_sound");
+        SysVolLabel.Text = Ui.T("sys_vol");
+        SysMuteBox.Content = Ui.T("sys_mute");
+        PreviewAnimBtn.Content = Ui.T("preview_anim");
+        WhatsNewTitle.Text = Ui.T("whats_new_title");
+        WhatsNewBody.Text = Ui.T("whats_new_body");
+        WhatsNewOk.Content = Ui.T("whats_new_ok");
         PathHint.Text = Ui.T("saved") + PrefsStore.ActivePath;
+        foreach (var u in this.GetLogicalDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("unit")))
+        {
+            var t = u.Text ?? "";
+            if (t is "%" or "pct") u.Text = Ui.T("unit_pct");
+            else if (t is "px") u.Text = Ui.T("unit_px");
+            else if (t is "мс" or "ms") u.Text = Ui.T("unit_ms");
+            else if (t is "мин" or "min") u.Text = Ui.T("unit_min");
+        }
+    }
+
+    private void OnWhatsNewOk(object? sender, RoutedEventArgs e)
+    {
+        PrefsStore.Mutate(p => p.LastSeenVersion = "1.3.2");
+        WhatsNewBox.IsVisible = false;
     }
 
     private void OnCheck(object? sender, RoutedEventArgs e)
@@ -361,8 +553,8 @@ public partial class SettingsWindow : Window
     {
         await ToastHub.RefreshAsync(PrefsStore.Current.ListenToasts);
         ToastStatus.Text = PrefsStore.Current.ListenToasts
-            ? "Toasts: " + ToastHub.Status + " — " + ToastHub.Detail + (ToastHub.Allowed ? "" : " Not faking Allowed.")
-            : "Toasts: Off";
+            ? Ui.T("toast_status") + ToastHub.Status + (ToastHub.Allowed ? "" : " — " + Ui.T("toast_denied"))
+            : Ui.T("toast_off");
         _ = AppBadgeHub.RefreshAsync();
     }
 
@@ -388,7 +580,7 @@ public partial class SettingsWindow : Window
     {
         if (!SystemVolume.TryGet(out var s, out var mute))
         {
-            SysVolStatus.Text = "System volume: " + SystemVolume.Status;
+            SysVolStatus.Text = Ui.T("sys_vol_st") + SystemVolume.Status;
             return;
         }
         _syncing = true;
@@ -396,7 +588,7 @@ public partial class SettingsWindow : Window
         SysVolNum.Value = (decimal)s;
         SysMuteBox.IsChecked = mute;
         _syncing = false;
-        SysVolStatus.Text = "System volume: " + SystemVolume.Status;
+        SysVolStatus.Text = Ui.T("sys_vol_st") + SystemVolume.Status;
     }
 
     private void OnSysVol(object? sender, AvaloniaPropertyChangedEventArgs e)
@@ -406,7 +598,7 @@ public partial class SettingsWindow : Window
         _syncing = true;
         SysVolNum.Value = (decimal)SysVolSlider.Value;
         _syncing = false;
-        SysVolStatus.Text = "System volume: " + SystemVolume.Status;
+        SysVolStatus.Text = Ui.T("sys_vol_st") + SystemVolume.Status;
     }
 
     private void OnSysVolNum(object? sender, NumericUpDownValueChangedEventArgs e)
@@ -417,7 +609,7 @@ public partial class SettingsWindow : Window
         _syncing = true;
         SysVolSlider.Value = v;
         _syncing = false;
-        SysVolStatus.Text = "System volume: " + SystemVolume.Status;
+        SysVolStatus.Text = Ui.T("sys_vol_st") + SystemVolume.Status;
     }
 
     private void OnSysMute(object? sender, RoutedEventArgs e)
@@ -429,14 +621,19 @@ public partial class SettingsWindow : Window
 
     private async void OnEnableToast(object? sender, RoutedEventArgs e)
     {
-        ToastStatus.Text = "Registering identity…";
-        var reg = await ToastIdentity.TryRegisterSparseAsync();
-        PrefsStore.Mutate(p => p.ListenToasts = true);
-        await ToastHub.RefreshAsync(true);
-        ToastStatus.Text = reg + " | " + ToastHub.Detail + (ToastHub.Allowed ? "" : " Not faking Allowed. Allow NotifyIsland under Settings → Privacy & security → Notifications.");
+        var code = await ToastIdentity.TryRegisterSparseAsync();
+        IslandLog.Write("toast", "ui-register " + code);
+        ToastStatus.Text = Ui.T("toast_unsigned");
+        ToastIdentity.OpenPrivacySettings();
     }
 
     private void OnOpenToastPrivacy(object? sender, RoutedEventArgs e) => ToastIdentity.OpenPrivacySettings();
+
+    private static int itemsCount(ComboBox box)
+    {
+        if (box.ItemsSource is System.Collections.ICollection c) return c.Count;
+        return box.ItemCount;
+    }
 
     private static int IndexOf<T>(T[] items, Func<T, bool> pred)
     {
