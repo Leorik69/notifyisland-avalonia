@@ -2,8 +2,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="NotifyIsland.SettingsWindow"
         Title="NotifyIsland settings"
-        Width="420" Height="560"
-        CanResize="False"
+        Width="440" Height="680"
+        CanResize="True" MinWidth="400" MinHeight="520"
         WindowStartupLocation="CenterScreen"
         SystemDecorations="Full"
         ShowInTaskbar="True">
@@ -12,7 +12,7 @@
                FontFamily="Segoe UI Variable Display, Segoe UI" />
     <TextBlock x:Name="PathHint" DockPanel.Dock="Bottom" FontSize="11" Opacity="0.65" TextWrapping="Wrap" Margin="0,12,0,0" />
     <ScrollViewer>
-      <StackPanel Spacing="12">
+      <StackPanel Spacing="10">
         <Border x:Name="PreviewPill" Height="48" CornerRadius="24" Padding="16,0">
           <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Center">
             <Path x:Name="PreviewIcon" Width="16" Height="16" Stretch="Uniform" />
@@ -25,11 +25,24 @@
         <ComboBox x:Name="FontBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
         <TextBlock Text="Icons" Opacity="0.8" />
         <ComboBox x:Name="IconBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
-        <TextBlock Text="Animation" Opacity="0.8" />
+        <TextBlock Text="Motion extra" Opacity="0.8" />
         <ComboBox x:Name="AnimBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+        <TextBlock Text="Animation speed" Opacity="0.8" />
+        <ComboBox x:Name="SpeedBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+        <TextBlock Text="Clock format" Opacity="0.8" />
+        <ComboBox x:Name="ClockBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
         <TextBlock Text="Opacity" Opacity="0.8" />
-        <Slider x:Name="OpacitySlider" Minimum="0.45" Maximum="1" TickFrequency="0.01" IsSnapToTickEnabled="False"
-                PropertyChanged="OnOpacityChanged" />
+        <Slider x:Name="OpacitySlider" Minimum="0.45" Maximum="1" PropertyChanged="OnSlider" />
+        <TextBlock Text="Border thickness" Opacity="0.8" />
+        <Slider x:Name="BorderSlider" Minimum="0" Maximum="3" PropertyChanged="OnSlider" />
+        <TextBlock Text="Glow" Opacity="0.8" />
+        <Slider x:Name="GlowSlider" Minimum="0" Maximum="1" PropertyChanged="OnSlider" />
+        <TextBlock Text="Corner radius (0 = auto)" Opacity="0.8" />
+        <Slider x:Name="RadiusSlider" Minimum="0" Maximum="28" PropertyChanged="OnSlider" />
+        <TextBlock Text="Idle width" Opacity="0.8" />
+        <Slider x:Name="WidthSlider" Minimum="140" Maximum="280" PropertyChanged="OnSlider" />
+        <TextBlock Text="Idle height" Opacity="0.8" />
+        <Slider x:Name="HeightSlider" Minimum="28" Maximum="48" PropertyChanged="OnSlider" />
         <Button Content="Preview notify animation" Click="OnPreviewAnim" HorizontalAlignment="Left" />
       </StackPanel>
     </ScrollViewer>

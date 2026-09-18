@@ -12,7 +12,14 @@ public sealed class UserPrefs
     public string IconStyle { get; set; } = "fluent";
     public double Opacity { get; set; } = 0.92;
     public string Animation { get; set; } = "morph";
+    public string AnimSpeed { get; set; } = "normal";
     public bool OverlayVisible { get; set; } = true;
+    public double BorderThickness { get; set; } = 1;
+    public double GlowStrength { get; set; } = 0.55;
+    public double CornerRadius { get; set; } = 0;
+    public double IdleWidth { get; set; } = 180;
+    public double IdleHeight { get; set; } = 34;
+    public string ClockFormat { get; set; } = "HH:mm";
 }
 
 internal static class PrefsStore
@@ -90,8 +97,26 @@ internal static class PrefsStore
         if (string.IsNullOrWhiteSpace(p.FontId)) p.FontId = "segoe-variable";
         if (string.IsNullOrWhiteSpace(p.IconStyle)) p.IconStyle = "fluent";
         if (string.IsNullOrWhiteSpace(p.Animation)) p.Animation = "morph";
+        if (string.IsNullOrWhiteSpace(p.AnimSpeed)) p.AnimSpeed = "normal";
+        p.AnimSpeed = p.AnimSpeed.Equals("fast", StringComparison.OrdinalIgnoreCase) ? "fast" : "normal";
         if (double.IsNaN(p.Opacity) || double.IsInfinity(p.Opacity)) p.Opacity = 0.92;
         p.Opacity = Math.Clamp(p.Opacity, 0.45, 1.0);
+        if (double.IsNaN(p.BorderThickness) || double.IsInfinity(p.BorderThickness)) p.BorderThickness = 1;
+        p.BorderThickness = Math.Clamp(p.BorderThickness, 0, 3);
+        if (double.IsNaN(p.GlowStrength) || double.IsInfinity(p.GlowStrength)) p.GlowStrength = 0.55;
+        p.GlowStrength = Math.Clamp(p.GlowStrength, 0, 1);
+        if (double.IsNaN(p.CornerRadius) || double.IsInfinity(p.CornerRadius)) p.CornerRadius = 0;
+        p.CornerRadius = Math.Clamp(p.CornerRadius, 0, 28);
+        if (double.IsNaN(p.IdleWidth) || double.IsInfinity(p.IdleWidth)) p.IdleWidth = 180;
+        p.IdleWidth = Math.Clamp(p.IdleWidth, 140, 280);
+        if (double.IsNaN(p.IdleHeight) || double.IsInfinity(p.IdleHeight)) p.IdleHeight = 34;
+        p.IdleHeight = Math.Clamp(p.IdleHeight, 28, 48);
+        p.ClockFormat = p.ClockFormat switch
+        {
+            "HH:mm:ss" => "HH:mm:ss",
+            "h:mm tt" => "h:mm tt",
+            _ => "HH:mm"
+        };
         if (!PaletteCatalog.TryGet(p.PaletteId, out _)) p.PaletteId = "midnight";
         if (!FontCatalog.TryGet(p.FontId, out _)) p.FontId = "segoe-variable";
         p.IconStyle = p.IconStyle.ToLowerInvariant() switch

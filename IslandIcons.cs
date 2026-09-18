@@ -60,6 +60,7 @@ internal static class IslandIcons
         OverlayKind.Media => playing ? IslandGlyph.MediaPause : IslandGlyph.MediaPlay,
         OverlayKind.Timer => IslandGlyph.Timer,
         OverlayKind.Error => IslandGlyph.Error,
+        OverlayKind.Stack => IslandGlyph.Notify,
         _ => IslandGlyph.Overview
     };
 }

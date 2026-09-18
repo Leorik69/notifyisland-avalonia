@@ -12,15 +12,9 @@ internal static class IslandHost
     {
         if (Overlay is null) return;
         if (Overlay.IsVisible)
-        {
-            Overlay.Hide();
-            PrefsStore.Mutate(p => p.OverlayVisible = false);
-        }
+            Overlay.SetVisibleAnimated(false);
         else
-        {
-            Overlay.Show();
-            PrefsStore.Mutate(p => p.OverlayVisible = true);
-        }
+            Overlay.SetVisibleAnimated(true);
     }
 
     public static void OpenSettings()

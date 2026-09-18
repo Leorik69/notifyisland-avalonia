@@ -22,6 +22,8 @@ internal static class PaletteCatalog
         Make("forest", "Forest", "#0E1612", "#3DDC97", "#5EEAD4", "#ECFDF5", "#A7F3D0", "#FCA5A5"),
         Make("ember", "Ember", "#140E0C", "#F97316", "#FB923C", "#FFF7ED", "#FDBA74", "#FCA5A5"),
         Make("violet", "Violet", "#120E18", "#A78BFA", "#C4B5FD", "#F5F3FF", "#DDD6FE", "#F9A8D4"),
+        Make("ocean", "Ocean", "#071018", "#38BDF8", "#7DD3FC", "#F0F9FF", "#BAE6FD", "#FCA5A5"),
+        Make("sand", "Sand", "#16110C", "#D6A15A", "#E7C27A", "#FFF8EC", "#E8D5B5", "#E8A0A0"),
     };
 
     public static Palette Default => All[0];

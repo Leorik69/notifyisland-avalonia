@@ -37,7 +37,7 @@
                    FontWeight="SemiBold"
                    Foreground="#FFFFFF"
                    Text="00:00" />
-        <DockPanel x:Name="OverlayPanel" LastChildFill="True" IsVisible="False">
+        <DockPanel x:Name="OverlayPanel" LastChildFill="True" Opacity="0" IsHitTestVisible="False">
           <Panel DockPanel.Dock="Left" Width="18" Height="18" Margin="0,0,8,0" VerticalAlignment="Center">
             <Path x:Name="KindIcon" Width="16" Height="16" Stretch="Uniform" />
             <TextBlock x:Name="KindGlyph" FontFamily="Segoe MDL2 Assets" FontSize="14" IsVisible="False"
@@ -57,8 +57,11 @@
             <TextBlock x:Name="OverlaySubtitle" FontSize="11" Foreground="#C8C8CC"
                        FontFamily="Segoe UI Variable, Segoe UI"
                        TextTrimming="CharacterEllipsis" />
-            <ProgressBar x:Name="OverlayProgress" Height="4" Minimum="0" Maximum="100" Foreground="#3D9CF0" />
-            <TextBlock x:Name="OverlayTimer" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" IsVisible="False"
+            <TextBlock x:Name="OverlayStack" FontSize="11" Foreground="#C8C8CC" Opacity="0"
+                       FontFamily="Segoe UI Variable, Segoe UI"
+                       TextTrimming="CharacterEllipsis" />
+            <ProgressBar x:Name="OverlayProgress" Height="4" Minimum="0" Maximum="100" Foreground="#3D9CF0" Opacity="0" />
+            <TextBlock x:Name="OverlayTimer" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" Opacity="0"
                        FontFamily="Segoe UI Variable Display, Segoe UI" />
           </StackPanel>
         </DockPanel>
