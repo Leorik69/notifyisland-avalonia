@@ -41,6 +41,8 @@ internal static class ToastHub
             var last = all?.LastOrDefault();
             if (last is null) return;
             var app = last.AppInfo?.DisplayInfo?.DisplayName ?? "Notification";
+            var aumid = "";
+            try { aumid = last.AppInfo?.AppUserModelId ?? ""; } catch { }
             string body = "";
             try
             {
@@ -50,7 +52,8 @@ internal static class ToastHub
             catch
             {
             }
-            Dispatcher.UIThread.Post(() => IslandHost.Overlay?.ShowToast(app, body));
+            Dispatcher.UIThread.Post(() => IslandHost.Overlay?.ShowToast(app, body, NotifyTemplates.Guess(app, aumid)));
+            _ = AppBadgeHub.RefreshAsync();
         }
         catch
         {

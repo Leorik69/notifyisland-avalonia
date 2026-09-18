@@ -38,6 +38,8 @@ public sealed class OverlayPayload
     public bool Playing { get; set; }
     public double RemainingSeconds { get; set; }
     public string Line2 { get; set; } = "";
+    public string Template { get; set; } = "notify";
+    public string AppId { get; set; } = "";
 }
 
 public sealed class OverlaySnapshot
@@ -94,7 +96,9 @@ public sealed class OverlayMachine
                 Apply(data);
                 if (string.IsNullOrWhiteSpace(_payload.Title))
                     _payload.Title = "Уведомление";
-                _notifyMs = NotifyDurationMs;
+                if (string.IsNullOrWhiteSpace(_payload.Template) || _payload.Template == "notify")
+                    _payload.Template = NotifyTemplates.Normalize(data.Template);
+                _notifyMs = NotifyTemplates.DurationMs(PrefsStore.Current, _payload.Template);
                 break;
             case OverlayCommand.SetProgress:
                 _kind = OverlayKind.Progress;
@@ -167,26 +171,26 @@ public sealed class OverlayMachine
 
     private void RunDemoStep()
     {
-        var steps = new OverlayCommand[]
+        var steps = new (OverlayCommand cmd, OverlayPayload data)[]
         {
-            OverlayCommand.Clear, OverlayCommand.Collapse, OverlayCommand.Expand,
-            OverlayCommand.Notify, OverlayCommand.Stack, OverlayCommand.SetProgress, OverlayCommand.SetMedia,
-            OverlayCommand.SetTimer, OverlayCommand.SetError
+            (OverlayCommand.Clear, new OverlayPayload()),
+            (OverlayCommand.Expand, new OverlayPayload { Title = "Сегодня", Body = "Ясно, 18°" }),
+            (OverlayCommand.Notify, new OverlayPayload { Title = "Telegram", Body = "Привет", Template = NotifyTemplates.Chat }),
+            (OverlayCommand.Notify, new OverlayPayload { Title = "Почта", Body = "Счёт за сентябрь", Template = NotifyTemplates.Mail }),
+            (OverlayCommand.Notify, new OverlayPayload { Title = "14:00", Body = "Созвон", Template = NotifyTemplates.Calendar }),
+            (OverlayCommand.Notify, new OverlayPayload { Title = "Входящий", Body = "Алексей", Template = NotifyTemplates.Call }),
+            (OverlayCommand.SetProgress, new OverlayPayload { Title = "Файл.zip", Progress = 0.12, Template = NotifyTemplates.Download }),
+            (OverlayCommand.Notify, new OverlayPayload { Title = "Готово", Body = "Скачано", Template = NotifyTemplates.Complete }),
+            (OverlayCommand.Notify, new OverlayPayload { Title = "Батарея", Body = "15%", Template = NotifyTemplates.Warn }),
+            (OverlayCommand.SetTimer, new OverlayPayload { Title = "Фокус", RemainingSeconds = 45, Template = NotifyTemplates.Focus }),
+            (OverlayCommand.Notify, new OverlayPayload { Title = "Сеть", Body = "Wi‑Fi подключён", Template = NotifyTemplates.System }),
+            (OverlayCommand.Stack, new OverlayPayload { Title = "Пачка", Subtitle = "Почта · 2", Line2 = "Календарь · 10 мин", Template = NotifyTemplates.Queue }),
+            (OverlayCommand.SetMedia, new OverlayPayload { Title = "Night Drive", Subtitle = "Local Radio", Progress = 0.33, Playing = true }),
+            (OverlayCommand.SetError, new OverlayPayload { Title = "Сеть", Body = "Нет ответа сервера" }),
         };
-        var cmd = steps[_demoIndex % steps.Length];
+        var step = steps[_demoIndex % steps.Length];
         _demoIndex++;
-        var sample = cmd switch
-        {
-            OverlayCommand.Expand => new OverlayPayload { Title = "Сегодня", Body = "Ясно, 18°" },
-            OverlayCommand.Notify => new OverlayPayload { Title = "Сообщение", Body = "Демо уведомление" },
-            OverlayCommand.Stack => new OverlayPayload { Title = "Пачка", Subtitle = "Почта · 2 новых", Line2 = "Календарь · через 10 мин" },
-            OverlayCommand.SetProgress => new OverlayPayload { Title = "Копирование", Progress = 0.08 },
-            OverlayCommand.SetMedia => new OverlayPayload { Title = "Night Drive", Subtitle = "Local Radio", Progress = 0.33, Playing = true },
-            OverlayCommand.SetTimer => new OverlayPayload { Title = "Фокус", RemainingSeconds = 90 },
-            OverlayCommand.SetError => new OverlayPayload { Title = "Сеть", Body = "Нет ответа сервера" },
-            _ => new OverlayPayload()
-        };
-        Dispatch(cmd, sample);
+        Dispatch(step.cmd, step.data);
     }
 
     private void Apply(OverlayPayload data)
@@ -198,6 +202,8 @@ public sealed class OverlayMachine
         _payload.Playing = data.Playing;
         _payload.RemainingSeconds = data.RemainingSeconds;
         _payload.Line2 = data.Line2;
+        _payload.Template = NotifyTemplates.Normalize(data.Template);
+        _payload.AppId = data.AppId ?? "";
     }
 
     internal static OverlayPayload Sanitize(OverlayPayload raw)
@@ -215,13 +221,18 @@ public sealed class OverlayMachine
         if (double.IsNaN(rem) || double.IsInfinity(rem) || rem < 0) rem = 0;
         var l2 = (raw.Line2 ?? "").Trim();
         if (l2.Length > 80) l2 = l2[..77] + "…";
-        return new OverlayPayload { Title = t, Subtitle = s, Body = b, Progress = p, Playing = raw.Playing, RemainingSeconds = rem, Line2 = l2 };
+        return new OverlayPayload
+        {
+            Title = t, Subtitle = s, Body = b, Progress = p, Playing = raw.Playing, RemainingSeconds = rem, Line2 = l2,
+            Template = NotifyTemplates.Normalize(raw.Template), AppId = (raw.AppId ?? "").Trim()
+        };
     }
 
     private static OverlayPayload Clone(OverlayPayload p) => new()
     {
         Title = p.Title, Subtitle = p.Subtitle, Body = p.Body,
-        Progress = p.Progress, Playing = p.Playing, RemainingSeconds = p.RemainingSeconds, Line2 = p.Line2
+        Progress = p.Progress, Playing = p.Playing, RemainingSeconds = p.RemainingSeconds, Line2 = p.Line2,
+        Template = p.Template, AppId = p.AppId
     };
 
     internal static double WidthFor(OverlayKind kind) => kind switch

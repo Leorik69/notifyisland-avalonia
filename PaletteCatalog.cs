@@ -24,6 +24,9 @@ internal static class PaletteCatalog
         Make("violet", "Violet", "#120E18", "#A78BFA", "#C4B5FD", "#F5F3FF", "#DDD6FE", "#F9A8D4"),
         Make("ocean", "Ocean", "#071018", "#38BDF8", "#7DD3FC", "#F0F9FF", "#BAE6FD", "#FCA5A5"),
         Make("sand", "Sand", "#16110C", "#D6A15A", "#E7C27A", "#FFF8EC", "#E8D5B5", "#E8A0A0"),
+        Make("graphite", "Graphite", "#1A1A1C", "#9AA0A6", "#C0C4C8", "#F2F2F3", "#B8B8BC", "#E8A0A0"),
+        Make("hicontrast", "High contrast", "#000000", "#3D9CF0", "#FFFFFF", "#FFFFFF", "#E0E0E0", "#FF8080"),
+        Make("mica-dark", "Mica dark", "#1C1C1C", "#60CDFF", "#60CDFF", "#FFFFFF", "#C8C8CC", "#E8A0A0"),
     };
 
     public static Palette Default => All[0];
@@ -43,6 +46,13 @@ internal static class PaletteCatalog
     }
 
     public static Palette Get(string? id) => TryGet(id ?? "", out var p) ? p : Default;
+
+    public static Color AccentOf(UserPrefs prefs)
+    {
+        var hex = prefs.AccentHex?.Trim() ?? "";
+        if (hex.Length >= 7 && Color.TryParse(hex, out var c)) return c;
+        return Get(prefs.PaletteId).Accent;
+    }
 
     private static Palette Make(string id, string name, string bg, string accent, string glow, string text, string text2, string err)
     {

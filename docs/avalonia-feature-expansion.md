@@ -26,7 +26,20 @@ Left-center-right + offsets; top-center-bottom + offsets. Always-on-top | normal
 
 ## Icon packs
 
-Settings dropdown (`iconStyle`): `fluent` (outline), `fluent-fill`, `mdl2` (Segoe MDL2 Assets), `weather-soft`. Not Apple SF Symbols.
+Settings dropdown (`iconStyle`): `fluent`, `fluent-fill`, `mdl2`, `weather-soft`, `fluent-color`. Extra glyphs: chat, mail, calendar, call, download. Not Apple SF Symbols.
+
+## App badge
+
+Idle: app icon + count **left of the clock**, weather right. Survives after the toast morphs back. Real logos only when `UserNotificationListener` is Allowed. F9 can show a labeled preview badge. Styles: icon+count / count / dot.
+
+## Notify kinds
+
+F9 cycles chat, mail, calendar, call (visual), download, complete, warn, focus, system, queue, plus media/error. Per-type duration and sound flags.
+
+## Settings UX
+
+Accordion sections. Every slider has a numeric field. Extra palettes (graphite, high contrast, mica dark), custom accent hex, glass alpha, density, glyph size.
+
 
 ## Sounds
 

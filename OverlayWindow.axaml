@@ -29,7 +29,14 @@
             PointerPressed="OnPillPressed"
             PointerEntered="OnPillEntered"
             PointerExited="OnPillExited">
-      <Grid Margin="12,0">
+      <Grid x:Name="CapsuleGrid" Margin="12,0">
+        <StackPanel x:Name="AppBadge" Orientation="Horizontal" Spacing="3"
+                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                    Opacity="0">
+          <Image x:Name="BadgeLogo" Width="16" Height="16" Stretch="UniformToFill" />
+          <Path x:Name="BadgeFallback" Width="14" Height="14" Stretch="Uniform" IsVisible="False" />
+          <TextBlock x:Name="BadgeCount" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </StackPanel>
         <TextBlock x:Name="ClockText"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center"

@@ -11,6 +11,14 @@ internal enum IslandGlyph
     Timer,
     Error,
     Overview,
+    Chat,
+    Mail,
+    Calendar,
+    Call,
+    Download,
+    Complete,
+    Warn,
+    System,
 }
 
 internal enum WeatherGlyph
@@ -58,6 +66,14 @@ internal static class IslandIcons
     public const string WxSnow = "M8.6 9a3.6 3.6 0 0 1 3.4-2.4A3.6 3.6 0 0 1 15.4 9 3.8 3.8 0 0 1 16.6 16.4H7.6A3.8 3.8 0 0 1 8.6 9ZM9.2 17.6l.8.8-.8.8.8.8.8-.8.8.8.8-.8-.8-.8.8-.8-.8-.8-.8.8-.8-.8-.8.8Zm4.4 0 .8.8-.8.8.8.8.8-.8.8.8.8-.8-.8-.8.8-.8-.8-.8-.8.8-.8-.8-.8.8Z";
     public const string WxThunder = "M13.6 3.6 7.8 13.2h4.2L9.6 20.4 17.8 10h-4.4l2.2-6.4h-2Z";
     public const string WxFog = "M5 9.2h14v1.6H5V9.2Zm1.4 3.2h11.2v1.6H6.4v-1.6ZM5 15.6h14V17.2H5v-1.6Z";
+    public const string Chat = "M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4 3v-3H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm2 4h10v1.6H7V9Zm0 3.2h7v1.6H7v-1.6Z";
+    public const string Mail = "M3.5 6.2h17v11.6h-17V6.2Zm1.6 1.6 7 4.6 7-4.6v1.8l-7 4.6-7-4.6V7.8Z";
+    public const string Calendar = "M6 4h2v2h8V4h2v2h2v14H4V6h2V4Zm0 6v8h12v-8H6Z";
+    public const string Call = "M7.2 3.8 10 6.4 8.6 8.2a12 12 0 0 0 7.2 7.2l1.8-1.4 2.6 2.8-1.2 1.2A4.2 4.2 0 0 1 16 19.2 15.2 15.2 0 0 1 4.8 8a4.2 4.2 0 0 1 1.2-2.8L7.2 3.8Z";
+    public const string Download = "M11 4h2v9.2l3-3 1.4 1.4L12 17.2 6.6 11.6 8 10.2l3 3V4ZM5 18h14v2H5v-2Z";
+    public const string Complete = "M4 12a8 8 0 1 1 16 0 8 8 0 0 1-16 0Zm11.2-2.4-1.4-1.4-4.1 4.1-2-2-1.4 1.4 3.4 3.4 5.5-5.5Z";
+    public const string Warn = "M12 3.4 21 20H3L12 3.4ZM11 9h2v5h-2V9Zm0 6.5h2V18h-2v-2.5Z";
+    public const string System = "M4 7h16v10H4V7Zm2 2v6h12V9H6Zm5 11h2v2h-2v-2Z";
 
     public static StreamGeometry Geometry(IslandGlyph glyph, string iconStyle)
     {
@@ -67,6 +83,7 @@ internal static class IslandIcons
         {
             "fluent-fill" => Filled(glyph),
             "weather-soft" => Soft(glyph),
+            "fluent-color" => Filled(glyph),
             _ => Outline(glyph)
         };
         return StreamGeometry.Parse(data);
@@ -97,6 +114,14 @@ internal static class IslandIcons
         IslandGlyph.MediaPause => "\uE769",
         IslandGlyph.Timer => "\uE916",
         IslandGlyph.Error => "\uE783",
+        IslandGlyph.Chat => "\uE8BD",
+        IslandGlyph.Mail => "\uE715",
+        IslandGlyph.Calendar => "\uE787",
+        IslandGlyph.Call => "\uE717",
+        IslandGlyph.Download => "\uE896",
+        IslandGlyph.Complete => "\uE73E",
+        IslandGlyph.Warn => "\uE7BA",
+        IslandGlyph.System => "\uE770",
         _ => "\uE80F"
     };
 
@@ -119,8 +144,19 @@ internal static class IslandIcons
         OverlayKind.Timer => IslandGlyph.Timer,
         OverlayKind.Error => IslandGlyph.Error,
         OverlayKind.Stack => IslandGlyph.Notify,
-        _ => IslandGlyph.Overview
+        _ => OverlayKind.Idle == kind ? IslandGlyph.Overview : IslandGlyph.Overview
     };
+
+    public static IslandGlyph ForPayload(OverlayKind kind, OverlayPayload p)
+    {
+        var t = NotifyTemplates.Normalize(p.Template);
+        if (kind == OverlayKind.Error) return IslandGlyph.Error;
+        if (kind == OverlayKind.Media) return p.Playing ? IslandGlyph.MediaPause : IslandGlyph.MediaPlay;
+        if (kind == OverlayKind.Progress || t == NotifyTemplates.Download) return IslandGlyph.Download;
+        if (kind == OverlayKind.Timer || t == NotifyTemplates.Focus) return IslandGlyph.Timer;
+        if (kind == OverlayKind.Stack || t == NotifyTemplates.Queue) return IslandGlyph.Notify;
+        return NotifyTemplates.Glyph(t);
+    }
 
     public static string Normalize(string? style) => (style ?? "").ToLowerInvariant() switch
     {
@@ -128,6 +164,8 @@ internal static class IslandIcons
         "minimal" => "minimal",
         "fluent-fill" or "filled" or "fluentfill" => "fluent-fill",
         "weather-soft" or "soft" => "weather-soft",
+        "fluent-color" or "color" => "fluent-color",
+        "segoe-fluent" => "mdl2",
         _ => "fluent"
     };
 
@@ -139,6 +177,14 @@ internal static class IslandIcons
         IslandGlyph.MediaPause => MediaPause,
         IslandGlyph.Timer => Timer,
         IslandGlyph.Error => Error,
+        IslandGlyph.Chat => Chat,
+        IslandGlyph.Mail => Mail,
+        IslandGlyph.Calendar => Calendar,
+        IslandGlyph.Call => Call,
+        IslandGlyph.Download => Download,
+        IslandGlyph.Complete => Complete,
+        IslandGlyph.Warn => Warn,
+        IslandGlyph.System => System,
         _ => Overview
     };
 
@@ -150,6 +196,14 @@ internal static class IslandIcons
         IslandGlyph.MediaPause => PauseFill,
         IslandGlyph.Timer => TimerFill,
         IslandGlyph.Error => ErrorFill,
+        IslandGlyph.Chat => Chat,
+        IslandGlyph.Mail => Mail,
+        IslandGlyph.Calendar => Calendar,
+        IslandGlyph.Call => Call,
+        IslandGlyph.Download => Download,
+        IslandGlyph.Complete => Complete,
+        IslandGlyph.Warn => Warn,
+        IslandGlyph.System => System,
         _ => OverviewFill
     };
 
@@ -161,6 +215,14 @@ internal static class IslandIcons
         IslandGlyph.MediaPause => SoftPause,
         IslandGlyph.Timer => SoftTimer,
         IslandGlyph.Error => SoftError,
+        IslandGlyph.Chat => Chat,
+        IslandGlyph.Mail => Mail,
+        IslandGlyph.Calendar => Calendar,
+        IslandGlyph.Call => Call,
+        IslandGlyph.Download => Download,
+        IslandGlyph.Complete => Complete,
+        IslandGlyph.Warn => Warn,
+        IslandGlyph.System => System,
         _ => SoftOverview
     };
 }
