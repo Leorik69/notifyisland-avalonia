@@ -7,12 +7,17 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using NotifyIsland.Core;
+using NotifyIsland.Demo;
+using NotifyIsland.Integration.Windows;
 
 namespace NotifyIsland;
 
 public partial class OverlayWindow : Window
 {
     private readonly OverlayMachine _machine = new();
+    private readonly OverlayDispatcher _dispatch;
+    private NamedPipeIpc? _ipc;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(3.2) };
@@ -33,6 +38,7 @@ public partial class OverlayWindow : Window
     public OverlayWindow()
     {
         InitializeComponent();
+        _dispatch = new OverlayDispatcher(_machine);
         _hwnd = new HwndMorph(this);
         _hwnd.Completed += () =>
         {
@@ -45,6 +51,7 @@ public partial class OverlayWindow : Window
         {
             Win32Overlay.ApplyNoActivate(this);
             Position = OverlayPlacement.Compute(this, Width, Height);
+            StartIpc();
             if (Program.DemoMode && !_demo.IsEnabled)
             {
                 _demoOn = true;
@@ -53,12 +60,16 @@ public partial class OverlayWindow : Window
         };
         KeyDown += OnKey;
         PrefsStore.Changed += OnPrefsChanged;
-        Closed += (_, _) => PrefsStore.Changed -= OnPrefsChanged;
+        Closed += (_, _) =>
+        {
+            PrefsStore.Changed -= OnPrefsChanged;
+            _ipc?.Dispose();
+        };
         _clock.Tick += (_, _) => TickClock();
         _tick.Tick += (_, _) =>
         {
             var before = _machine.Snapshot().Kind;
-            _machine.Tick(200);
+            _dispatch.Tick(200);
             Paint();
             MaybeCompleteSound(_machine.Snapshot());
             if (before != _machine.Snapshot().Kind) ApplySize();
@@ -67,12 +78,13 @@ public partial class OverlayWindow : Window
         {
             try
             {
-                _machine.Dispatch(OverlayCommand.DemoNext);
+                DemoScript.Next(_machine);
                 ApplySize();
                 Paint();
             }
-            catch
+            catch (Exception ex)
             {
+                IslandLog.Write("demo", ex.Message);
             }
         };
         _clock.Start();
@@ -94,6 +106,32 @@ public partial class OverlayWindow : Window
         if (!PrefsStore.Current.OverlayVisible) Hide();
     }
 
+    private void StartIpc()
+    {
+        try
+        {
+            _ipc = new NamedPipeIpc();
+            _ipc.NotifyReceived += req => Dispatcher.UIThread.Post(() =>
+            {
+                _dispatch.Notify(req);
+                ApplySize();
+                Paint();
+            });
+            _ipc.DismissReceived += id => Dispatcher.UIThread.Post(() =>
+            {
+                _dispatch.Dismiss(id);
+                ApplySize();
+                Paint();
+            });
+            _ipc.Start();
+            IslandLog.Write("ipc", _ipc.Status);
+        }
+        catch (Exception ex)
+        {
+            IslandLog.Write("ipc", "start failed " + ex.Message);
+        }
+    }
+
     public bool DemoRunning => _demoOn;
 
     public void ToggleDemo()
@@ -104,7 +142,12 @@ public partial class OverlayWindow : Window
 
     public void PreviewAnimation()
     {
-        _machine.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Preview", Body = "Theme animation" });
+        _machine.Dispatch(OverlayCommand.Notify, new OverlayPayload
+        {
+            Title = "Preview",
+            Body = "Theme animation",
+            DurationMs = NotifyTemplates.DurationMs(PrefsStore.Current, "notify")
+        });
         ApplySize();
         Paint();
         IslandAnimator.FastInvoke(Pill);
@@ -112,22 +155,16 @@ public partial class OverlayWindow : Window
 
     public void ShowToast(string title, string body, string? template = null)
     {
-        var cur = _machine.Snapshot();
         var tpl = NotifyTemplates.Normalize(template);
-        if (cur.Kind is OverlayKind.Notification or OverlayKind.Stack)
+        _dispatch.Notify(new NotificationRequest
         {
-            _machine.Dispatch(OverlayCommand.Stack, new OverlayPayload
-            {
-                Title = "Queue",
-                Subtitle = string.IsNullOrWhiteSpace(cur.Payload.Title) ? "Previous" : cur.Payload.Title,
-                Line2 = string.IsNullOrWhiteSpace(body) ? title : title + " · " + body,
-                Template = NotifyTemplates.Queue
-            });
-        }
-        else
-        {
-            _machine.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = title, Body = body, Template = tpl });
-        }
+            Id = NotificationId.Parse(tpl + ":" + title),
+            Title = title,
+            Body = body,
+            Template = tpl,
+            DurationMs = NotifyTemplates.DurationMs(PrefsStore.Current, tpl),
+            Replace = true
+        });
         ApplySize();
         Paint();
         _ = AppBadgeHub.RefreshAsync();
@@ -185,7 +222,8 @@ public partial class OverlayWindow : Window
     {
         _demoOn = true; _demo.Start();
         AppBadgeHub.SetPreview("Telegram", 2);
-        _machine.Dispatch(OverlayCommand.DemoNext); ApplySize(); Paint();
+        DemoScript.Reset();
+        DemoScript.Next(_machine); ApplySize(); Paint();
     }
 
     private void StopDemo()

@@ -25,8 +25,7 @@ public enum OverlayCommand
     SetTimer,
     SetError,
     Stack,
-    Clear,
-    DemoNext
+    Clear
 }
 
 public sealed class OverlayPayload
@@ -40,6 +39,7 @@ public sealed class OverlayPayload
     public string Line2 { get; set; } = "";
     public string Template { get; set; } = "notify";
     public string AppId { get; set; } = "";
+    public int DurationMs { get; set; }
 }
 
 public sealed class OverlaySnapshot
@@ -57,7 +57,6 @@ public sealed class OverlayMachine
     private OverlayKind _returnTo = OverlayKind.Idle;
     private int _notifyMs;
     private readonly OverlayPayload _payload = new();
-    private int _demoIndex;
     private int _notifyDurationMs = OverlayTokens.DefaultNotifyMs;
 
     public int NotifyDurationMs
@@ -98,7 +97,7 @@ public sealed class OverlayMachine
                     _payload.Title = "Уведомление";
                 if (string.IsNullOrWhiteSpace(_payload.Template) || _payload.Template == "notify")
                     _payload.Template = NotifyTemplates.Normalize(data.Template);
-                _notifyMs = NotifyTemplates.DurationMs(PrefsStore.Current, _payload.Template);
+                _notifyMs = data.DurationMs > 0 ? data.DurationMs : _notifyDurationMs;
                 break;
             case OverlayCommand.SetProgress:
                 _kind = OverlayKind.Progress;
@@ -143,9 +142,6 @@ public sealed class OverlayMachine
                 _notifyMs = 0;
                 Apply(new OverlayPayload());
                 break;
-            case OverlayCommand.DemoNext:
-                RunDemoStep();
-                break;
         }
         return Snapshot();
     }
@@ -169,30 +165,6 @@ public sealed class OverlayMachine
         return Snapshot();
     }
 
-    private void RunDemoStep()
-    {
-        var steps = new (OverlayCommand cmd, OverlayPayload data)[]
-        {
-            (OverlayCommand.Clear, new OverlayPayload()),
-            (OverlayCommand.Expand, new OverlayPayload { Title = "Сегодня", Body = "Ясно, 18°" }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "Telegram", Body = "Привет", Template = NotifyTemplates.Chat }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "Почта", Body = "Счёт за сентябрь", Template = NotifyTemplates.Mail }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "14:00", Body = "Созвон", Template = NotifyTemplates.Calendar }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "Входящий", Body = "Алексей", Template = NotifyTemplates.Call }),
-            (OverlayCommand.SetProgress, new OverlayPayload { Title = "Файл.zip", Progress = 0.12, Template = NotifyTemplates.Download }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "Готово", Body = "Скачано", Template = NotifyTemplates.Complete }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "Батарея", Body = "15%", Template = NotifyTemplates.Warn }),
-            (OverlayCommand.SetTimer, new OverlayPayload { Title = "Фокус", RemainingSeconds = 45, Template = NotifyTemplates.Focus }),
-            (OverlayCommand.Notify, new OverlayPayload { Title = "Сеть", Body = "Wi‑Fi подключён", Template = NotifyTemplates.System }),
-            (OverlayCommand.Stack, new OverlayPayload { Title = "Пачка", Subtitle = "Почта · 2", Line2 = "Календарь · 10 мин", Template = NotifyTemplates.Queue }),
-            (OverlayCommand.SetMedia, new OverlayPayload { Title = "Night Drive", Subtitle = "Local Radio", Progress = 0.33, Playing = true }),
-            (OverlayCommand.SetError, new OverlayPayload { Title = "Сеть", Body = "Нет ответа сервера" }),
-        };
-        var step = steps[_demoIndex % steps.Length];
-        _demoIndex++;
-        Dispatch(step.cmd, step.data);
-    }
-
     private void Apply(OverlayPayload data)
     {
         _payload.Title = data.Title;
@@ -204,6 +176,7 @@ public sealed class OverlayMachine
         _payload.Line2 = data.Line2;
         _payload.Template = NotifyTemplates.Normalize(data.Template);
         _payload.AppId = data.AppId ?? "";
+        _payload.DurationMs = data.DurationMs;
     }
 
     internal static OverlayPayload Sanitize(OverlayPayload raw)
@@ -224,7 +197,8 @@ public sealed class OverlayMachine
         return new OverlayPayload
         {
             Title = t, Subtitle = s, Body = b, Progress = p, Playing = raw.Playing, RemainingSeconds = rem, Line2 = l2,
-            Template = NotifyTemplates.Normalize(raw.Template), AppId = (raw.AppId ?? "").Trim()
+            Template = NotifyTemplates.Normalize(raw.Template), AppId = (raw.AppId ?? "").Trim(),
+            DurationMs = raw.DurationMs
         };
     }
 
@@ -232,7 +206,7 @@ public sealed class OverlayMachine
     {
         Title = p.Title, Subtitle = p.Subtitle, Body = p.Body,
         Progress = p.Progress, Playing = p.Playing, RemainingSeconds = p.RemainingSeconds, Line2 = p.Line2,
-        Template = p.Template, AppId = p.AppId
+        Template = p.Template, AppId = p.AppId, DurationMs = p.DurationMs
     };
 
     internal static double WidthFor(OverlayKind kind) => kind switch

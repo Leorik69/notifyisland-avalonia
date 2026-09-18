@@ -5,6 +5,10 @@ from pathlib import Path
 ISLAND = Path(__file__).resolve().parents[1]
 CS = (ISLAND / "OverlayMachine.cs").read_text(encoding="utf-8")
 TOKENS = (ISLAND / "OverlayTokens.cs").read_text(encoding="utf-8")
+DEMO = (ISLAND / "Demo" / "DemoScript.cs").read_text(encoding="utf-8")
+CORE = (ISLAND / "Core" / "NotificationModel.cs").read_text(encoding="utf-8")
+QUEUE = (ISLAND / "Core" / "NotificationQueue.cs").read_text(encoding="utf-8")
+IPC = (ISLAND / "Integration" / "Windows" / "NamedPipeIpc.cs").read_text(encoding="utf-8")
 KINDS = ("Idle","Collapsed","Expanded","Notification","Progress","Media","Timer","Error","Stack")
 
 class Payload:
@@ -66,7 +70,8 @@ class Machine:
 def test_source_has_kinds() -> None:
     for k in KINDS:
         assert f"    {k}" in CS or f"{k}," in CS, k
-    assert "Sanitize" in CS and "DemoNext" in CS
+    assert "Sanitize" in CS and "DemoNext" not in CS
+    assert "DemoScript" in DEMO and "OverlayCommand.Notify" in DEMO
     assert 'FillHex = "#080808"' in TOKENS and 'AccentHex = "#3D9CF0"' in TOKENS
     assert "MorphMs = 250" in TOKENS
     assert "new WUC.Compositor()" not in CS
@@ -98,9 +103,15 @@ def test_notify_timer_auto_return() -> None:
 def test_no_new_compositor_in_overlay() -> None:
     assert not re.search(r"new\s+(WUC\.)?Compositor\(\)", CS)
 
+def test_core_queue_and_ipc() -> None:
+    assert "NotificationRequest" in CORE and "NotificationId" in CORE and "NotificationAction" in CORE
+    assert "Replace" in QUEUE and "Dismiss" in QUEUE and "PopFront" in QUEUE
+    assert "NamedPipeServerStream" in IPC and "NotifyIsland" in IPC
+    assert "PrefsStore" not in CS
+
 def main() -> int:
     failed = 0
-    for fn in (test_source_has_kinds, test_transitions, test_invalid_data, test_notify_timer_auto_return, test_no_new_compositor_in_overlay):
+    for fn in (test_source_has_kinds, test_transitions, test_invalid_data, test_notify_timer_auto_return, test_no_new_compositor_in_overlay, test_core_queue_and_ipc):
         try:
             fn(); print(f"PASS  {fn.__name__}")
         except AssertionError as exc:

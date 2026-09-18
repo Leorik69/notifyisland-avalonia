@@ -1,10 +1,13 @@
 using Avalonia;
 using Avalonia.Controls;
+using NotifyIsland.Platform;
 
 namespace NotifyIsland;
 
 internal static class OverlayPlacement
 {
+    public static IScreenPlacement Current { get; } = new HostPlacement();
+
     public static PixelPoint Compute(Window window, double dipW, double dipH)
     {
         var screen = window.Screens.Primary ?? window.Screens.ScreenFromWindow(window);
@@ -32,5 +35,11 @@ internal static class OverlayPlacement
         x = Math.Clamp(x, wa.X, Math.Max(wa.X, wa.X + wa.Width - pw));
         y = Math.Clamp(y, wa.Y, Math.Max(wa.Y, wa.Y + wa.Height - ph));
         return new PixelPoint(x, y);
+    }
+
+    private sealed class HostPlacement : IScreenPlacement
+    {
+        public PixelPoint Compute(Window window, double dipW, double dipH)
+            => OverlayPlacement.Compute(window, dipW, dipH);
     }
 }
