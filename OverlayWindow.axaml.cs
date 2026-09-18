@@ -4,7 +4,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Threading;
 
@@ -17,34 +16,15 @@ public partial class OverlayWindow : Window
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(2.4) };
     private bool _demoOn;
-    private Border Pill = null!;
-    private TextBlock ClockText = null!;
-    private StackPanel OverlayPanel = null!;
-    private TextBlock OverlayTitle = null!;
-    private TextBlock OverlaySubtitle = null!;
-    private ProgressBar OverlayProgress = null!;
-    private TextBlock OverlayTimer = null!;
-    private Button MediaPlay = null!;
-    private TextBlock MediaPlayGlyph = null!;
-
-    private void Bind()
-    {
-        Pill = this.FindControl<Border>("Pill")!;
-        ClockText = this.FindControl<TextBlock>("ClockText")!;
-        OverlayPanel = this.FindControl<StackPanel>("OverlayPanel")!;
-        OverlayTitle = this.FindControl<TextBlock>("OverlayTitle")!;
-        OverlaySubtitle = this.FindControl<TextBlock>("OverlaySubtitle")!;
-        OverlayProgress = this.FindControl<ProgressBar>("OverlayProgress")!;
-        OverlayTimer = this.FindControl<TextBlock>("OverlayTimer")!;
-        MediaPlay = this.FindControl<Button>("MediaPlay")!;
-        MediaPlayGlyph = this.FindControl<TextBlock>("MediaPlayGlyph")!;
-    }
 
     public OverlayWindow()
     {
-        AvaloniaXamlLoader.Load(this);
-        Bind();
-        Opened += (_, _) => { Win32Overlay.ApplyNoActivate(this); PlaceTopCenter(); };
+        InitializeComponent();
+        Opened += (_, _) =>
+        {
+            Win32Overlay.ApplyNoActivate(this);
+            PlaceTopCenter();
+        };
         KeyDown += OnKey;
         _clock.Tick += (_, _) => TickClock();
         _tick.Tick += (_, _) =>
@@ -104,7 +84,6 @@ public partial class OverlayWindow : Window
         var wa = screen.WorkingArea;
         var scale = RenderScaling;
         var pw = (int)Math.Round(Width * scale);
-        var ph = (int)Math.Round(Height * scale);
         Position = new PixelPoint(wa.X + (wa.Width - pw) / 2, wa.Y + 8);
     }
 
@@ -130,12 +109,12 @@ public partial class OverlayWindow : Window
 
     private static string Fallback(OverlayKind kind) => kind switch
     {
-        OverlayKind.Notification => "Уведомление",
-        OverlayKind.Progress => "Прогресс",
-        OverlayKind.Media => "Без названия",
-        OverlayKind.Timer => "Таймер",
-        OverlayKind.Error => "Ошибка",
-        OverlayKind.Expanded => "Обзор",
+        OverlayKind.Notification => "Notification",
+        OverlayKind.Progress => "Progress",
+        OverlayKind.Media => "Untitled",
+        OverlayKind.Timer => "Timer",
+        OverlayKind.Error => "Error",
+        OverlayKind.Expanded => "Overview",
         _ => ""
     };
 
@@ -144,8 +123,8 @@ public partial class OverlayWindow : Window
         if (!e.GetCurrentPoint(this).Properties.IsRightButtonPressed) return;
         var menu = new ContextMenu();
         menu.Items.Add(Menu("Demo F9", () => { if (_demoOn) StopDemo(); else StartDemo(); }));
-        menu.Items.Add(Menu("Свернуть", () => { _machine.Dispatch(OverlayCommand.Collapse); ApplySize(); Paint(); }));
-        menu.Items.Add(Menu("Выход", () => (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown()));
+        menu.Items.Add(Menu("Collapse", () => { _machine.Dispatch(OverlayCommand.Collapse); ApplySize(); Paint(); }));
+        menu.Items.Add(Menu("Exit", () => (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown()));
         menu.Open(Pill);
         e.Handled = true;
     }

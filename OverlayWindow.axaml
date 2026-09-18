@@ -9,47 +9,66 @@
         ShowActivated="False"
         SystemDecorations="None"
         TransparencyLevelHint="Transparent"
-        TransparencyBackgroundFallback="#080808"
+        TransparencyBackgroundFallback="Transparent"
         Background="Transparent"
         WindowStartupLocation="Manual">
   <Border x:Name="Pill"
           Width="180" Height="34"
           CornerRadius="17"
-          Background="#080808"
-          BorderBrush="#28FFFFFF"
-          BorderThickness="1"
+          ClipToBounds="True"
           HorizontalAlignment="Center"
           VerticalAlignment="Center"
           PointerPressed="OnPillPressed">
-    <Grid Margin="12,0">
-      <TextBlock x:Name="ClockText"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center"
-                 FontFamily="Inter, Segoe UI Variable, Segoe UI"
-                 FontSize="13"
-                 FontWeight="SemiBold"
-                 Foreground="#FFFFFF"
-                 Text="00:00" />
-      <StackPanel x:Name="OverlayPanel"
-                  Spacing="4"
-                  VerticalAlignment="Center"
-                  IsVisible="False">
-        <DockPanel>
-          <Button x:Name="MediaPlay" DockPanel.Dock="Right" Padding="6,2" Click="OnMediaPlay"
-                  ToolTip.Tip="Воспроизведение"
-                  AutomationProperties.Name="Воспроизведение">
-            <TextBlock x:Name="MediaPlayGlyph" Text="▶" FontSize="11" Foreground="#3D9CF0" />
-          </Button>
-          <StackPanel Spacing="2">
-            <TextBlock x:Name="OverlayTitle" FontSize="13" FontWeight="SemiBold" Foreground="#FFFFFF"
-                       TextTrimming="CharacterEllipsis" Text="Обзор" />
-            <TextBlock x:Name="OverlaySubtitle" FontSize="11" Foreground="#C8C8CC"
-                       TextTrimming="CharacterEllipsis" />
-          </StackPanel>
-        </DockPanel>
-        <ProgressBar x:Name="OverlayProgress" Height="4" Minimum="0" Maximum="100" Foreground="#3D9CF0" />
-        <TextBlock x:Name="OverlayTimer" FontSize="18" FontWeight="SemiBold" Foreground="#FFFFFF" IsVisible="False" />
-      </StackPanel>
-    </Grid>
+    <Border.Background>
+      <SolidColorBrush Color="#CC080808" />
+    </Border.Background>
+    <Border.BorderBrush>
+      <SolidColorBrush Color="#3D9CF0" Opacity="0.35" />
+    </Border.BorderBrush>
+    <Border.BorderThickness>1</Border.BorderThickness>
+    <Panel>
+      <ExperimentalAcrylicBorder IsHitTestVisible="False" CornerRadius="17">
+        <ExperimentalAcrylicBorder.Material>
+          <ExperimentalAcrylicMaterial BackgroundSource="Digger"
+                                       TintColor="#080808"
+                                       TintOpacity="0.72"
+                                       MaterialOpacity="0.62" />
+        </ExperimentalAcrylicBorder.Material>
+      </ExperimentalAcrylicBorder>
+      <Grid Margin="12,0">
+        <TextBlock x:Name="ClockText"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   TextAlignment="Center"
+                   FontFamily="Segoe UI Variable Display, Segoe UI Variable, Segoe UI"
+                   FontSize="13"
+                   FontWeight="SemiBold"
+                   Foreground="#FFFFFF"
+                   Text="00:00" />
+        <StackPanel x:Name="OverlayPanel"
+                    Spacing="4"
+                    VerticalAlignment="Center"
+                    IsVisible="False">
+          <DockPanel>
+            <Button x:Name="MediaPlay" DockPanel.Dock="Right" Padding="6,2" Click="OnMediaPlay"
+                    ToolTip.Tip="Play"
+                    AutomationProperties.Name="Play">
+              <TextBlock x:Name="MediaPlayGlyph" Text=">" FontSize="11" Foreground="#3D9CF0" />
+            </Button>
+            <StackPanel Spacing="2">
+              <TextBlock x:Name="OverlayTitle" FontSize="13" FontWeight="SemiBold" Foreground="#FFFFFF"
+                         FontFamily="Segoe UI Variable Display, Segoe UI Variable, Segoe UI"
+                         TextTrimming="CharacterEllipsis" Text="Overview" />
+              <TextBlock x:Name="OverlaySubtitle" FontSize="11" Foreground="#C8C8CC"
+                         FontFamily="Segoe UI Variable, Segoe UI"
+                         TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+          </DockPanel>
+          <ProgressBar x:Name="OverlayProgress" Height="4" Minimum="0" Maximum="100" Foreground="#3D9CF0" />
+          <TextBlock x:Name="OverlayTimer" FontSize="18" FontWeight="SemiBold" Foreground="#FFFFFF" IsVisible="False"
+                     FontFamily="Segoe UI Variable Display, Segoe UI" />
+        </StackPanel>
+      </Grid>
+    </Panel>
   </Border>
 </Window>

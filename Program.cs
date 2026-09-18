@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Win32;
 using System;
 
 namespace NotifyIsland;
@@ -22,6 +23,9 @@ internal static class Program
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
-            .WithInterFont()
+            .With(new Win32PlatformOptions
+            {
+                CompositionMode = new[] { Win32CompositionMode.WinUIComposition, Win32CompositionMode.DirectComposition }
+            })
             .LogToTrace();
 }
