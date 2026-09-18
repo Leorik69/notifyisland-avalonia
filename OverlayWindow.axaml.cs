@@ -40,6 +40,7 @@ public partial class OverlayWindow : Window
                 _demo.Start();
             }
         };
+        SizeChanged += (_, _) => Win32Overlay.ApplyNoActivate(this);
         KeyDown += OnKey;
         PrefsStore.Changed += OnPrefsChanged;
         Closed += (_, _) => PrefsStore.Changed -= OnPrefsChanged;

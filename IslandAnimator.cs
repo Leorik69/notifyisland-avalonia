@@ -175,6 +175,7 @@ internal sealed class HwndMorph
         _window.Width = _w0 + (_w1 - _w0) * t;
         _window.Height = _h0 + (_h1 - _h0) * t;
         _window.Position = new PixelPoint((int)Math.Round(_x0 + (_x1 - _x0) * t), _y);
+        Win32Overlay.ApplyNoActivate(_window);
         if (t >= 1)
         {
             _timer.Stop();
