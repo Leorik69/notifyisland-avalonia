@@ -69,6 +69,8 @@ public sealed class UserPrefs
     public bool ReduceMotion { get; set; }
     public bool Diagnostics { get; set; }
     public int SettingsSchema { get; set; } = 13;
+    public string LastSeenVersion { get; set; } = "";
+    public string RenderMode { get; set; } = "fixedHost";
 }
 
 internal static class PrefsStore
@@ -82,6 +84,17 @@ internal static class PrefsStore
 
     public static UserPrefs Current { get; private set; } = new();
     public static event Action? Changed;
+
+    public static bool UseFixedHost
+    {
+        get
+        {
+            var o = Program.RenderModeOverride;
+            if (!string.IsNullOrWhiteSpace(o))
+                return !o.Contains("resize", StringComparison.OrdinalIgnoreCase);
+            return Current.RenderMode != "resizeHost";
+        }
+    }
 
     public static string ActivePath { get; private set; } = PortablePath();
 
@@ -234,6 +247,11 @@ internal static class PrefsStore
             "breathe" => "breathe",
             "none" => "none",
             _ => "morph"
+        };
+        p.RenderMode = (p.RenderMode ?? "").ToLowerInvariant() switch
+        {
+            "resizehost" or "resize" or "hwnd" => "resizeHost",
+            _ => "fixedHost"
         };
         if (p.NotifyDurationMs < 500 || p.NotifyDurationMs > 30000) p.NotifyDurationMs = 4000;
     }

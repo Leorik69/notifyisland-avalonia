@@ -96,6 +96,42 @@ internal static class Win32Overlay
         }
     }
 
+    public static void ApplyPillRegion(Window window, double dipX, double dipY, double dipW, double dipH, double radiusDip)
+    {
+        try
+        {
+            var hwnd = window.TryGetPlatformHandle()?.Handle ?? nint.Zero;
+            if (hwnd == nint.Zero) return;
+            var s = window.RenderScaling;
+            var x = (int)Math.Round(dipX * s);
+            var y = (int)Math.Round(dipY * s);
+            var r = (int)Math.Round((dipX + dipW) * s);
+            var b = (int)Math.Round((dipY + dipH) * s);
+            var rad = Math.Max(2, (int)Math.Round(radiusDip * 2 * s));
+            var rgn = CreateRoundRectRgn(x, y, Math.Max(x + 1, r), Math.Max(y + 1, b), rad, rad);
+            if (rgn == nint.Zero) return;
+            SetWindowRgn(hwnd, rgn, true);
+        }
+        catch (Exception ex)
+        {
+            IslandLog.Write("win32", "rgn " + ex.Message);
+        }
+    }
+
+    public static void ClearRegion(Window window)
+    {
+        try
+        {
+            var hwnd = window.TryGetPlatformHandle()?.Handle ?? nint.Zero;
+            if (hwnd == nint.Zero) return;
+            SetWindowRgn(hwnd, nint.Zero, true);
+        }
+        catch (Exception ex)
+        {
+            IslandLog.Write("win32", "rgn-clear " + ex.Message);
+        }
+    }
+
     private static nint GetWindowLongPtrSafe(nint hwnd, int index)
     {
         Marshal.SetLastPInvokeError(0);
@@ -139,4 +175,10 @@ internal static class Win32Overlay
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(nint hwnd, int attr, ref int attrValue, int attrSize);
+
+    [DllImport("gdi32.dll")]
+    private static extern nint CreateRoundRectRgn(int x1, int y1, int x2, int y2, int w, int h);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowRgn(nint hWnd, nint hRgn, bool bRedraw);
 }

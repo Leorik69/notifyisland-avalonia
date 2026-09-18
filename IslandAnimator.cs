@@ -290,7 +290,7 @@ internal sealed class HwndMorph
         Win32Overlay.ApplyNoActivate(_window);
         var avg = _frames > 1 ? _dtSum / (_frames - 1) : 0;
         LastTiming = string.Format(CultureInfo.InvariantCulture,
-            "kind={0} frames={1} avgDt={2:0.0}ms min={3:0.0} max={4:0.0} dropped={5} dur={6}ms dW={7:0} hwndStart={8} hwndEnd={9} innerScale={10} fadeFirst={11} ease={12} restarts={13} comp={14} target=16.7ms",
+            "kind={0} path=resizeHost frames={1} avgDt={2:0.0}ms min={3:0.0} max={4:0.0} dropped={5} dur={6}ms dW={7:0} hwndStart={8} hwndEnd={9} innerScale={10} fadeFirst={11} ease={12} restarts={13} comp={14} target=16.7ms",
             _collapse ? "collapse" : "expand", _frames, avg, _dtMin >= 999 ? 0 : _dtMin, _dtMax, _dropped, _dur,
             _w1 - _w0, _hwndStart, _hwndEnd, _innerLayout, _collapse, _collapse ? "SoftOut" : "PointToPoint",
             _restarts, Program.CompositionLabel);
@@ -299,6 +299,8 @@ internal sealed class HwndMorph
     }
 
     public static string LogPath => Path.Combine(Path.GetTempPath(), "notifyisland-morph.log");
+
+    internal static void LogLine(string line) => Append(line);
 
     private static void Append(string line)
     {
@@ -309,5 +311,118 @@ internal sealed class HwndMorph
         catch
         {
         }
+    }
+}
+
+internal sealed class FixedHostMorph
+{
+    private readonly Window _window;
+    private readonly Stopwatch _clock = new();
+    private bool _running;
+    private int _frames, _dropped;
+    private double _dtMin = 999, _dtMax, _dtSum;
+    private long _lastMs;
+    private int _dur;
+
+    public bool IsRunning => _running;
+    public static string LastTiming { get; private set; } = "";
+    public event Action? Completed;
+
+    public FixedHostMorph(Window window) => _window = window;
+
+    public void To(Control pill, Visual? fade, double fromW, double toW, double toH, int ms, bool collapse)
+    {
+        _ = Run(pill, fade, fromW, toW, toH, ms, collapse);
+    }
+
+    private async System.Threading.Tasks.Task Run(Control pill, Visual? fade, double fromW, double toW, double toH, int ms, bool collapse)
+    {
+        _running = true;
+        _frames = 0;
+        _dropped = 0;
+        _dtMin = 999;
+        _dtMax = 0;
+        _dtSum = 0;
+        _dur = Math.Max(16, ms);
+        pill.Width = Math.Max(fromW, toW);
+        pill.Height = toH;
+        pill.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
+        if (collapse && fade is not null)
+        {
+            try
+            {
+                var fv = ElementComposition.GetElementVisual(fade);
+                if (fv is not null)
+                {
+                    var fadeAnim = fv.Compositor.CreateScalarKeyFrameAnimation();
+                    fadeAnim.InsertKeyFrame(0f, 1f);
+                    fadeAnim.InsertKeyFrame(1f, 0f);
+                    fadeAnim.Duration = TimeSpan.FromMilliseconds(Motion.FadeMs);
+                    fv.StartAnimation("Opacity", fadeAnim);
+                }
+            }
+            catch (Exception ex) { IslandLog.Write("fixed", ex.Message); }
+            await System.Threading.Tasks.Task.Delay(Motion.FadeMs);
+        }
+        try
+        {
+            var cv = ElementComposition.GetElementVisual(pill);
+            if (cv is not null)
+            {
+                var layoutW = Math.Max(1, pill.Width);
+                var start = (float)Math.Clamp(fromW / layoutW, 0.15, 2);
+                var end = (float)Math.Clamp(toW / layoutW, 0.15, 2);
+                cv.CenterPoint = new Vector3((float)(layoutW / 2), (float)(toH / 2), 0);
+                var anim = cv.Compositor.CreateVector3KeyFrameAnimation();
+                anim.InsertKeyFrame(0f, new Vector3(start, 1f, 1f));
+                anim.InsertKeyFrame(1f, new Vector3(end, 1f, 1f));
+                anim.Duration = TimeSpan.FromMilliseconds(_dur);
+                cv.StartAnimation("Scale", anim);
+            }
+        }
+        catch (Exception ex) { IslandLog.Write("fixed", ex.Message); }
+        _clock.Restart();
+        _lastMs = 0;
+        Sample();
+        await System.Threading.Tasks.Task.Delay(_dur + 8);
+        pill.Width = toW;
+        pill.Height = toH;
+        try
+        {
+            var cv = ElementComposition.GetElementVisual(pill);
+            if (cv is not null) cv.Scale = Vector3.One;
+        }
+        catch { }
+        _running = false;
+        var avg = _frames > 1 ? _dtSum / (_frames - 1) : 0;
+        LastTiming = string.Format(CultureInfo.InvariantCulture,
+            "kind={0} path=fixedHost frames={1} avgDt={2:0.0}ms min={3:0.0} max={4:0.0} dropped={5} dur={6}ms dW={7:0} hwndResize=False ease={8} comp={9} target=16.7ms",
+            collapse ? "collapse" : "expand", _frames, avg, _dtMin >= 999 ? 0 : _dtMin, _dtMax, _dropped, _dur,
+            toW - fromW, collapse ? "SoftOut" : "PointToPoint", Program.CompositionLabel);
+        HwndMorph.LogLine(LastTiming);
+        Completed?.Invoke();
+    }
+
+    private void Sample()
+    {
+        if (!_running) return;
+        var top = TopLevel.GetTopLevel(_window);
+        if (top is null) return;
+        top.RequestAnimationFrame(_ =>
+        {
+            if (!_running) return;
+            var now = _clock.ElapsedMilliseconds;
+            if (_frames > 0)
+            {
+                var dt = now - _lastMs;
+                _dtMin = Math.Min(_dtMin, dt);
+                _dtMax = Math.Max(_dtMax, dt);
+                _dtSum += dt;
+                if (dt > 20.7) _dropped++;
+            }
+            _lastMs = now;
+            _frames++;
+            if (now < _dur) Sample();
+        });
     }
 }

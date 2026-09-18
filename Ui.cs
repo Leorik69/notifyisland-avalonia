@@ -28,6 +28,7 @@ internal static class Ui
 
     public static string T(string key)
     {
+        if (_map.TryGetValue(key, out var json) && !string.IsNullOrWhiteSpace(json)) return json;
         try
         {
             var fromResx = Resx.GetString(key, _culture);
@@ -37,7 +38,6 @@ internal static class Ui
         {
             IslandLog.Write("loc", ex.Message);
         }
-        if (_map.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v)) return v;
         return key;
     }
 

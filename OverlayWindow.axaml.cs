@@ -22,6 +22,7 @@ public partial class OverlayWindow : Window
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(3.2) };
     private readonly HwndMorph _hwnd;
+    private readonly FixedHostMorph _fixed;
     private bool _demoOn;
     private OverlayKind _lastKind = OverlayKind.Idle;
     private double _lastW = OverlayTokens.CollapsedW;
@@ -40,18 +41,18 @@ public partial class OverlayWindow : Window
         InitializeComponent();
         _dispatch = new OverlayDispatcher(_machine);
         _hwnd = new HwndMorph(this);
-        _hwnd.Completed += () =>
-        {
-            _freezeText = false;
-            Paint();
-            if (Program.MotionDebug) MotionHud.Text = HwndMorph.LastTiming;
-        };
+        _fixed = new FixedHostMorph(this);
+        _hwnd.Completed += OnMorphDone;
+        _fixed.Completed += OnMorphDone;
         IslandHost.Overlay = this;
         Opened += (_, _) =>
         {
             Win32Overlay.ApplyNoActivate(this);
-            Position = OverlayPlacement.Compute(this, Width, Height);
+            if (PrefsStore.UseFixedHost) EnsureFixedHost();
+            else Position = OverlayPlacement.Compute(this, Width, Height);
             StartIpc();
+            if (!Program.DemoMode && string.IsNullOrWhiteSpace(PrefsStore.Current.LastSeenVersion))
+                Dispatcher.UIThread.Post(IslandHost.OpenSettings, DispatcherPriority.Background);
             if (Program.DemoMode && !_demo.IsEnabled)
             {
                 _demoOn = true;
@@ -104,6 +105,39 @@ public partial class OverlayWindow : Window
         WeatherHub.Start();
         AppBadgeHub.Changed += () => Dispatcher.UIThread.Post(OnBadgeChanged);
         if (!PrefsStore.Current.OverlayVisible) Hide();
+    }
+
+    private bool MorphBusy => _hwnd.IsRunning || _fixed.IsRunning;
+
+    private double HostW => Math.Max(PrefsStore.Current.MaxWidth, 520) + 48;
+    private double HostH => (PrefsStore.Current.ExpandHeight ? 120 : Math.Max(PrefsStore.Current.IdleHeight, 40)) + 24;
+
+    private void EnsureFixedHost()
+    {
+        if (Math.Abs(Width - HostW) > 2 || Math.Abs(Height - HostH) > 2)
+        {
+            Width = HostW;
+            Height = HostH;
+        }
+        Position = OverlayPlacement.Compute(this, HostW, HostH);
+        Win32Overlay.ApplyNoActivate(this);
+    }
+
+    private void ApplyPillHitRegion(double toW, double toH)
+    {
+        var x = Math.Max(0, (Width - toW) / 2);
+        var y = Math.Max(0, (Height - toH) / 2);
+        Win32Overlay.ApplyPillRegion(this, x, y, toW, toH, toH / 2);
+    }
+
+    private void OnMorphDone()
+    {
+        _freezeText = false;
+        if (PrefsStore.UseFixedHost)
+            ApplyPillHitRegion(_lastW, _lastH);
+        Paint();
+        if (Program.MotionDebug)
+            MotionHud.Text = PrefsStore.UseFixedHost ? FixedHostMorph.LastTiming : HwndMorph.LastTiming;
     }
 
     private void StartIpc()
@@ -359,10 +393,32 @@ public partial class OverlayWindow : Window
         Glow.Height = toH + 8 + prefs.GlowStrength * 6;
         Glow.CornerRadius = new CornerRadius(radius + 4);
         var doAnim = animate && !prefs.ReduceMotion && prefs.Animation != "none";
-        if (doAnim)
+        var collapse = toW + 4 < _lastW;
+        Glow.Width = Math.Max(_lastW, toW) + 10 + prefs.GlowStrength * 8;
+        if (PrefsStore.UseFixedHost)
         {
+            EnsureFixedHost();
+            if (doAnim)
+            {
+                _freezeText = true;
+                if (collapse)
+                {
+                    IslandAnimator.WireOpacity(OverlayRow, Motion.FadeMs);
+                    OverlayRow.Opacity = 0;
+                }
+                _fixed.To(Pill, collapse ? OverlayRow : null, _lastW, toW, toH, Motion.WidthMorphMs(toW - _lastW), collapse);
+            }
+            else
+            {
+                Pill.Width = toW;
+                Glow.Width = toW + 10 + prefs.GlowStrength * 8;
+                ApplyPillHitRegion(toW, toH);
+            }
+        }
+        else if (doAnim)
+        {
+            Win32Overlay.ClearRegion(this);
             _freezeText = true;
-            var collapse = toW + 4 < _lastW;
             if (collapse)
             {
                 IslandAnimator.WireOpacity(OverlayRow, Motion.FadeMs);
@@ -377,6 +433,7 @@ public partial class OverlayWindow : Window
         }
         else
         {
+            Win32Overlay.ClearRegion(this);
             Pill.Width = toW;
             Glow.Width = toW + 10 + prefs.GlowStrength * 8;
             Width = toW;
@@ -469,7 +526,7 @@ public partial class OverlayWindow : Window
         var overlayOn = kind is OverlayKind.Notification or OverlayKind.Progress or OverlayKind.Media
             or OverlayKind.Timer or OverlayKind.TimerComplete or OverlayKind.Error or OverlayKind.Expanded or OverlayKind.Stack;
         var widthOnly = !PrefsStore.Current.ExpandHeight;
-        if (!(_freezeText && _hwnd.IsRunning))
+        if (!(_freezeText && MorphBusy))
         {
             OverlayRow.Opacity = overlayOn && widthOnly ? 1 : 0;
             OverlayRow.IsHitTestVisible = overlayOn && widthOnly;
@@ -492,7 +549,7 @@ public partial class OverlayWindow : Window
             if (p.EtaSeconds > 0.5) row += " · " + TimeSpan.FromSeconds(p.EtaSeconds).ToString(@"m\:ss");
         }
         if (kind == OverlayKind.TimerComplete) row = (string.IsNullOrWhiteSpace(title) ? "00:00" : title) + " · done";
-        if (_freezeText && _hwnd.IsRunning && !string.IsNullOrEmpty(_frozenRow))
+        if (_freezeText && MorphBusy && !string.IsNullOrEmpty(_frozenRow))
             RowText.Text = _frozenRow;
         else
         {
@@ -584,7 +641,7 @@ public partial class OverlayWindow : Window
     private void PaintBadge()
     {
         var idle = _machine.Snapshot().Kind is OverlayKind.Idle or OverlayKind.Collapsed;
-        var show = idle && ShowBadgeNow() && !_hwnd.IsRunning;
+        var show = idle && ShowBadgeNow() && !MorphBusy;
         AppBadge.Opacity = show ? 1 : 0;
         AppBadge.IsHitTestVisible = show;
         if (!show) return;
@@ -624,7 +681,7 @@ public partial class OverlayWindow : Window
         var idle = _machine.Snapshot().Kind is OverlayKind.Idle or OverlayKind.Collapsed;
         var wx = WeatherHub.Current;
         var pos = PrefsStore.Current.WeatherPosition;
-        var show = idle && PrefsStore.Current.ShowWeather && pos != "hide" && pos != "expand" && wx is { Ok: true } && !_hwnd.IsRunning;
+        var show = idle && PrefsStore.Current.ShowWeather && pos != "hide" && pos != "expand" && wx is { Ok: true } && !MorphBusy;
         WeatherChip.Opacity = show ? 1 : 0;
         if (!show || wx is null) return;
         WeatherTemp.Text = WeatherHub.TempLabel(wx);

@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
+using NotifyIsland.Core;
 
 namespace NotifyIsland;
 
@@ -41,6 +42,7 @@ public partial class SettingsWindow : Window
         AnchorHBox.ItemsSource = new[] { "Left", "Center", "Right" };
         AnchorVBox.ItemsSource = new[] { "Top", "Center", "Bottom" };
         LayerBox.ItemsSource = new[] { "Always on top", "Normal window", "Desktop (HWND_BOTTOM)" };
+        RenderModeBox.ItemsSource = new[] { "fixedHost", "resizeHost" };
         LoadFromPrefs();
         WeatherHub.Changed += OnWeatherStatus;
         Closed += (_, _) =>
@@ -56,7 +58,7 @@ public partial class SettingsWindow : Window
         ApplyLang();
         _boot = true;
         PaintPreview();
-        PathHint.Text = "Saved to " + PrefsStore.ActivePath;
+        PathHint.Text = Ui.T("saved") + PrefsStore.ActivePath;
     }
 
     private void Pair(Slider s, NumericUpDown n, double v)
@@ -123,6 +125,8 @@ public partial class SettingsWindow : Window
         QuietFullBox.IsChecked = p.SuppressFullscreen;
         ReduceMotionBox.IsChecked = p.ReduceMotion;
         DiagBox.IsChecked = p.Diagnostics;
+        RenderModeBox.SelectedIndex = p.RenderMode == "resizeHost" ? 1 : 0;
+        WhatsNewBox.IsVisible = p.LastSeenVersion != "1.3.1";
         Pair(NotifySlider, NotifyNum, p.NotifyDurationMs);
         Pair(ChatSlider, ChatNum, p.ChatDurationMs);
         Pair(CallSlider, CallNum, p.CallDurationMs);
@@ -320,6 +324,7 @@ public partial class SettingsWindow : Window
             p.SuppressFullscreen = QuietFullBox.IsChecked == true;
             p.ReduceMotion = ReduceMotionBox.IsChecked == true;
             p.Diagnostics = DiagBox.IsChecked == true;
+            p.RenderMode = RenderModeBox.SelectedIndex == 1 ? "resizeHost" : "fixedHost";
             p.NotifyDurationMs = (int)NotifySlider.Value;
             p.ChatDurationMs = (int)ChatSlider.Value;
             p.CallDurationMs = (int)CallSlider.Value;
@@ -344,7 +349,7 @@ public partial class SettingsWindow : Window
         _ = UpdateToastAsync();
         WeatherStatus.Text = "Weather: " + WeatherHub.Status;
         PaintPreview();
-        PathHint.Text = "Saved to " + PrefsStore.ActivePath;
+        PathHint.Text = Ui.T("saved") + PrefsStore.ActivePath;
     }
 
     private void OnExpandPreset(object? sender, SelectionChangedEventArgs e)
@@ -368,13 +373,42 @@ public partial class SettingsWindow : Window
         AppearanceExp.Header = Ui.T("appearance");
         LangLabel.Text = Ui.T("lang");
         LangHint.Text = Ui.T("lang_h");
+        RenderModeLabel.Text = Ui.T("render_mode");
+        RenderModeHint.Text = Ui.T("render_mode_h");
+        var rm = RenderModeBox.SelectedIndex;
+        RenderModeBox.ItemsSource = new[] { Ui.T("render_fixed"), Ui.T("render_resize") };
+        RenderModeBox.SelectedIndex = rm < 0 ? 0 : rm;
         MotionExtraLabel.Text = Ui.T("motion_extra");
         MotionExtraHint.Text = Ui.T("motion_extra_h");
         ExpandSpeedLabel.Text = Ui.T("expand_speed");
         ExpandSpeedHint.Text = Ui.T("expand_speed_h");
         CollapseSpeedLabel.Text = Ui.T("collapse_speed");
         CollapseSpeedHint.Text = Ui.T("collapse_speed_h");
+        AutoBox.Content = Ui.T("autostart");
+        ToastBox.Content = Ui.T("toasts");
+        ToastHint.Text = Ui.T("toasts_h");
+        HoverBox.Content = Ui.T("hover");
+        HoverHint.Text = Ui.T("hover_h");
+        OpenToastBtn.Content = Ui.T("open_toast");
+        OpenPrivacyBtn.Content = Ui.T("open_privacy");
+        BadgeAppsLabel.Text = Ui.T("badge_apps");
+        BadgeAppsHint.Text = Ui.T("badge_apps_h");
+        BadgeAppsBox.Watermark = Ui.T("badge_apps");
+        NotifyMsLabel.Text = Ui.T("notify_ms");
+        QuietFocusBox.Content = Ui.T("quiet_focus");
+        QuietFullBox.Content = Ui.T("quiet_full");
+        ReduceMotionBox.Content = Ui.T("reduce_motion");
+        DiagBox.Content = Ui.T("diagnostics");
+        WhatsNewTitle.Text = Ui.T("whats_new_title");
+        WhatsNewBody.Text = Ui.T("whats_new_body");
+        WhatsNewOk.Content = Ui.T("whats_new_ok");
         PathHint.Text = Ui.T("saved") + PrefsStore.ActivePath;
+    }
+
+    private void OnWhatsNewOk(object? sender, RoutedEventArgs e)
+    {
+        PrefsStore.Mutate(p => p.LastSeenVersion = "1.3.1");
+        WhatsNewBox.IsVisible = false;
     }
 
     private void OnCheck(object? sender, RoutedEventArgs e)
@@ -387,8 +421,8 @@ public partial class SettingsWindow : Window
     {
         await ToastHub.RefreshAsync(PrefsStore.Current.ListenToasts);
         ToastStatus.Text = PrefsStore.Current.ListenToasts
-            ? "Toasts: " + ToastHub.Status + " — " + ToastHub.Detail + (ToastHub.Allowed ? "" : " Not faking Allowed.")
-            : "Toasts: Off";
+            ? Ui.T("toast_status") + ToastHub.Status + (ToastHub.Allowed ? "" : " — " + Ui.T("toast_denied"))
+            : Ui.T("toast_off");
         _ = AppBadgeHub.RefreshAsync();
     }
 
@@ -455,11 +489,10 @@ public partial class SettingsWindow : Window
 
     private async void OnEnableToast(object? sender, RoutedEventArgs e)
     {
-        ToastStatus.Text = "Registering identity…";
-        var reg = await ToastIdentity.TryRegisterSparseAsync();
-        PrefsStore.Mutate(p => p.ListenToasts = true);
-        await ToastHub.RefreshAsync(true);
-        ToastStatus.Text = reg + " | " + ToastHub.Detail + (ToastHub.Allowed ? "" : " Not faking Allowed. Allow NotifyIsland under Settings → Privacy & security → Notifications.");
+        var code = await ToastIdentity.TryRegisterSparseAsync();
+        IslandLog.Write("toast", "ui-register " + code);
+        ToastStatus.Text = Ui.T("toast_unsigned");
+        ToastIdentity.OpenPrivacySettings();
     }
 
     private void OnOpenToastPrivacy(object? sender, RoutedEventArgs e) => ToastIdentity.OpenPrivacySettings();

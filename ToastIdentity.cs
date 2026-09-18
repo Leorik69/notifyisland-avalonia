@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading.Tasks;
+using NotifyIsland.Core;
 using Windows.UI.Notifications.Management;
 
 namespace NotifyIsland;
@@ -39,7 +41,10 @@ internal static class ToastIdentity
         var dir = AppContext.BaseDirectory;
         var manifest = Path.Combine(dir, "pack", "sparse", "AppxManifest.xml");
         if (!File.Exists(manifest))
-            return "No sparse manifest at " + manifest;
+        {
+            IslandLog.Write("toast", "no sparse manifest");
+            return "missing";
+        }
         try
         {
             var psi = new ProcessStartInfo
@@ -51,22 +56,23 @@ internal static class ToastIdentity
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
                 CreateNoWindow = true
             };
             using var p = Process.Start(psi);
-            if (p is null) return "PowerShell failed to start";
+            if (p is null) return "nopowershell";
             var stdout = await p.StandardOutput.ReadToEndAsync();
             var stderr = await p.StandardError.ReadToEndAsync();
             await p.WaitForExitAsync();
-            var text = (stdout + " " + stderr).Trim();
-            if (p.ExitCode != 0)
-                return "Add-AppxPackage exit " + p.ExitCode + " " + text;
+            IslandLog.Write("toast", "Add-AppxPackage exit=" + p.ExitCode + " out=" + stdout + " err=" + stderr);
             ProbePackage();
-            return "Registered. Identity now: " + PackageLine;
+            return p.ExitCode == 0 ? "ok" : "unsigned";
         }
         catch (Exception ex)
         {
-            return "Register threw " + ex.GetType().Name + ": " + ex.Message;
+            IslandLog.Write("toast", ex.GetType().Name + " " + ex.Message);
+            return "error";
         }
     }
 
@@ -79,8 +85,9 @@ internal static class ToastIdentity
                 Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
                 return;
             }
-            catch
+            catch (Exception ex)
             {
+                IslandLog.Write("toast", ex.Message);
             }
         }
     }

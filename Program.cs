@@ -11,6 +11,7 @@ internal static class Program
     public static bool MotionDebug { get; private set; }
     public static bool ForceDirectComposition { get; private set; }
     public static bool Diagnostics { get; private set; }
+    public static string? RenderModeOverride { get; private set; }
 
     public static string CompositionLabel =>
         ForceDirectComposition ? "DirectComposition" : "WinUIComposition+DComp-fallback";
@@ -33,6 +34,8 @@ internal static class Program
                 ForceDirectComposition = true;
             if (string.Equals(a, "--diagnostics", StringComparison.OrdinalIgnoreCase))
                 Diagnostics = true;
+            if (a.StartsWith("--render-mode=", StringComparison.OrdinalIgnoreCase))
+                RenderModeOverride = a.Split('=')[1];
         }
     }
 

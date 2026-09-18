@@ -15,7 +15,7 @@ public static class IslandLog
         {
             Rotate();
             var line = DateTime.Now.ToString("HH:mm:ss.fff") + " [" + area + "] " + message + Environment.NewLine;
-            File.AppendAllText(Path, line);
+            File.AppendAllText(Path, line, System.Text.Encoding.UTF8);
         }
         catch
         {
