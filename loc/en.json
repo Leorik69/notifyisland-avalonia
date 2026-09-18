@@ -112,7 +112,7 @@
   "reduce_motion": "Reduce motion",
   "diagnostics": "Diagnostics HUD",
   "whats_new_title": "What’s new in 1.3.1",
-  "whats_new_body": "1.3.1: the capsule lives on a fixed transparent strip — the HWND does not resize during animation. If it still stutters on your GPU, switch Render mode (Look, right under language) to Resize window and compare. Slider numeric fields now show the full value. Unpackaged toasts are often Denied; we never fake Allowed.",
+  "whats_new_body": "1.3.1: fixed-host rendering is now the default (HWND does not resize during animation). Smoothness is unverified on real GPU hardware — this VPS cannot prove it. If anything looks wrong, switch Render mode (Look, right under language) back to resizeHost. Also: full Russian settings strings and wider numeric fields next to sliders.",
   "whats_new_ok": "Got it",
   "toast_unsigned": "This build is unpackaged. The toast listener is usually Denied. Open Settings → Privacy → Notifications. Full log: %TEMP%\\notifyisland.log.",
   "toast_status": "Toasts: ",

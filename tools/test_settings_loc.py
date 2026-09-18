@@ -35,11 +35,16 @@ def main() -> int:
             failed += 1
         else:
             print("PASS key", key)
-    if "Режим отрисовки" not in RU["whats_new_body"] and "переключите" not in RU["whats_new_body"]:
-        print("FAIL whats_new missing render flip")
+    if "resizeHost" not in RU["whats_new_body"] or "не проверяли" not in RU["whats_new_body"]:
+        print("FAIL whats_new missing GPU/resizeHost")
         failed += 1
     else:
-        print("PASS whats_new mentions render flip")
+        print("PASS whats_new GPU disclaimer")
+    if "unverified" not in EN["whats_new_body"] or "resizeHost" not in EN["whats_new_body"]:
+        print("FAIL en whats_new")
+        failed += 1
+    else:
+        print("PASS en whats_new")
     if "RenderModeLabel.Text = Ui.T(\"render_mode\")" not in CS:
         print("FAIL apply render")
         failed += 1
