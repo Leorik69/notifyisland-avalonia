@@ -26,7 +26,9 @@
             ClipToBounds="True"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
-            PointerPressed="OnPillPressed">
+            PointerPressed="OnPillPressed"
+            PointerEntered="OnPillEntered"
+            PointerExited="OnPillExited">
       <Grid Margin="12,0">
         <TextBlock x:Name="ClockText"
                    HorizontalAlignment="Center"
@@ -39,11 +41,12 @@
                    Text="00:00" />
         <DockPanel x:Name="OverlayPanel" LastChildFill="True" Opacity="0" IsHitTestVisible="False">
           <Panel DockPanel.Dock="Left" Width="18" Height="18" Margin="0,0,8,0" VerticalAlignment="Center">
-            <Path x:Name="KindIcon" Width="16" Height="16" Stretch="Uniform" />
+            <Path x:Name="KindIcon" Width="16" Height="16" Stretch="Uniform" Opacity="1" />
             <TextBlock x:Name="KindGlyph" FontFamily="Segoe MDL2 Assets" FontSize="14" IsVisible="False"
                        VerticalAlignment="Center" HorizontalAlignment="Center" />
           </Panel>
           <Button x:Name="MediaPlay" DockPanel.Dock="Right" Padding="6,2" Margin="8,0,0,0" Click="OnMediaPlay"
+                  Opacity="0" IsHitTestVisible="False"
                   ToolTip.Tip="Play" AutomationProperties.Name="Play">
             <Panel Width="12" Height="12">
               <Path x:Name="MediaPlayIcon" Width="10" Height="10" Stretch="Uniform" />

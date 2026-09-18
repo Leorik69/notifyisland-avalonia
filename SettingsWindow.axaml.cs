@@ -42,6 +42,11 @@ public partial class SettingsWindow : Window
         RadiusSlider.Value = p.CornerRadius;
         WidthSlider.Value = p.IdleWidth;
         HeightSlider.Value = p.IdleHeight;
+        NotifySlider.Value = p.NotifyDurationMs;
+        HoverBox.IsChecked = p.HoverPeek;
+        AutoBox.IsChecked = p.AutoStart || AutoStart.IsEnabled();
+        ToastBox.IsChecked = p.ListenToasts;
+        ToastStatus.Text = "Toasts: " + ToastHub.Status;
     }
 
     private void OnChanged(object? sender, SelectionChangedEventArgs e)
@@ -81,9 +86,29 @@ public partial class SettingsWindow : Window
             p.CornerRadius = RadiusSlider.Value;
             p.IdleWidth = WidthSlider.Value;
             p.IdleHeight = HeightSlider.Value;
+            p.NotifyDurationMs = (int)NotifySlider.Value;
+            p.HoverPeek = HoverBox.IsChecked == true;
+            p.AutoStart = AutoBox.IsChecked == true;
+            p.ListenToasts = ToastBox.IsChecked == true;
         });
+        AutoStart.Set(PrefsStore.Current.AutoStart);
+        _ = UpdateToastAsync();
         PaintPreview();
         PathHint.Text = "Saved to " + PrefsStore.ActivePath;
+    }
+
+    private void OnCheck(object? sender, RoutedEventArgs e)
+    {
+        if (!_boot) return;
+        Commit();
+    }
+
+    private async System.Threading.Tasks.Task UpdateToastAsync()
+    {
+        await ToastHub.RefreshAsync(PrefsStore.Current.ListenToasts);
+        ToastStatus.Text = PrefsStore.Current.ListenToasts
+            ? "Toasts: " + ToastHub.Status + (ToastHub.Allowed ? "" : " — demo hub still works (F9). Not faking access.")
+            : "Toasts: Off";
     }
 
     private void PaintPreview()

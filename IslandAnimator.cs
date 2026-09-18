@@ -7,6 +7,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 
 namespace NotifyIsland;
 
@@ -118,5 +119,68 @@ internal static class IslandAnimator
         if (target.RenderTransform is not ScaleTransform)
             target.RenderTransform = new ScaleTransform(1, 1);
         target.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
+    }
+
+    public static async void CrossfadeIcon(Visual icon, Action apply)
+    {
+        var fade = Math.Max(80, Motion.FadeMs / 2);
+        WireOpacity(icon, fade);
+        icon.Opacity = 0;
+        await Task.Delay(fade);
+        apply();
+        icon.Opacity = 1;
+    }
+}
+
+internal sealed class HwndMorph
+{
+    private readonly Window _window;
+    private readonly DispatcherTimer _timer;
+    private double _w0, _w1, _h0, _h1;
+    private int _x0, _x1, _y;
+    private int _elapsed, _dur;
+
+    public HwndMorph(Window window)
+    {
+        _window = window;
+        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _timer.Tick += (_, _) => Step();
+    }
+
+    public void To(double width, double height, int ms)
+    {
+        var screen = _window.Screens.Primary ?? _window.Screens.ScreenFromWindow(_window);
+        if (screen is null)
+        {
+            _window.Width = width; _window.Height = height;
+            return;
+        }
+        var wa = screen.WorkingArea;
+        var scale = _window.RenderScaling;
+        var toX = wa.X + (wa.Width - (int)Math.Round(width * scale)) / 2;
+        var y = wa.Y + 8;
+        _w0 = _window.Width; _h0 = _window.Height;
+        _w1 = width; _h1 = height;
+        _x0 = _window.Position.X; _x1 = toX; _y = y;
+        _elapsed = 0;
+        _dur = Math.Max(16, ms);
+        _timer.Start();
+    }
+
+    private void Step()
+    {
+        _elapsed += 16;
+        var t = Math.Min(1, _elapsed / (double)_dur);
+        t = 1 - Math.Pow(1 - t, 3);
+        _window.Width = _w0 + (_w1 - _w0) * t;
+        _window.Height = _h0 + (_h1 - _h0) * t;
+        _window.Position = new PixelPoint((int)Math.Round(_x0 + (_x1 - _x0) * t), _y);
+        if (t >= 1)
+        {
+            _timer.Stop();
+            _window.Width = _w1;
+            _window.Height = _h1;
+            _window.Position = new PixelPoint(_x1, _y);
+        }
     }
 }

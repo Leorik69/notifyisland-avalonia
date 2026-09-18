@@ -20,6 +20,10 @@ public sealed class UserPrefs
     public double IdleWidth { get; set; } = 180;
     public double IdleHeight { get; set; } = 34;
     public string ClockFormat { get; set; } = "HH:mm";
+    public bool AutoStart { get; set; }
+    public bool HoverPeek { get; set; } = true;
+    public bool ListenToasts { get; set; }
+    public int NotifyDurationMs { get; set; } = 4000;
 }
 
 internal static class PrefsStore
@@ -132,6 +136,7 @@ internal static class PrefsStore
             "none" => "none",
             _ => "morph"
         };
+        if (p.NotifyDurationMs < 500 || p.NotifyDurationMs > 30000) p.NotifyDurationMs = 4000;
     }
 
     private static string PortablePath() => Path.Combine(AppContext.BaseDirectory, "notifyisland.settings.json");

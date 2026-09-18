@@ -43,6 +43,12 @@
         <Slider x:Name="WidthSlider" Minimum="140" Maximum="280" PropertyChanged="OnSlider" />
         <TextBlock Text="Idle height" Opacity="0.8" />
         <Slider x:Name="HeightSlider" Minimum="28" Maximum="48" PropertyChanged="OnSlider" />
+        <TextBlock Text="Notify duration (ms)" Opacity="0.8" />
+        <Slider x:Name="NotifySlider" Minimum="1000" Maximum="8000" PropertyChanged="OnSlider" />
+        <CheckBox x:Name="HoverBox" Content="Hover peek (idle → glance)" IsCheckedChanged="OnCheck" />
+        <CheckBox x:Name="AutoBox" Content="Start with Windows" IsCheckedChanged="OnCheck" />
+        <CheckBox x:Name="ToastBox" Content="Listen to Windows toasts" IsCheckedChanged="OnCheck" />
+        <TextBlock x:Name="ToastStatus" FontSize="12" Opacity="0.75" TextWrapping="Wrap" />
         <Button Content="Preview notify animation" Click="OnPreviewAnim" HorizontalAlignment="Left" />
       </StackPanel>
     </ScrollViewer>

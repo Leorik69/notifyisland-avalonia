@@ -13,7 +13,7 @@
           <NativeMenu>
             <NativeMenuItem Header="Show / hide overlay" Click="OnTrayToggle" />
             <NativeMenuItem Header="Settings" Click="OnTraySettings" />
-            <NativeMenuItem Header="Demo" Click="OnTrayDemo" />
+            <NativeMenuItem Header="Demo hub" Click="OnTrayDemo" />
             <NativeMenuItemSeparator />
             <NativeMenuItem Header="Exit" Click="OnTrayExit" />
           </NativeMenu>
