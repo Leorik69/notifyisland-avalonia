@@ -61,18 +61,20 @@ public partial class SettingsWindow : Window
         IslandAnimator.WireChrome(PreviewPill);
         ApplyLang();
         _boot = true;
-        if (!string.IsNullOrEmpty(Program.SettingsShotPath))
-            TextSizeBox.SelectedIndex = 2;
         ApplyNumericChrome();
         PaintPreview();
         PathHint.Text = Ui.T("saved") + PrefsStore.ActivePath;
         if (!string.IsNullOrEmpty(Program.SettingsShotPath))
-            Opened += (_, _) => DispatcherTimer.RunOnce(CaptureSettingsShot, TimeSpan.FromMilliseconds(700));
+        {
+            WhatsNewBox.IsVisible = false;
+            try { File.WriteAllText(Program.SettingsShotPath + ".log.txt", "ctor " + Program.SettingsShotPath); } catch { }
+            Opened += (_, _) => DispatcherTimer.RunOnce(CaptureSettingsShot, TimeSpan.FromMilliseconds(900));
+        }
     }
 
     private void ApplyNumericChrome()
     {
-        var large = TextSizeBox.SelectedIndex == 2;
+        var large = TextSizeBox.SelectedIndex == 2 || !string.IsNullOrEmpty(Program.SettingsShotPath);
         var w = large ? 200.0 : 172.0;
         var unit = large ? 56.0 : 48.0;
         var fs = large ? 16.0 : 14.0;
@@ -99,20 +101,32 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private int _shotTries;
+
     private void CaptureSettingsShot()
     {
         var path = Program.SettingsShotPath;
         if (string.IsNullOrWhiteSpace(path)) return;
         try
         {
+            File.AppendAllText(path + ".log.txt", "\ntry " + _shotTries + " bounds=" + Bounds);
+            AppearanceExp.IsExpanded = true;
+            OpacityNum.BringIntoView();
+            GlassNum.BringIntoView();
             UpdateLayout();
-            var w = Math.Max(1, (int)Bounds.Width);
-            var h = Math.Max(1, (int)Math.Min(Bounds.Height, 920));
+            if (_shotTries++ < 2)
+            {
+                DispatcherTimer.RunOnce(CaptureSettingsShot, TimeSpan.FromMilliseconds(280));
+                return;
+            }
+            var w = Math.Max(640, (int)Math.Ceiling(Bounds.Width));
+            var h = Math.Max(400, (int)Math.Min(Math.Ceiling(Bounds.Height), 920));
             using var bmp = new RenderTargetBitmap(new PixelSize(w, h), new Vector(96, 96));
             bmp.Render(this);
             var dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             bmp.Save(path);
+            File.AppendAllText(path + ".log.txt", "\nsaved " + new FileInfo(path).Length);
         }
         catch (Exception ex)
         {

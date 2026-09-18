@@ -50,6 +50,19 @@ internal static class Program
     {
         AbsorbArgs(args);
         AbsorbArgs(Environment.GetCommandLineArgs());
+        if (!string.IsNullOrEmpty(SettingsShotPath))
+        {
+            try
+            {
+                var d = System.IO.Path.GetDirectoryName(SettingsShotPath);
+                if (!string.IsNullOrEmpty(d)) System.IO.Directory.CreateDirectory(d);
+                System.IO.File.WriteAllText(SettingsShotPath + ".boot.txt",
+                    "shot=" + SettingsShotPath + " open=" + OpenSettingsOnStart);
+            }
+            catch
+            {
+            }
+        }
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
