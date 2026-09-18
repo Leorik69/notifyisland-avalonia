@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="NotifyIsland.OverlayWindow"
         Title="NotifyIsland"
-        Width="180" Height="34"
+        Width="180" Height="40"
         CanResize="False"
         ShowInTaskbar="False"
         Topmost="True"
@@ -14,15 +14,15 @@
         WindowStartupLocation="Manual">
   <Panel>
     <Border x:Name="Glow"
-            Width="188" Height="42"
-            CornerRadius="21"
+            Width="188" Height="48"
+            CornerRadius="24"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
             IsHitTestVisible="False"
             Opacity="0.28" />
     <Border x:Name="Pill"
-            Width="180" Height="34"
-            CornerRadius="17"
+            Width="180" Height="40"
+            CornerRadius="20"
             ClipToBounds="True"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
@@ -39,20 +39,28 @@
                    FontWeight="SemiBold"
                    Foreground="#FFFFFF"
                    Text="00:00" />
-        <DockPanel x:Name="OverlayPanel" LastChildFill="True" Opacity="0" IsHitTestVisible="False">
-          <Panel DockPanel.Dock="Left" Width="18" Height="18" Margin="0,0,8,0" VerticalAlignment="Center">
-            <Path x:Name="KindIcon" Width="16" Height="16" Stretch="Uniform" Opacity="1" />
-            <TextBlock x:Name="KindGlyph" FontFamily="Segoe MDL2 Assets" FontSize="14" IsVisible="False"
+        <DockPanel x:Name="OverlayRow" LastChildFill="True" Opacity="0" IsHitTestVisible="False">
+          <Panel DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
+            <Path x:Name="KindIcon" Width="14" Height="14" Stretch="Uniform" />
+            <TextBlock x:Name="KindGlyph" FontFamily="Segoe MDL2 Assets" FontSize="13" IsVisible="False"
                        VerticalAlignment="Center" HorizontalAlignment="Center" />
           </Panel>
-          <Button x:Name="MediaPlay" DockPanel.Dock="Right" Padding="6,2" Margin="8,0,0,0" Click="OnMediaPlay"
-                  Opacity="0" IsHitTestVisible="False"
+          <Button x:Name="MediaPlay" DockPanel.Dock="Right" Padding="4,0" Margin="8,0,0,0" Click="OnMediaPlay"
+                  Opacity="0" IsHitTestVisible="False" VerticalAlignment="Center"
                   ToolTip.Tip="Play" AutomationProperties.Name="Play">
             <Panel Width="12" Height="12">
               <Path x:Name="MediaPlayIcon" Width="10" Height="10" Stretch="Uniform" />
               <TextBlock x:Name="MediaPlayGlyph" FontFamily="Segoe MDL2 Assets" FontSize="11" IsVisible="False" />
             </Panel>
           </Button>
+          <ProgressBar x:Name="RowProgress" DockPanel.Dock="Right" Width="52" Height="3" Margin="8,0,0,0"
+                       Minimum="0" Maximum="100" Opacity="0" VerticalAlignment="Center" />
+          <TextBlock x:Name="RowTimer" DockPanel.Dock="Right" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold"
+                     Opacity="0" VerticalAlignment="Center" />
+          <TextBlock x:Name="RowText" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" />
+        </DockPanel>
+        <DockPanel x:Name="OverlayPanel" LastChildFill="True" Opacity="0" IsHitTestVisible="False">
           <StackPanel Spacing="2" VerticalAlignment="Center">
             <TextBlock x:Name="OverlayTitle" FontSize="13" FontWeight="SemiBold" Foreground="#FFFFFF"
                        FontFamily="Segoe UI Variable Display, Segoe UI Variable, Segoe UI"

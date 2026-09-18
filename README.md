@@ -8,6 +8,6 @@ dotnet run --project NotifyIsland.Av.csproj -- --demo
 dotnet run --project NotifyIsland.Av.csproj -- --settings
 ```
 
-Tray: show/hide, settings, demo hub, exit. Optional autostart and Windows toast listener (Denied/Unavailable is shown honestly). Settings: `notifyisland.settings.json` beside the exe or `%LOCALAPPDATA%\NotifyIsland\`. F9 demo.
+Tray: show/hide, settings, demo hub, exit. Click the capsule to open Notification Center (`ms-actioncenter:`); toggle off in settings. Shift+click expands. Optional autostart and Windows toast listener.
 
 Portable: Actions artifact `NotifyIsland-portable-win-x64`.

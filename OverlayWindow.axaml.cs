@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 namespace NotifyIsland;
 
@@ -33,7 +34,7 @@ public partial class OverlayWindow : Window
         Opened += (_, _) =>
         {
             Win32Overlay.ApplyNoActivate(this);
-            PlaceTopCenter();
+            Position = OverlayPlacement.Compute(this, Width, Height);
             if (Program.DemoMode && !_demo.IsEnabled)
             {
                 _demoOn = true;
@@ -190,9 +191,14 @@ public partial class OverlayWindow : Window
         IslandAnimator.WireOpacity(OverlayProgress, Motion.FadeMs);
         IslandAnimator.WireOpacity(OverlayTimer, Motion.FadeMs);
         IslandAnimator.WireOpacity(OverlayStack, Motion.FadeMs);
+        IslandAnimator.WireOpacity(OverlayRow, Motion.FadeMs);
+        IslandAnimator.WireOpacity(RowText, Motion.FadeMs);
+        IslandAnimator.WireOpacity(RowProgress, Motion.FadeMs);
+        IslandAnimator.WireOpacity(RowTimer, Motion.FadeMs);
         IslandAnimator.WireOpacity(MediaPlay, Motion.FadeMs);
         IslandAnimator.WireOpacity(KindIcon, Motion.FadeMs);
         IslandAnimator.WireProgress(OverlayProgress, Motion.ProgressMs);
+        IslandAnimator.WireProgress(RowProgress, Motion.ProgressMs);
         IslandAnimator.WireOpacity(this, Motion.FadeMs);
 
         var pal = PaletteCatalog.Get(PrefsStore.Current.PaletteId);
@@ -219,10 +225,15 @@ public partial class OverlayWindow : Window
         OverlaySubtitle.FontFamily = family;
         OverlayStack.FontFamily = family;
         OverlayTimer.FontFamily = family;
+        RowText.FontFamily = family;
+        RowTimer.FontFamily = family;
         OverlayTitle.Foreground = new SolidColorBrush(pal.Text);
         OverlaySubtitle.Foreground = new SolidColorBrush(pal.TextSecondary);
         OverlayStack.Foreground = new SolidColorBrush(pal.TextSecondary);
         OverlayProgress.Foreground = new SolidColorBrush(pal.Accent);
+        RowText.Foreground = new SolidColorBrush(pal.Text);
+        RowTimer.Foreground = new SolidColorBrush(pal.Text);
+        RowProgress.Foreground = new SolidColorBrush(pal.Accent);
         KindIcon.Fill = new SolidColorBrush(pal.Accent);
         KindGlyph.Foreground = new SolidColorBrush(pal.Accent);
         MediaPlayIcon.Fill = new SolidColorBrush(pal.Accent);
@@ -234,10 +245,14 @@ public partial class OverlayWindow : Window
         var snap = _machine.Snapshot();
         var prefs = PrefsStore.Current;
         var toW = snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed ? prefs.IdleWidth : snap.Width;
-        var toH = snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed ? prefs.IdleHeight : snap.Height;
+        var toH = prefs.ExpandMode == "width" || snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed
+            ? prefs.IdleHeight
+            : snap.Height;
+        if (prefs.ExpandMode == "width")
+            toH = prefs.IdleHeight;
         Pill.Width = toW;
         Pill.Height = toH;
-        var radius = prefs.CornerRadius <= 0 ? toH / 2 : prefs.CornerRadius;
+        var radius = prefs.CornerRadius <= 0 || prefs.ExpandMode == "width" ? toH / 2 : prefs.CornerRadius;
         Pill.CornerRadius = new CornerRadius(radius);
         Glow.Width = toW + 10 + prefs.GlowStrength * 8;
         Glow.Height = toH + 8 + prefs.GlowStrength * 6;
@@ -248,7 +263,7 @@ public partial class OverlayWindow : Window
         {
             Width = toW;
             Height = toH;
-            PlaceTopCenter();
+            Position = OverlayPlacement.Compute(this, toW, toH);
         }
         _lastW = toW;
         _lastH = toH;
@@ -270,15 +285,7 @@ public partial class OverlayWindow : Window
             IslandAnimator.Pulse(Glow, Motion.PulseMs);
     }
 
-    private void PlaceTopCenter()
-    {
-        var screen = Screens.Primary ?? Screens.ScreenFromWindow(this);
-        if (screen is null) return;
-        var wa = screen.WorkingArea;
-        var scale = RenderScaling;
-        var pw = (int)Math.Round(Width * scale);
-        Position = new PixelPoint(wa.X + (wa.Width - pw) / 2, wa.Y + 8);
-    }
+    private void PlaceTopCenter() => Position = OverlayPlacement.Compute(this, Width, Height);
 
     private void Paint()
     {
@@ -287,24 +294,39 @@ public partial class OverlayWindow : Window
         var kind = snap.Kind; var p = snap.Payload;
         var overlayOn = kind is OverlayKind.Notification or OverlayKind.Progress or OverlayKind.Media
             or OverlayKind.Timer or OverlayKind.Error or OverlayKind.Expanded or OverlayKind.Stack;
-        OverlayPanel.Opacity = overlayOn ? 1 : 0;
-        OverlayPanel.IsHitTestVisible = overlayOn;
+        var widthOnly = PrefsStore.Current.ExpandMode != "both";
+        OverlayRow.Opacity = overlayOn && widthOnly ? 1 : 0;
+        OverlayRow.IsHitTestVisible = overlayOn && widthOnly;
+        OverlayPanel.Opacity = overlayOn && !widthOnly ? 1 : 0;
+        OverlayPanel.IsHitTestVisible = overlayOn && !widthOnly;
         ClockText.Opacity = overlayOn ? 0 : 1;
-        OverlayTitle.Text = string.IsNullOrWhiteSpace(p.Title) ? Fallback(kind) : p.Title;
-        OverlaySubtitle.Text = string.IsNullOrWhiteSpace(p.Subtitle) ? p.Body : p.Subtitle;
+        var title = string.IsNullOrWhiteSpace(p.Title) ? Fallback(kind) : p.Title;
+        var sub = string.IsNullOrWhiteSpace(p.Subtitle) ? p.Body : p.Subtitle;
+        OverlayTitle.Text = title;
+        OverlaySubtitle.Text = sub;
         OverlayStack.Text = p.Line2;
         OverlayStack.Opacity = kind == OverlayKind.Stack && !string.IsNullOrWhiteSpace(p.Line2) ? 1 : 0;
-        OverlayProgress.Opacity = kind is OverlayKind.Progress or OverlayKind.Media ? 1 : 0;
+        var row = title;
+        if (!string.IsNullOrWhiteSpace(sub)) row += " · " + sub;
+        if (kind == OverlayKind.Stack && !string.IsNullOrWhiteSpace(p.Line2)) row += " · " + p.Line2;
+        RowText.Text = row;
+        OverlayProgress.Opacity = !widthOnly && kind is OverlayKind.Progress or OverlayKind.Media ? 1 : 0;
         OverlayProgress.Value = p.Progress * 100;
-        OverlayTimer.Opacity = kind == OverlayKind.Timer ? 1 : 0;
+        RowProgress.Opacity = widthOnly && kind is OverlayKind.Progress or OverlayKind.Media ? 1 : 0;
+        RowProgress.Value = p.Progress * 100;
+        OverlayTimer.Opacity = !widthOnly && kind == OverlayKind.Timer ? 1 : 0;
+        RowTimer.Opacity = widthOnly && kind == OverlayKind.Timer ? 1 : 0;
         var sec = (int)Math.Ceiling(p.RemainingSeconds);
-        OverlayTimer.Text = kind == OverlayKind.Timer ? TimeSpan.FromSeconds(sec).ToString(@"mm\:ss") : "";
+        var clock = kind == OverlayKind.Timer ? TimeSpan.FromSeconds(sec).ToString(@"mm\:ss") : "";
+        OverlayTimer.Text = clock;
+        RowTimer.Text = clock;
         if (kind == OverlayKind.Timer && sec != _lastTimerSec)
         {
             _lastTimerSec = sec;
-            IslandAnimator.TickPop(OverlayTimer);
+            IslandAnimator.TickPop(widthOnly ? RowTimer : OverlayTimer);
         }
         OverlayTitle.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? pal.Error : pal.Text);
+        RowText.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? pal.Error : pal.Text);
         MediaPlay.Opacity = kind == OverlayKind.Media ? 1 : 0;
         MediaPlay.IsHitTestVisible = kind == OverlayKind.Media;
         var glyph = IslandIcons.ForKind(kind, p.Playing);
@@ -351,9 +373,18 @@ public partial class OverlayWindow : Window
 
     private void OnPillPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (HitsMedia(e)) return;
         var pt = e.GetCurrentPoint(this);
         if (pt.Properties.IsLeftButtonPressed)
         {
+            var mods = e.KeyModifiers;
+            var shift = mods.HasFlag(KeyModifiers.Shift) || mods.HasFlag(KeyModifiers.Alt) || mods.HasFlag(KeyModifiers.Control);
+            if (PrefsStore.Current.ClickOpensActionCenter && !shift)
+            {
+                ActionCenter.TryOpen();
+                e.Handled = true;
+                return;
+            }
             var kind = _machine.Snapshot().Kind;
             if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
             {
@@ -394,6 +425,13 @@ public partial class OverlayWindow : Window
         menu.Items.Add(Menu("Exit", IslandHost.Exit));
         menu.Open(Pill);
         e.Handled = true;
+    }
+
+    private bool HitsMedia(PointerEventArgs e)
+    {
+        for (var v = e.Source as Visual; v is not null; v = v.GetVisualParent())
+            if (ReferenceEquals(v, MediaPlay)) return true;
+        return false;
     }
 
     private void OnPillEntered(object? sender, PointerEventArgs e)

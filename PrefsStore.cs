@@ -18,12 +18,19 @@ public sealed class UserPrefs
     public double GlowStrength { get; set; } = 0.55;
     public double CornerRadius { get; set; } = 0;
     public double IdleWidth { get; set; } = 180;
-    public double IdleHeight { get; set; } = 34;
+    public double IdleHeight { get; set; } = 40;
     public string ClockFormat { get; set; } = "HH:mm";
     public bool AutoStart { get; set; }
     public bool HoverPeek { get; set; } = true;
     public bool ListenToasts { get; set; }
     public int NotifyDurationMs { get; set; } = 4000;
+    public string ExpandMode { get; set; } = "width";
+    public string AnchorH { get; set; } = "center";
+    public string AnchorV { get; set; } = "top";
+    public double OffsetX { get; set; }
+    public double OffsetY { get; set; }
+    public string Layer { get; set; } = "topmost";
+    public bool ClickOpensActionCenter { get; set; } = true;
 }
 
 internal static class PrefsStore
@@ -113,8 +120,16 @@ internal static class PrefsStore
         p.CornerRadius = Math.Clamp(p.CornerRadius, 0, 28);
         if (double.IsNaN(p.IdleWidth) || double.IsInfinity(p.IdleWidth)) p.IdleWidth = 180;
         p.IdleWidth = Math.Clamp(p.IdleWidth, 140, 280);
-        if (double.IsNaN(p.IdleHeight) || double.IsInfinity(p.IdleHeight)) p.IdleHeight = 34;
-        p.IdleHeight = Math.Clamp(p.IdleHeight, 28, 48);
+        if (double.IsNaN(p.IdleHeight) || double.IsInfinity(p.IdleHeight)) p.IdleHeight = 40;
+        p.IdleHeight = Math.Clamp(p.IdleHeight, 32, 48);
+        p.ExpandMode = string.Equals(p.ExpandMode, "both", StringComparison.OrdinalIgnoreCase) ? "both" : "width";
+        p.AnchorH = p.AnchorH?.ToLowerInvariant() switch { "left" => "left", "right" => "right", _ => "center" };
+        p.AnchorV = p.AnchorV?.ToLowerInvariant() switch { "center" => "center", "bottom" => "bottom", _ => "top" };
+        if (double.IsNaN(p.OffsetX) || double.IsInfinity(p.OffsetX)) p.OffsetX = 0;
+        if (double.IsNaN(p.OffsetY) || double.IsInfinity(p.OffsetY)) p.OffsetY = 0;
+        p.OffsetX = Math.Clamp(p.OffsetX, -800, 800);
+        p.OffsetY = Math.Clamp(p.OffsetY, -800, 800);
+        p.Layer = p.Layer?.ToLowerInvariant() switch { "normal" => "normal", "desktop" => "desktop", _ => "topmost" };
         p.ClockFormat = p.ClockFormat switch
         {
             "HH:mm:ss" => "HH:mm:ss",

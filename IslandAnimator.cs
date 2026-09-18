@@ -137,7 +137,7 @@ internal sealed class HwndMorph
     private readonly Window _window;
     private readonly DispatcherTimer _timer;
     private double _w0, _w1, _h0, _h1;
-    private int _x0, _x1, _y;
+    private int _x0, _x1, _y0, _y1;
     private int _elapsed, _dur;
 
     public HwndMorph(Window window)
@@ -149,19 +149,11 @@ internal sealed class HwndMorph
 
     public void To(double width, double height, int ms)
     {
-        var screen = _window.Screens.Primary ?? _window.Screens.ScreenFromWindow(_window);
-        if (screen is null)
-        {
-            _window.Width = width; _window.Height = height;
-            return;
-        }
-        var wa = screen.WorkingArea;
-        var scale = _window.RenderScaling;
-        var toX = wa.X + (wa.Width - (int)Math.Round(width * scale)) / 2;
-        var y = wa.Y + 8;
+        var dest = OverlayPlacement.Compute(_window, width, height);
         _w0 = _window.Width; _h0 = _window.Height;
         _w1 = width; _h1 = height;
-        _x0 = _window.Position.X; _x1 = toX; _y = y;
+        _x0 = _window.Position.X; _x1 = dest.X;
+        _y0 = _window.Position.Y; _y1 = dest.Y;
         _elapsed = 0;
         _dur = Math.Max(16, ms);
         _timer.Start();
@@ -174,14 +166,16 @@ internal sealed class HwndMorph
         t = 1 - Math.Pow(1 - t, 3);
         _window.Width = _w0 + (_w1 - _w0) * t;
         _window.Height = _h0 + (_h1 - _h0) * t;
-        _window.Position = new PixelPoint((int)Math.Round(_x0 + (_x1 - _x0) * t), _y);
+        _window.Position = new PixelPoint(
+            (int)Math.Round(_x0 + (_x1 - _x0) * t),
+            (int)Math.Round(_y0 + (_y1 - _y0) * t));
         Win32Overlay.ApplyNoActivate(_window);
         if (t >= 1)
         {
             _timer.Stop();
             _window.Width = _w1;
             _window.Height = _h1;
-            _window.Position = new PixelPoint(_x1, _y);
+            _window.Position = new PixelPoint(_x1, _y1);
         }
     }
 }

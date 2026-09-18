@@ -42,9 +42,23 @@
         <TextBlock Text="Idle width" Opacity="0.8" />
         <Slider x:Name="WidthSlider" Minimum="140" Maximum="280" PropertyChanged="OnSlider" />
         <TextBlock Text="Idle height" Opacity="0.8" />
-        <Slider x:Name="HeightSlider" Minimum="28" Maximum="48" PropertyChanged="OnSlider" />
+        <Slider x:Name="HeightSlider" Minimum="32" Maximum="48" PropertyChanged="OnSlider" />
+        <TextBlock Text="Expand mode" Opacity="0.8" />
+        <ComboBox x:Name="ExpandBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+        <TextBlock Text="Horizontal position" Opacity="0.8" />
+        <ComboBox x:Name="AnchorHBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+        <TextBlock Text="Vertical position" Opacity="0.8" />
+        <ComboBox x:Name="AnchorVBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+        <TextBlock Text="X offset" Opacity="0.8" />
+        <Slider x:Name="OffXSlider" Minimum="-400" Maximum="400" PropertyChanged="OnSlider" />
+        <TextBlock Text="Y offset" Opacity="0.8" />
+        <Slider x:Name="OffYSlider" Minimum="-400" Maximum="400" PropertyChanged="OnSlider" />
+        <TextBlock Text="Layer" Opacity="0.8" />
+        <ComboBox x:Name="LayerBox" HorizontalAlignment="Stretch" SelectionChanged="OnChanged" />
+        <TextBlock Text="Desktop layer uses HWND_BOTTOM (behind normal apps). WorkerW wallpaper-behind-icons is not used." FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
         <TextBlock Text="Notify duration (ms)" Opacity="0.8" />
         <Slider x:Name="NotifySlider" Minimum="1000" Maximum="8000" PropertyChanged="OnSlider" />
+        <CheckBox x:Name="ActionCenterBox" Content="Click capsule opens Notification Center (Shift+click still expands)" IsCheckedChanged="OnCheck" />
         <CheckBox x:Name="HoverBox" Content="Hover peek (idle → glance)" IsCheckedChanged="OnCheck" />
         <CheckBox x:Name="AutoBox" Content="Start with Windows" IsCheckedChanged="OnCheck" />
         <CheckBox x:Name="ToastBox" Content="Listen to Windows toasts" IsCheckedChanged="OnCheck" />
