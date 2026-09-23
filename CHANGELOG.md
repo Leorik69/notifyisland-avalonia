@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.9.0 — Timer / stopwatch in the capsule
+
+### Added
+- **Countdown timer** in the island (`OverlayKind.Timer`): live `mm:ss` / `h:mm:ss`, Pause/Resume, Cancel, +1 мин.
+- Start from **tray → Таймер** presets (1/5/10/25 мин + default), **Settings → Вид → Таймер**, or **F12**.
+- On reach 0: notification «Таймер / Время вышло» + notify sound (if enabled), then Idle.
+- **Stopwatch** (count-up) via Settings «Режим секундомера» + same Start/F12 path.
+- Settings: `TimerEnabled` (default ON), `TimerDefaultMinutes` (default 5), `TimerStopwatchMode` (default OFF).
+- Core: `IslandTimerLogic` + `OverlayPayload.CountUp`; `Tick` pauses when `Playing=false`, completes countdown → Notify.
+
+### Priority
+- **Running/paused timer owns the island** over SMTC Now Playing until cancel/complete. Brief battery/notify overlays still return to Timer via `_returnTo`. User click on Media allows SMTC to keep focus. Documented here.
+
+### Changed
+- Version **1.9.0**. Clicks-only (1.8.1) preserved — no swipe reintroduction.
+
+### Note
+- No hover-expand. No Open-Meteo. No island drag.
+
+
 ## 1.8.1 — Clicks only + stronger idle breath
 
 ### Changed

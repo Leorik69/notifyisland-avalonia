@@ -53,6 +53,8 @@ public sealed class OverlayPayload
     public double Progress { get; set; }
     public bool Playing { get; set; }
     public double RemainingSeconds { get; set; }
+    /// <summary>True = stopwatch count-up; false = countdown.</summary>
+    public bool CountUp { get; set; }
     /// <summary>Optional weather fields (SetWeather / cache).</summary>
     public double? TemperatureC { get; set; }
     public int? WeatherCode { get; set; }
@@ -154,6 +156,8 @@ public sealed class OverlayMachine
             case OverlayCommand.SetTimer:
                 _kind = OverlayKind.Timer;
                 Apply(data);
+                if (string.IsNullOrWhiteSpace(_payload.Title))
+                    _payload.Title = _payload.CountUp ? "Секундомер" : "Таймер";
                 _notifyMs = 0;
                 break;
             case OverlayCommand.SetError:
@@ -231,8 +235,22 @@ public sealed class OverlayMachine
                     : _returnTo;
             }
         }
-        if (_kind == OverlayKind.Timer && _payload.RemainingSeconds > 0)
-            _payload.RemainingSeconds = Math.Max(0, _payload.RemainingSeconds - dt / 1000.0);
+        if (_kind == OverlayKind.Timer && _payload.Playing)
+        {
+            if (_payload.CountUp)
+                _payload.RemainingSeconds = Math.Min(359999, _payload.RemainingSeconds + dt / 1000.0);
+            else if (_payload.RemainingSeconds > 0)
+                _payload.RemainingSeconds = Math.Max(0, _payload.RemainingSeconds - dt / 1000.0);
+
+            if (IslandTimerLogic.ShouldCompleteCountdown(_kind, _payload))
+            {
+                _returnTo = OverlayKind.Idle;
+                _kind = OverlayKind.Notification;
+                Apply(IslandTimerLogic.CompletedPayload());
+                _notifyMs = NotifyDurationMs;
+                _unreadCount = Math.Min(_unreadCount + 1, 99);
+            }
+        }
         return Snapshot();
     }
 
@@ -363,7 +381,7 @@ public sealed class OverlayMachine
             OverlayCommand.SetProgress => new OverlayPayload { Title = "Копирование", Progress = 0.42 },
             OverlayCommand.SetMedia => new OverlayPayload { Title = "Night Drive", Subtitle = "Local Radio", Progress = 0.33, Playing = true },
             OverlayCommand.SetBattery => BatteryAlertLogic.ChargePayload(67),
-            OverlayCommand.SetTimer => new OverlayPayload { Title = "Фокус", RemainingSeconds = 90 },
+            OverlayCommand.SetTimer => new OverlayPayload { Title = "Фокус", RemainingSeconds = 90, Playing = true },
             OverlayCommand.SetError => new OverlayPayload { Title = "Сеть", Body = "Нет ответа сервера" },
             _ => new OverlayPayload()
         };
@@ -378,6 +396,7 @@ public sealed class OverlayMachine
         _payload.Progress = data.Progress;
         _payload.Playing = data.Playing;
         _payload.RemainingSeconds = data.RemainingSeconds;
+        _payload.CountUp = data.CountUp;
         _payload.TemperatureC = data.TemperatureC;
         _payload.WeatherCode = data.WeatherCode;
         _payload.PrecipProb = data.PrecipProb;
@@ -411,7 +430,8 @@ public sealed class OverlayMachine
         return new OverlayPayload
         {
             Title = t, Subtitle = s, Body = b, Progress = p, Playing = raw.Playing,
-            RemainingSeconds = rem, TemperatureC = temp, WeatherCode = raw.WeatherCode, PrecipProb = precip,
+            RemainingSeconds = rem, CountUp = raw.CountUp,
+            TemperatureC = temp, WeatherCode = raw.WeatherCode, PrecipProb = precip,
             ArtworkBytes = art
         };
     }
@@ -420,6 +440,7 @@ public sealed class OverlayMachine
     {
         Title = p.Title, Subtitle = p.Subtitle, Body = p.Body,
         Progress = p.Progress, Playing = p.Playing, RemainingSeconds = p.RemainingSeconds,
+        CountUp = p.CountUp,
         TemperatureC = p.TemperatureC, WeatherCode = p.WeatherCode, PrecipProb = p.PrecipProb,
         ArtworkBytes = p.ArtworkBytes is null ? null : (byte[])p.ArtworkBytes.Clone()
     };

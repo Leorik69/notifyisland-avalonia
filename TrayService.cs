@@ -45,6 +45,27 @@ internal sealed class TrayService : IDisposable
         _toggleWeather = new NativeMenuItem("Погода вкл");
         _toggleWeather.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.ToggleWeatherFromTray);
 
+        var timerMenu = new NativeMenuItem("Таймер");
+        var timerSub = new NativeMenu();
+        void AddPreset(string label, int min)
+        {
+            var item = new NativeMenuItem(label);
+            item.Click += (_, _) => Dispatcher.UIThread.Post(() => _overlay.StartCountdownMinutes(min));
+            timerSub.Add(item);
+        }
+        AddPreset("1 мин", 1);
+        AddPreset("5 мин", 5);
+        AddPreset("10 мин", 10);
+        AddPreset("25 мин", 25);
+        var custom = new NativeMenuItem("По умолчанию…");
+        custom.Click += (_, _) => Dispatcher.UIThread.Post(() =>
+            _overlay.StartCountdownMinutes(_overlay.Settings.TimerDefaultMinutes));
+        timerSub.Add(custom);
+        var cancel = new NativeMenuItem("Отменить");
+        cancel.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.CancelTimer);
+        timerSub.Add(cancel);
+        timerMenu.Menu = timerSub;
+
         var exit = new NativeMenuItem("Выход");
         exit.Click += (_, _) =>
         {
@@ -57,6 +78,7 @@ internal sealed class TrayService : IDisposable
         menu.Add(_toggleIsland);
         menu.Add(_toggleDemo);
         menu.Add(_toggleWeather);
+        menu.Add(timerMenu);
         menu.Add(new NativeMenuItemSeparator());
         menu.Add(exit);
         _tray.Menu = menu;

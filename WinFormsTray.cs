@@ -43,6 +43,26 @@ internal sealed class WinFormsTray : IDisposable
         _toggleWeather = new ToolStripMenuItem("Погода вкл");
         _toggleWeather.Click += (_, _) => Ui(_overlay.ToggleWeatherFromTray);
 
+        var timerMenu = new ToolStripMenuItem("Таймер");
+        void AddPreset(string label, int min)
+        {
+            var item = new ToolStripMenuItem(label);
+            var minutes = min;
+            item.Click += (_, _) => Ui(() => _overlay.StartCountdownMinutes(minutes));
+            timerMenu.DropDownItems.Add(item);
+        }
+        AddPreset("1 мин", 1);
+        AddPreset("5 мин", 5);
+        AddPreset("10 мин", 10);
+        AddPreset("25 мин", 25);
+        var custom = new ToolStripMenuItem("По умолчанию…");
+        custom.Click += (_, _) => Ui(() =>
+            _overlay.StartCountdownMinutes(_overlay.Settings.TimerDefaultMinutes));
+        timerMenu.DropDownItems.Add(custom);
+        var cancel = new ToolStripMenuItem("Отменить");
+        cancel.Click += (_, _) => Ui(_overlay.CancelTimer);
+        timerMenu.DropDownItems.Add(cancel);
+
         var exit = new ToolStripMenuItem("Выход");
         exit.Click += (_, _) =>
         {
@@ -54,6 +74,7 @@ internal sealed class WinFormsTray : IDisposable
         menu.Items.Add(_toggleIsland);
         menu.Items.Add(_toggleDemo);
         menu.Items.Add(_toggleWeather);
+        menu.Items.Add(timerMenu);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exit);
         _notify.ContextMenuStrip = menu;

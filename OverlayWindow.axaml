@@ -166,6 +166,42 @@
           </Button>
         </StackPanel>
 
+        <StackPanel x:Name="TimerControls"
+                    DockPanel.Dock="Right"
+                    Orientation="Horizontal"
+                    Spacing="2"
+                    Margin="6,0,0,0"
+                    VerticalAlignment="Center"
+                    IsVisible="False">
+          <Button x:Name="TimerPauseBtn"
+                  Padding="4,0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnTimerPauseResume"
+                  ToolTip.Tip="Пауза / продолжить"
+                  AutomationProperties.Name="Пауза таймера">
+            <TextBlock x:Name="TimerPauseGlyph" Text="||" FontSize="11" Foreground="#3D9CF0" VerticalAlignment="Center"/>
+          </Button>
+          <Button x:Name="TimerPlusBtn"
+                  Padding="4,0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnTimerPlusOne"
+                  ToolTip.Tip="+1 мин"
+                  AutomationProperties.Name="Добавить минуту">
+            <TextBlock x:Name="TimerPlusGlyph" Text="+1" FontSize="10" FontWeight="SemiBold" Foreground="#3D9CF0" VerticalAlignment="Center"/>
+          </Button>
+          <Button x:Name="TimerCancelBtn"
+                  Padding="4,0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnTimerCancel"
+                  ToolTip.Tip="Отмена"
+                  AutomationProperties.Name="Отменить таймер">
+            <TextBlock x:Name="TimerCancelGlyph" Text="✕" FontSize="11" Foreground="#E8A0A0" VerticalAlignment="Center"/>
+          </Button>
+        </StackPanel>
+
         <TextBlock x:Name="OverlayTitle"
                    VerticalAlignment="Center"
                    FontFamily="Segoe UI Variable, Inter, Segoe UI"

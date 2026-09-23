@@ -20,6 +20,7 @@
 | Windows weather source (no HTTP) | `WindowsWeatherSource.cs` |
 | Now Playing (SMTC) | `WindowsMediaSessionSource.cs` |
 | Battery / charging | `WindowsPowerSource.cs` + `NotifyIsland.Core/BatteryAlertLogic.cs` |
+| Timer / stopwatch | `NotifyIsland.Core/IslandTimerLogic.cs` + `OverlayMachine` SetTimer/Tick |
 | Outline icons | `IslandIcons.cs`, `Assets/Icons/README.md` |
 | UI overlay | `OverlayWindow.axaml` + `.axaml.cs` |
 | Settings JSON | `NotifyIsland.Core/AppSettings.cs` → `%LOCALAPPDATA%/NotifyIsland/settings.json` |
@@ -68,16 +69,16 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 ./publish/NotifyIsland.exe          # обычный запуск
 ./publish/NotifyIsland.exe --demo   # демо-цикл (мок-данные + weather step)
 ```
-Горячие клавиши в overlay: **F9** demo on/off, **Esc** collapse.
+Горячие клавиши в overlay: **F9** demo on/off, **F10** charge pill, **F11** low-battery, **F12** timer/stopwatch, **Esc** collapse.
 
 ## Функционал: есть / убрать / добавить
 Кратко (детали — в GUIDELINES §5 / §10):
 
-**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); idle breath; tray + Settings window; WeatherSide; Edge+Offset; Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; demo; tests+CI.
+**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); idle breath; tray + Settings window; WeatherSide; Edge+Offset; Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; **timer/stopwatch 1.9.0**; demo; tests+CI.
 
 **Убрать/не раздувать:** demo как продукт; Open-Meteo; Xiaomi pull-down / swipe gestures; detached second island.
 
-**Добавить позже:** timer polish / hover; deeper CsWinRT geolocation; file shelf / clipboard / launcher.
+**Добавить позже:** timer hover-expand polish; deeper CsWinRT geolocation; file shelf / clipboard / launcher.
 
 ## Погода — откуда данные?
 **Не Open-Meteo.** Конвейер Windows-only: WinRT geolocation (когда доступен) → Bing Weather / Widgets local cache → on-disk cache → `LocalStubWeather` (Sandbox). См. GUIDELINES §10.
@@ -89,6 +90,11 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 ## Медиа — откуда данные?
 **Live:** `WindowsMediaSessionSource` → Windows SMTC (`GlobalSystemMediaTransportControlsSessionManager`). При активной сессии островок получает `SetMedia` (title/artist/progress/playing/artwork).  
 **Demo:** F9 по-прежнему использует `"Night Drive"` / `"Local Radio"` в `OverlayMachine`. Если SMTC недоступен — demo/idle без принуждения Media.
+
+## Таймер
+**Live:** tray «Таймер» presets / Settings → Таймер / F12 → `SetTimer`. `Tick` уменьшает `RemainingSeconds` пока `Playing`; на 0 → Notify «Таймер» → Idle.  
+**Приоритет:** идущий таймер удерживает островок над SMTC до отмены/завершения (клик по Media снимает приоритет).  
+**Секундомер:** `TimerStopwatchMode` + `CountUp` (счёт вверх).
 
 ## Ввод (клики)
 Жесты свайпа **убраны** (1.8.1). `ClickMaxPx=12` — GUIDELINES §3b / OverlayTokens. `CycleNext`/`CyclePrev` остаются в FSM для тестов/API.

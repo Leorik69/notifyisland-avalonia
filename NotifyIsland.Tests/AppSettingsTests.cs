@@ -12,6 +12,9 @@ public class AppSettingsTests
         Assert.True(s.ShowNowPlaying);
         Assert.True(s.ShowBatteryAlerts);
         Assert.False(s.ShowBatteryInCollapsed);
+        Assert.True(s.TimerEnabled);
+        Assert.Equal(IslandTimerLogic.DefaultPresetMinutes, s.TimerDefaultMinutes);
+        Assert.False(s.TimerStopwatchMode);
         Assert.Equal(BatteryAlertLogic.DefaultLowPercent, s.LowBatteryPercent);
         Assert.False(s.AllowDrag);
         Assert.True(s.IslandVisible);
@@ -57,6 +60,9 @@ public class AppSettingsTests
             ShowNowPlaying = false,
             ShowBatteryAlerts = false,
             ShowBatteryInCollapsed = true,
+            TimerEnabled = false,
+            TimerDefaultMinutes = 25,
+            TimerStopwatchMode = true,
             LowBatteryPercent = 12,
             WeatherSide = WeatherSide.Left,
             ZOrderMode = ZOrderMode.Desktop,
@@ -110,6 +116,9 @@ public class AppSettingsTests
         Assert.False(back.ShowNowPlaying);
         Assert.False(back.ShowBatteryAlerts);
         Assert.True(back.ShowBatteryInCollapsed);
+        Assert.False(back.TimerEnabled);
+        Assert.Equal(25, back.TimerDefaultMinutes);
+        Assert.True(back.TimerStopwatchMode);
         Assert.Equal(12, back.LowBatteryPercent);
         Assert.Equal(WeatherSide.Left, back.WeatherSide);
         Assert.Equal(ZOrderMode.Desktop, back.ZOrderMode);
@@ -215,6 +224,9 @@ public class AppSettingsTests
             ShowNowPlaying = false,
             ShowBatteryAlerts = false,
             ShowBatteryInCollapsed = true,
+            TimerEnabled = false,
+            TimerDefaultMinutes = 10,
+            TimerStopwatchMode = true,
             LowBatteryPercent = 12,
             AllowDrag = true
         };
@@ -239,6 +251,9 @@ public class AppSettingsTests
         Assert.Equal(WeatherLocationMode.Manual, b.WeatherLocationMode);
         Assert.Equal("Казань", b.WeatherLocationName);
         Assert.False(b.ShowNowPlaying);
+        Assert.False(b.TimerEnabled);
+        Assert.Equal(10, b.TimerDefaultMinutes);
+        Assert.True(b.TimerStopwatchMode);
         Assert.False(b.AllowDrag);
     }
 

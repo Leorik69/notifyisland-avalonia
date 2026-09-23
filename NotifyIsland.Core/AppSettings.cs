@@ -64,6 +64,15 @@ public sealed class AppSettings
     /// <summary>Show compact battery % in collapsed idle row. Default OFF.</summary>
     public bool ShowBatteryInCollapsed { get; set; } = false;
 
+    /// <summary>Island countdown timer from tray / Settings. Default ON.</summary>
+    public bool TimerEnabled { get; set; } = true;
+
+    /// <summary>Default preset minutes for tray/Settings start (1–180). Default 5.</summary>
+    public int TimerDefaultMinutes { get; set; } = IslandTimerLogic.DefaultPresetMinutes;
+
+    /// <summary>When true, timer panel starts in stopwatch (count-up) mode. Default OFF.</summary>
+    public bool TimerStopwatchMode { get; set; } = false;
+
     /// <summary>Low-battery threshold percent (5–50). Default 20.</summary>
     public int LowBatteryPercent { get; set; } = BatteryAlertLogic.DefaultLowPercent;
     public double Latitude { get; set; } = 55.75;
@@ -256,6 +265,9 @@ public sealed class AppSettings
         target.ShowNowPlaying = ShowNowPlaying;
         target.ShowBatteryAlerts = ShowBatteryAlerts;
         target.ShowBatteryInCollapsed = ShowBatteryInCollapsed;
+        target.TimerEnabled = TimerEnabled;
+        target.TimerDefaultMinutes = IslandTimerLogic.ClampPresetMinutes(TimerDefaultMinutes);
+        target.TimerStopwatchMode = TimerStopwatchMode;
         target.LowBatteryPercent = BatteryAlertLogic.ClampLowPercent(LowBatteryPercent);
         target.Latitude = Latitude;
         target.Longitude = Longitude;
@@ -332,6 +344,7 @@ public sealed class AppSettings
         if (SettingsWindowHeight < 400) SettingsWindowHeight = 640;
         LowBatteryPercent = BatteryAlertLogic.ClampLowPercent(
             LowBatteryPercent <= 0 ? BatteryAlertLogic.DefaultLowPercent : LowBatteryPercent);
+        TimerDefaultMinutes = IslandTimerLogic.ClampPresetMinutes(TimerDefaultMinutes);
     }
 
     /// <summary>Accept #RGB / #RRGGBB / #AARRGGBB; fallback on parse failure.</summary>

@@ -46,7 +46,7 @@ public class OverlayMachineTests
         m.Dispatch(OverlayCommand.SetMedia, new OverlayPayload());
         Assert.Equal("Без названия", m.Snapshot().Payload.Title);
 
-        m.Dispatch(OverlayCommand.SetTimer, new OverlayPayload { RemainingSeconds = 10 });
+        m.Dispatch(OverlayCommand.SetTimer, new OverlayPayload { RemainingSeconds = 10, Playing = true });
         m.Tick(2500);
         Assert.InRange(m.Snapshot().Payload.RemainingSeconds, 7.45, 7.55);
 
@@ -321,4 +321,61 @@ public class OverlayMachineTests
         }
         Assert.Equal(OverlayKind.Battery, saw);
     }
+
+
+    [Fact]
+    public void Timer_Tick_OnlyWhilePlaying()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetTimer, new OverlayPayload { RemainingSeconds = 10, Playing = false });
+        m.Tick(3000);
+        Assert.Equal(10, m.Snapshot().Payload.RemainingSeconds);
+        Assert.Equal(OverlayKind.Timer, m.Snapshot().Kind);
+
+        m.Dispatch(OverlayCommand.SetTimer, new OverlayPayload { RemainingSeconds = 10, Playing = true });
+        m.Tick(2000);
+        Assert.InRange(m.Snapshot().Payload.RemainingSeconds, 7.9, 8.1);
+    }
+
+    [Fact]
+    public void Timer_TickToZero_BecomesNotifyThenIdle()
+    {
+        var m = new OverlayMachine { NotifyDurationMs = 1000 };
+        m.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.CountdownPayload(2));
+        Assert.Equal(OverlayKind.Timer, m.Snapshot().Kind);
+
+        m.Tick(2000);
+        var snap = m.Snapshot();
+        Assert.Equal(OverlayKind.Notification, snap.Kind);
+        Assert.Equal("Таймер", snap.Payload.Title);
+        Assert.Equal("Время вышло", snap.Payload.Body);
+        Assert.True(snap.UnreadCount >= 1);
+
+        m.Tick(1000);
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
+    }
+
+    [Fact]
+    public void Timer_Paused_DoesNotCompleteAtZero()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetTimer, new OverlayPayload
+        {
+            Title = "Таймер", RemainingSeconds = 0, Playing = false, CountUp = false
+        });
+        m.Tick(500);
+        Assert.Equal(OverlayKind.Timer, m.Snapshot().Kind);
+    }
+
+    [Fact]
+    public void Stopwatch_Tick_CountsUp()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.StopwatchPayload());
+        m.Tick(1500);
+        Assert.Equal(OverlayKind.Timer, m.Snapshot().Kind);
+        Assert.InRange(m.Snapshot().Payload.RemainingSeconds, 1.4, 1.6);
+        Assert.True(m.Snapshot().Payload.CountUp);
+    }
 }
+

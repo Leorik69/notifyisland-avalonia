@@ -23,6 +23,8 @@ public partial class OverlayWindow : Window
     private WindowsWeatherSource _weather;
     private WindowsMediaSessionSource? _mediaSource;
     private bool _mediaFromSmtc;
+    /// <summary>User clicked into Media while a timer might still be desired — SMTC may own island.</summary>
+    private bool _userOpenedMedia;
     private WindowsPowerSource? _powerSource;
     private PowerStatusSnapshot? _lastPower;
     private int? _prevPowerPercent;
@@ -483,6 +485,8 @@ public partial class OverlayWindow : Window
         MediaPlayGlyph.Foreground = new SolidColorBrush(accent);
         MediaPrevGlyph.Foreground = new SolidColorBrush(accent);
         MediaNextGlyph.Foreground = new SolidColorBrush(accent);
+        TimerPauseGlyph.Foreground = new SolidColorBrush(accent);
+        TimerPlusGlyph.Foreground = new SolidColorBrush(accent);
         // Soft “dot matrix” unread: slightly squarer corners + tighter glow
         UnreadDot.CornerRadius = new CornerRadius(2);
         UnreadDot.Width = 6;
@@ -576,6 +580,16 @@ public partial class OverlayWindow : Window
             var kind = _machine.Snapshot().Kind;
             if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
                 TrayService.OpenActionCenter();
+            else if (kind == OverlayKind.Timer)
+            {
+                // Click keeps timer visible with controls (already expanded overlay).
+                IslandSounds.Play(IslandSoundKind.Expand, _settings);
+            }
+            else if (kind == OverlayKind.Media)
+            {
+                // Explicit media focus — allow SMTC to keep ownership vs timer reclaim.
+                _userOpenedMedia = true;
+            }
             e.Handled = true;
             return;
         }
@@ -594,6 +608,14 @@ public partial class OverlayWindow : Window
         menu.Items.Add(Menu("Demo F9", () => { if (_demoOn) StopDemo(); else StartDemo(); }));
         menu.Items.Add(Menu("Демо зарядки F10", DemoChargePill));
         menu.Items.Add(Menu("Демо низкий заряд F11", DemoLowBattery));
+        if (_settings.TimerEnabled)
+        {
+            menu.Items.Add(Menu("Таймер 1 мин", () => StartCountdownMinutes(1)));
+            menu.Items.Add(Menu("Таймер 5 мин", () => StartCountdownMinutes(5)));
+            menu.Items.Add(Menu($"Таймер {_settings.TimerDefaultMinutes} мин (F12)", () => StartCountdownMinutes(_settings.TimerDefaultMinutes)));
+            if (_machine.Snapshot().Kind == OverlayKind.Timer)
+                menu.Items.Add(Menu("Отменить таймер", CancelTimer));
+        }
         var weatherLabel = _settings.WeatherEnabled ? "Погода выкл" : "Погода вкл";
         menu.Items.Add(Menu(weatherLabel, ToggleWeather));
         menu.Items.Add(Menu("Свернуть", () =>
@@ -621,7 +643,8 @@ public partial class OverlayWindow : Window
                 return;
             }
 
-            _settingsWindow = new SettingsWindow(_settings, ApplySettingsFromUi, DemoChargePill);
+            _settingsWindow = new SettingsWindow(_settings, ApplySettingsFromUi, DemoChargePill,
+                StartCountdownMinutes, StartStopwatchFromSettings);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Show();
         }
@@ -642,6 +665,8 @@ public partial class OverlayWindow : Window
         _weather = new WindowsWeatherSource(_settings.Latitude, _settings.Longitude);
         if (!_settings.WeatherEnabled && _machine.Snapshot().Kind == OverlayKind.Weather)
             _machine.Dispatch(OverlayCommand.Collapse);
+        if (!_settings.TimerEnabled && _machine.Snapshot().Kind == OverlayKind.Timer)
+            _machine.Dispatch(OverlayCommand.Clear);
         if (!_settings.ShowNowPlaying)
         {
             _mediaSource?.Stop();
@@ -784,6 +809,15 @@ public partial class OverlayWindow : Window
         if (e.Key == Key.F9) { if (_demoOn) StopDemo(); else StartDemo(); e.Handled = true; }
         else if (e.Key == Key.F10) { DemoChargePill(); e.Handled = true; }
         else if (e.Key == Key.F11) { DemoLowBattery(); e.Handled = true; }
+        else if (e.Key == Key.F12)
+        {
+            if (_settings.TimerEnabled)
+            {
+                if (_settings.TimerStopwatchMode) StartStopwatchFromSettings();
+                else StartCountdownMinutes(_settings.TimerDefaultMinutes);
+            }
+            e.Handled = true;
+        }
         else if (e.Key == Key.Escape)
         {
             var before = _machine.Snapshot().Kind;
@@ -1226,8 +1260,9 @@ public partial class OverlayWindow : Window
         }
         else if (kind == OverlayKind.Timer)
         {
-            var ts = TimeSpan.FromSeconds(Math.Ceiling(p.RemainingSeconds));
-            sub = $"{(int)ts.TotalMinutes:00}:{ts.Seconds:00}";
+            sub = IslandTimerLogic.FormatRemaining(p.RemainingSeconds);
+            if (!p.Playing && !p.CountUp)
+                title = string.IsNullOrWhiteSpace(p.Title) ? "Пауза" : p.Title;
         }
         else if (kind == OverlayKind.Progress && string.IsNullOrWhiteSpace(sub))
             sub = $"{(int)Math.Round(p.Progress * 100)}%";
@@ -1254,6 +1289,13 @@ public partial class OverlayWindow : Window
         MediaControls.IsVisible = kind == OverlayKind.Media;
         MediaPlayGlyph.Text = p.Playing ? "||" : "▶";
         ApplyMediaArtwork(kind == OverlayKind.Media ? p.ArtworkBytes : null);
+
+        TimerControls.IsVisible = kind == OverlayKind.Timer;
+        if (kind == OverlayKind.Timer)
+        {
+            TimerPauseGlyph.Text = p.Playing ? "||" : "▶";
+            TimerPlusBtn.IsVisible = !p.CountUp;
+        }
 
         var unread = snap.UnreadCount;
         var showBadge = overlayOn && unread > 0 && kind is OverlayKind.Notification or OverlayKind.Expanded;
@@ -1423,6 +1465,10 @@ public partial class OverlayWindow : Window
         if (kind == OverlayKind.Notification)
             return;
 
+        // Running/paused timer owns the island until cancel/complete (unless user opened Media).
+        if (IslandTimerLogic.TimerOwnsIsland(kind, _userOpenedMedia))
+            return;
+
         var before2 = kind;
         _mediaFromSmtc = true;
         _machine.Dispatch(OverlayCommand.SetMedia, snap.ToPayload());
@@ -1562,4 +1608,70 @@ public partial class OverlayWindow : Window
         ShowLowBattery(pct);
     }
 
+    // ── Island timer / stopwatch ──────────────────────────────────────────
+
+    public void StartCountdownMinutes(int minutes)
+    {
+        if (!_settings.TimerEnabled) return;
+        _userOpenedMedia = false;
+        var secs = IslandTimerLogic.PresetToSeconds(minutes);
+        var before = _machine.Snapshot().Kind;
+        _machine.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.CountdownPayload(secs));
+        var after = _machine.Snapshot().Kind;
+        if (before != after) OnKindChanged(before, after);
+        ApplySize();
+        Paint();
+        _tray?.RefreshLabels();
+        _winTray?.RefreshLabels();
+    }
+
+    public void StartStopwatchFromSettings()
+    {
+        if (!_settings.TimerEnabled) return;
+        _userOpenedMedia = false;
+        var before = _machine.Snapshot().Kind;
+        _machine.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.StopwatchPayload());
+        var after = _machine.Snapshot().Kind;
+        if (before != after) OnKindChanged(before, after);
+        ApplySize();
+        Paint();
+    }
+
+    public void CancelTimer()
+    {
+        if (_machine.Snapshot().Kind != OverlayKind.Timer) return;
+        var before = _machine.Snapshot().Kind;
+        _machine.Dispatch(OverlayCommand.Clear);
+        var after = _machine.Snapshot().Kind;
+        if (before != after) OnKindChanged(before, after);
+        ApplySize();
+        Paint();
+        _tray?.RefreshLabels();
+        _winTray?.RefreshLabels();
+    }
+
+    public bool IsTimerActive => _machine.Snapshot().Kind == OverlayKind.Timer;
+
+    private void OnTimerPauseResume(object? sender, RoutedEventArgs e)
+    {
+        var snap = _machine.Snapshot();
+        if (snap.Kind != OverlayKind.Timer) return;
+        var next = OverlayMachine.Sanitize(snap.Payload);
+        next.Playing = !next.Playing;
+        _machine.Dispatch(OverlayCommand.SetTimer, next);
+        Paint();
+    }
+
+    private void OnTimerPlusOne(object? sender, RoutedEventArgs e)
+    {
+        var snap = _machine.Snapshot();
+        if (snap.Kind != OverlayKind.Timer || snap.Payload.CountUp) return;
+        var next = OverlayMachine.Sanitize(snap.Payload);
+        next.RemainingSeconds = Math.Min(359999, next.RemainingSeconds + 60);
+        _machine.Dispatch(OverlayCommand.SetTimer, next);
+        Paint();
+    }
+
+    private void OnTimerCancel(object? sender, RoutedEventArgs e) => CancelTimer();
 }
+

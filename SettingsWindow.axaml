@@ -229,7 +229,29 @@
             </DockPanel>
             <Button x:Name="DemoBatteryBtn" Content="Демо зарядки (F10)" Width="200" HorizontalAlignment="Left"
                     Margin="0,8,0,0" Click="OnDemoBattery"/>
-            <TextBlock Classes="fieldLabel" Text="Слой (z-order)" Margin="0,0,0,4"/>
+
+            <TextBlock Classes="sectionTitle" Text="Таймер" Margin="0,18,0,10"/>
+            <CheckBox x:Name="TimerEnabledBox" Content="Таймер в капсуле"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Трей → Таймер (1/5/10/25 мин) или F12. Идущий таймер удерживает островок над SMTC до отмены/завершения."/>
+            <CheckBox x:Name="TimerStopwatchBox" Content="Режим секундомера (счёт вверх)"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Если включено, F12 / «Старт» запускает секундомер вместо обратного отсчёта."/>
+            <TextBlock Classes="fieldLabel" Text="Пресет по умолчанию (мин)"/>
+            <DockPanel>
+              <TextBlock x:Name="TimerDefaultLabel" DockPanel.Dock="Right" Width="40" Text="5"
+                         Foreground="#FFFFFF" VerticalAlignment="Center"/>
+              <Slider x:Name="TimerDefaultSlider" Minimum="1" Maximum="60" Value="5" TickFrequency="1" IsSnapToTickEnabled="True"/>
+            </DockPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+              <Button Content="1 мин" Width="64" Click="OnStartTimer1"/>
+              <Button Content="5 мин" Width="64" Click="OnStartTimer5"/>
+              <Button Content="10 мин" Width="72" Click="OnStartTimer10"/>
+              <Button Content="25 мин" Width="72" Click="OnStartTimer25"/>
+              <Button Content="Старт" Width="72" Click="OnStartTimerDefault"/>
+            </StackPanel>
+
+            <TextBlock Classes="fieldLabel" Text="Слой (z-order)" Margin="0,12,0,4"/>
             <ComboBox x:Name="ZOrderBox" Width="340" MaxWidth="400" HorizontalAlignment="Left">
               <ComboBoxItem Tag="Topmost" Content="Поверх всех окон"/>
               <ComboBoxItem Tag="Desktop" Content="Над иконками рабочего стола"/>

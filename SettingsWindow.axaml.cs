@@ -17,18 +17,23 @@ public partial class SettingsWindow : Window
     private readonly AppSettings _draft;
     private readonly Action<AppSettings> _onApply;
     private readonly Action? _onDemoBattery;
+    private readonly Action<int>? _onStartTimer;
+    private readonly Action? _onStartStopwatch;
     private bool _paletteWired;
     private bool _loadingUi;
 
     public SettingsWindow() : this(new AppSettings(), _ => { }) { }
 
-    public SettingsWindow(AppSettings live, Action<AppSettings> onApply, Action? onDemoBattery = null)
+    public SettingsWindow(AppSettings live, Action<AppSettings> onApply, Action? onDemoBattery = null,
+        Action<int>? onStartTimer = null, Action? onStartStopwatch = null)
     {
         _live = live;
         _draft = new AppSettings();
         live.CopyTo(_draft);
         _onApply = onApply;
         _onDemoBattery = onDemoBattery;
+        _onStartTimer = onStartTimer;
+        _onStartStopwatch = onStartStopwatch;
         InitializeComponent();
         RestoreGeometry();
         LoadUi();
@@ -58,6 +63,11 @@ public partial class SettingsWindow : Window
         {
             if (e.Property == Slider.ValueProperty)
                 LowBatteryLabel.Text = $"{(int)LowBatterySlider.Value}";
+        };
+        TimerDefaultSlider.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == Slider.ValueProperty)
+                TimerDefaultLabel.Text = $"{(int)TimerDefaultSlider.Value}";
         };
     }
 
@@ -163,6 +173,11 @@ public partial class SettingsWindow : Window
         ShowNowPlayingBox.IsChecked = _draft.ShowNowPlaying;
         ShowBatteryAlertsBox.IsChecked = _draft.ShowBatteryAlerts;
         ShowBatteryInCollapsedBox.IsChecked = _draft.ShowBatteryInCollapsed;
+        TimerEnabledBox.IsChecked = _draft.TimerEnabled;
+        TimerStopwatchBox.IsChecked = _draft.TimerStopwatchMode;
+        TimerDefaultSlider.Value = IslandTimerLogic.ClampPresetMinutes(_draft.TimerDefaultMinutes);
+        if (TimerDefaultSlider.Value > 60) TimerDefaultSlider.Value = 60;
+        TimerDefaultLabel.Text = $"{(int)TimerDefaultSlider.Value}";
         LowBatterySlider.Value = BatteryAlertLogic.ClampLowPercent(_draft.LowBatteryPercent);
         LowBatteryLabel.Text = $"{(int)LowBatterySlider.Value}";
         SoundEnabledBox.IsChecked = _draft.SoundEnabled;
@@ -333,6 +348,9 @@ public partial class SettingsWindow : Window
         _draft.ShowNowPlaying = ShowNowPlayingBox.IsChecked == true;
         _draft.ShowBatteryAlerts = ShowBatteryAlertsBox.IsChecked == true;
         _draft.ShowBatteryInCollapsed = ShowBatteryInCollapsedBox.IsChecked == true;
+        _draft.TimerEnabled = TimerEnabledBox.IsChecked == true;
+        _draft.TimerStopwatchMode = TimerStopwatchBox.IsChecked == true;
+        _draft.TimerDefaultMinutes = IslandTimerLogic.ClampPresetMinutes((int)TimerDefaultSlider.Value);
         _draft.LowBatteryPercent = BatteryAlertLogic.ClampLowPercent((int)LowBatterySlider.Value);
         _draft.SoundEnabled = SoundEnabledBox.IsChecked == true;
         _draft.OffsetX = (int)(OffsetXBox.Value ?? 0);
@@ -427,4 +445,16 @@ public partial class SettingsWindow : Window
         _onDemoBattery?.Invoke();
     }
 
+    private void OnStartTimer1(object? sender, RoutedEventArgs e) => _onStartTimer?.Invoke(1);
+    private void OnStartTimer5(object? sender, RoutedEventArgs e) => _onStartTimer?.Invoke(5);
+    private void OnStartTimer10(object? sender, RoutedEventArgs e) => _onStartTimer?.Invoke(10);
+    private void OnStartTimer25(object? sender, RoutedEventArgs e) => _onStartTimer?.Invoke(25);
+    private void OnStartTimerDefault(object? sender, RoutedEventArgs e)
+    {
+        if (TimerStopwatchBox.IsChecked == true)
+            _onStartStopwatch?.Invoke();
+        else
+            _onStartTimer?.Invoke(IslandTimerLogic.ClampPresetMinutes((int)TimerDefaultSlider.Value));
+    }
 }
+
