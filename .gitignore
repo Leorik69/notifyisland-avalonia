@@ -1,5 +1,34 @@
+## Build
 bin/
 obj/
 publish/
-*.user
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rtifacts/
+
+## IDE / user
 .vs/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+*.DotSettings.user
+.idea/
+*.swp
+*~
+
+## NuGet
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+
+## OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+## Logs / local
+*.log

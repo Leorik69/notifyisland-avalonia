@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>NotifyIsland</RootNamespace>
+    <AssemblyName>NotifyIsland.Core</AssemblyName>
+    <Version>1.3.3</Version>
+    <Description>NotifyIsland overlay state machine and design tokens</Description>
+    <Authors>Leorik69</Authors>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="NotifyIsland.Tests" />
+  </ItemGroup>
+</Project>

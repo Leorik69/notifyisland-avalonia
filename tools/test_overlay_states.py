@@ -3,8 +3,8 @@ from __future__ import annotations
 import math, re, sys
 from pathlib import Path
 ISLAND = Path(__file__).resolve().parents[1]
-CS = (ISLAND / "OverlayMachine.cs").read_text(encoding="utf-8")
-TOKENS = (ISLAND / "OverlayTokens.cs").read_text(encoding="utf-8")
+CS = (ISLAND / "NotifyIsland.Core" / "OverlayMachine.cs").read_text(encoding="utf-8")
+TOKENS = (ISLAND / "NotifyIsland.Core" / "OverlayTokens.cs").read_text(encoding="utf-8")
 KINDS = ("Idle","Collapsed","Expanded","Notification","Progress","Media","Timer","Error")
 
 class Payload:

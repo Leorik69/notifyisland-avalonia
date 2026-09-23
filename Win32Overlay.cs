@@ -19,8 +19,9 @@ internal static class Win32Overlay
             var ex = GetWindowLong(hwnd, GwlExstyle);
             SetWindowLong(hwnd, GwlExstyle, ex | WsExNoactivate | WsExToolwindow);
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Warn("ApplyNoActivate failed", ex);
         }
     }
 

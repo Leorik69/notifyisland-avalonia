@@ -182,7 +182,7 @@ public sealed class OverlayMachine
         _payload.RemainingSeconds = data.RemainingSeconds;
     }
 
-    internal static OverlayPayload Sanitize(OverlayPayload raw)
+    public static OverlayPayload Sanitize(OverlayPayload raw)
     {
         var t = (raw.Title ?? "").Trim();
         var s = (raw.Subtitle ?? "").Trim();
@@ -204,23 +204,35 @@ public sealed class OverlayMachine
         Progress = p.Progress, Playing = p.Playing, RemainingSeconds = p.RemainingSeconds
     };
 
-    internal static double WidthFor(OverlayKind kind) => kind switch
+    public static double WidthFor(OverlayKind kind)
     {
-        OverlayKind.Expanded => 400,
-        OverlayKind.Notification => 360,
-        OverlayKind.Progress => 380,
-        OverlayKind.Media => 420,
-        OverlayKind.Timer => 340,
-        OverlayKind.Error => 360,
-        _ => OverlayTokens.CollapsedW
-    };
+        var w = kind switch
+        {
+            OverlayKind.Expanded => 400,
+            OverlayKind.Notification => 360,
+            OverlayKind.Progress => 380,
+            OverlayKind.Media => 420,
+            OverlayKind.Timer => 340,
+            OverlayKind.Error => 360,
+            _ => OverlayTokens.CollapsedW
+        };
+        if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
+            return w;
+        return Math.Clamp(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
+    }
 
-    internal static double HeightFor(OverlayKind kind) => kind switch
+    public static double HeightFor(OverlayKind kind)
     {
-        OverlayKind.Idle or OverlayKind.Collapsed => OverlayTokens.CollapsedH,
-        OverlayKind.Media => 96,
-        OverlayKind.Expanded => 88,
-        OverlayKind.Error => 80,
-        _ => 78
-    };
+        var h = kind switch
+        {
+            OverlayKind.Idle or OverlayKind.Collapsed => OverlayTokens.CollapsedH,
+            OverlayKind.Media => 96,
+            OverlayKind.Expanded => 88,
+            OverlayKind.Error => 80,
+            _ => 78
+        };
+        if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
+            return h;
+        return Math.Clamp(h, OverlayTokens.ExpandedMinH, OverlayTokens.ExpandedMaxH);
+    }
 }

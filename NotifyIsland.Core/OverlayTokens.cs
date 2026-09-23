@@ -1,7 +1,7 @@
 namespace NotifyIsland;
 
 /// <summary>Design tokens for the top-center overlay. No Apple assets.</summary>
-internal static class OverlayTokens
+public static class OverlayTokens
 {
     public const string FillHex = "#080808";
     public const string TextHex = "#FFFFFF";

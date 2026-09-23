@@ -1,11 +1,12 @@
 using System;
 using System.Globalization;
 using Avalonia;
+using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Markup.Xaml;
 using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.Threading;
 
 namespace NotifyIsland;
@@ -17,33 +18,11 @@ public partial class OverlayWindow : Window
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(2.4) };
     private bool _demoOn;
-    private Border Pill = null!;
-    private TextBlock ClockText = null!;
-    private StackPanel OverlayPanel = null!;
-    private TextBlock OverlayTitle = null!;
-    private TextBlock OverlaySubtitle = null!;
-    private ProgressBar OverlayProgress = null!;
-    private TextBlock OverlayTimer = null!;
-    private Button MediaPlay = null!;
-    private TextBlock MediaPlayGlyph = null!;
-
-    private void Bind()
-    {
-        Pill = this.FindControl<Border>("Pill")!;
-        ClockText = this.FindControl<TextBlock>("ClockText")!;
-        OverlayPanel = this.FindControl<StackPanel>("OverlayPanel")!;
-        OverlayTitle = this.FindControl<TextBlock>("OverlayTitle")!;
-        OverlaySubtitle = this.FindControl<TextBlock>("OverlaySubtitle")!;
-        OverlayProgress = this.FindControl<ProgressBar>("OverlayProgress")!;
-        OverlayTimer = this.FindControl<TextBlock>("OverlayTimer")!;
-        MediaPlay = this.FindControl<Button>("MediaPlay")!;
-        MediaPlayGlyph = this.FindControl<TextBlock>("MediaPlayGlyph")!;
-    }
 
     public OverlayWindow()
     {
-        AvaloniaXamlLoader.Load(this);
-        Bind();
+        InitializeComponent();
+        EnableMorphTransitions();
         Opened += (_, _) => { Win32Overlay.ApplyNoActivate(this); PlaceTopCenter(); };
         KeyDown += OnKey;
         _clock.Tick += (_, _) => TickClock();
@@ -61,6 +40,21 @@ public partial class OverlayWindow : Window
         ApplySize();
         Paint();
         if (Program.DemoMode) StartDemo();
+    }
+
+    private void EnableMorphTransitions()
+    {
+        var duration = TimeSpan.FromMilliseconds(OverlayTokens.MorphMs);
+        Transitions = new Transitions
+        {
+            new DoubleTransition { Property = WidthProperty, Duration = duration },
+            new DoubleTransition { Property = HeightProperty, Duration = duration },
+        };
+        Pill.Transitions = new Transitions
+        {
+            new DoubleTransition { Property = Border.WidthProperty, Duration = duration },
+            new DoubleTransition { Property = Border.HeightProperty, Duration = duration },
+        };
     }
 
     private void OnKey(object? sender, KeyEventArgs e)
@@ -91,8 +85,10 @@ public partial class OverlayWindow : Window
     private void ApplySize()
     {
         var snap = _machine.Snapshot();
-        Width = snap.Width; Height = snap.Height;
-        Pill.Width = snap.Width; Pill.Height = snap.Height;
+        Width = snap.Width;
+        Height = snap.Height;
+        Pill.Width = snap.Width;
+        Pill.Height = snap.Height;
         Pill.CornerRadius = new CornerRadius(snap.Height / 2);
         PlaceTopCenter();
     }
@@ -105,7 +101,11 @@ public partial class OverlayWindow : Window
         var scale = RenderScaling;
         var pw = (int)Math.Round(Width * scale);
         var ph = (int)Math.Round(Height * scale);
-        Position = new PixelPoint(wa.X + (wa.Width - pw) / 2, wa.Y + 8);
+        var maxX = Math.Max(wa.X, wa.X + wa.Width - pw);
+        var maxY = Math.Max(wa.Y, wa.Y + wa.Height - ph);
+        var x = Math.Clamp(wa.X + (wa.Width - pw) / 2, wa.X, maxX);
+        var y = Math.Clamp(wa.Y + 8, wa.Y, maxY);
+        Position = new PixelPoint(x, y);
     }
 
     private void Paint()
