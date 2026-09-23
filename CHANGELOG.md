@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.5.9 — Meteocons weather icon packs (4 styles)
+
+### Added
+- Four **Meteocons** (Bas Milius, MIT) weather packs selectable in Settings → **Иконки**:
+  - **Meteocons Fill** — заливка
+  - **Meteocons Flat** — плоский
+  - **Meteocons Line** — контур
+  - **Meteocons Monochrome** — монохром (tint to text color)
+- Vendored animated SVGs from `@meteocons/svg` under `Assets/Icons/Meteocons{Fill,Flat,Line,Monochrome}/` for keys: clear, partly, cloud, fog, drizzle, rain, snow, storm, sleet.
+- `MeteoconsMap` (Core) + `MeteoconsMotion` — Avalonia rotate/bob/pulse (Skia does not run SMIL; SMIL kept in files).
+- Attribution: `Assets/Icons/NOTICE`, per-folder `LICENSE`, `docs/ICON_PACKS.md`.
+
+### Changed
+- Version **1.5.9**.
+- `IconPackService` recognizes 7 packs; Meteocons is weather-only (other keys → IslandIcons).
+
+### Note
+- No proprietary Nothing fonts. No WebView2 dependency in this drop.
+
+
+
 ## 1.5.8 — animation styles, slower soft morph, icon↔FontSize
 
 ### Added

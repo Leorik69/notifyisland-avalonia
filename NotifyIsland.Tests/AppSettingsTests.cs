@@ -203,4 +203,19 @@ public class AppSettingsTests
         Assert.Equal(NotifyDismissStyle.SlideUp, b.DismissStyle);
         Assert.False(b.AllowDrag);
     }
+
+    [Fact]
+    public void IconPack_Meteocons_RoundTrip()
+    {
+        foreach (var pack in MeteoconsMap.PackIds)
+        {
+            var s = new AppSettings { IconPack = pack };
+            s.Normalize();
+            Assert.Equal(pack, s.IconPack);
+            var json = System.Text.Json.JsonSerializer.Serialize(s);
+            var back = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json)!;
+            back.Normalize();
+            Assert.Equal(pack, back.IconPack);
+        }
+    }
 }

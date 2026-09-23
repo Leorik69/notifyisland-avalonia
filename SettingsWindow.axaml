@@ -373,11 +373,15 @@
               <ComboBoxItem Tag="IslandIcons" Content="IslandIcons (встроенный outline)"/>
               <ComboBoxItem Tag="Tabler" Content="Tabler Icons (MIT, вендор)"/>
               <ComboBoxItem Tag="Lucide" Content="Lucide (ISC, вендор)"/>
+              <ComboBoxItem Tag="MeteoconsFill" Content="Meteocons Fill — заливка (MIT)"/>
+              <ComboBoxItem Tag="MeteoconsFlat" Content="Meteocons Flat — плоский (MIT)"/>
+              <ComboBoxItem Tag="MeteoconsLine" Content="Meteocons Line — контур (MIT)"/>
+              <ComboBoxItem Tag="MeteoconsMonochrome" Content="Meteocons Monochrome — монохром (MIT)"/>
             </ComboBox>
             <TextBlock TextWrapping="Wrap" Foreground="#C8C8CC" FontSize="12" LineHeight="18" Margin="0,10,0,0"
-                       Text="Вендор: Assets/Icons/Tabler и Assets/Icons/Lucide (только нужные SVG). Лицензии — NOTICE / LICENSE в папках. См. docs/ICON_PACKS.md."/>
+                       Text="Пакеты: Tabler/Lucide (outline UI) и 4 стиля Meteocons (погода, Bas Milius MIT). SVG с SMIL; Avalonia.Svg.Skia рисует геометрию, анимация — Avalonia-motion (rotate/bob/pulse). См. docs/ICON_PACKS.md."/>
             <TextBlock Classes="mutedNote"
-                       Text="Стиль: outline ≈1.75, 24×24. При ошибке загрузки SVG — fallback на IslandIcons."/>
+                       Text="Meteocons только для weather-*; остальные ключи — IslandIcons. При ошибке SVG — fallback IslandIcons."/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
