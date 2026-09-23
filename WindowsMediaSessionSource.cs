@@ -32,7 +32,20 @@ public sealed class WindowsMediaSessionSource : IDisposable
         try
         {
             ct.ThrowIfCancellationRequested();
-            _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+            AppLog.Warn("WindowsMediaSessionSource RequestAsync…");
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            linked.CancelAfter(TimeSpan.FromSeconds(8));
+            var token = linked.Token;
+            var mgrTask = RequestManagerAsync(token);
+            _manager = await mgrTask.ConfigureAwait(false);
+            if (_manager is null)
+            {
+                Interlocked.Exchange(ref _started, 0);
+                IsAvailable = false;
+                AppLog.Warn("WindowsMediaSessionSource RequestAsync returned null — Now Playing idle");
+                Changed?.Invoke(null);
+                return;
+            }
             IsAvailable = true;
             _manager.CurrentSessionChanged += OnCurrentSessionChanged;
             _manager.SessionsChanged += OnSessionsChanged;
@@ -42,6 +55,13 @@ public sealed class WindowsMediaSessionSource : IDisposable
             await RefreshAsync().ConfigureAwait(false);
             AppLog.Warn("WindowsMediaSessionSource started (SMTC)");
         }
+        catch (OperationCanceledException)
+        {
+            IsAvailable = false;
+            Interlocked.Exchange(ref _started, 0);
+            AppLog.Warn("WindowsMediaSessionSource RequestAsync timed out/canceled — Now Playing idle");
+            Changed?.Invoke(null);
+        }
         catch (Exception ex)
         {
             IsAvailable = false;
@@ -49,6 +69,21 @@ public sealed class WindowsMediaSessionSource : IDisposable
             AppLog.Warn("WindowsMediaSessionSource unavailable — Now Playing idle", ex);
             Changed?.Invoke(null);
         }
+    }
+
+    private static async Task<GlobalSystemMediaTransportControlsSessionManager?> RequestManagerAsync(CancellationToken ct)
+    {
+        var op = GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+        // Poll completion so we can honor CancelAfter without AsTask package.
+        while (op.Status == Windows.Foundation.AsyncStatus.Started)
+        {
+            ct.ThrowIfCancellationRequested();
+            await Task.Delay(50, ct).ConfigureAwait(false);
+        }
+        ct.ThrowIfCancellationRequested();
+        if (op.Status != Windows.Foundation.AsyncStatus.Completed)
+            return null;
+        return op.GetResults();
     }
 
     public void Stop()
