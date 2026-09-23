@@ -60,14 +60,32 @@ public partial class OverlayWindow : Window
         ApplyOpacity();
         ApplyIslandVisibility();
 
+        // Tray must be created even if Opened is delayed/missed on no-activate overlays.
+        try
+        {
+            _tray ??= new TrayService(this);
+            _tray.RefreshIcon(_machine.UnreadCount);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("TrayService ctor failed", ex);
+        }
+
         Opened += (_, _) =>
         {
             Win32Overlay.ApplyNoActivate(this);
             Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
             PlaceIsland();
             _ = RefreshWeatherAsync();
-            _tray ??= new TrayService(this);
-            _tray.RefreshIcon(_machine.UnreadCount);
+            try
+            {
+                _tray ??= new TrayService(this);
+                _tray.RefreshIcon(_machine.UnreadCount);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("TrayService Opened init failed", ex);
+            }
         };
         KeyDown += OnKey;
         _clock.Tick += (_, _) => TickClock();
