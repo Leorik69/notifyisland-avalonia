@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.2 — tray icon UX
+
+### Added / Fixed
+- System tray icon with unread badge (`tray.png` / `tray-unread.png`).
+- Left-click toggles island visibility; right-click menu (settings / island / demo / weather / exit); double-click opens Action Center.
+
+
 ## 1.5.1 — Settings crash fix
 
 ### Fixed

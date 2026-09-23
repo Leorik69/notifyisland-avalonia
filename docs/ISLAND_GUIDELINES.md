@@ -205,6 +205,10 @@ Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, O
 
 ### Tray (реализовано)
 - `TrayService` + `Assets/tray.png` / `tray-unread.png` (outline notify).
+- Левый клик по трею → показать/скрыть островок.
+- Правый клик → меню: «Открыть настройки», «Показать/скрыть островок», «Демо вкл/выкл», «Погода вкл/выкл», «Выход».
+- Двойной клик → центр уведомлений Windows (`ms-actioncenter:`).
+- Unread > 0 → иконка `tray-unread.png` (точка-индикатор).
 - Tooltip с числом непрочитанных; иконка меняется при unread &gt; 0.
 - **Клик / ПКМ:** NativeMenu быстрых действий:
   - Открыть центр уведомлений

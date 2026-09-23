@@ -10,8 +10,8 @@ using Avalonia.Threading;
 namespace NotifyIsland;
 
 /// <summary>
-/// System tray: outline notify icon (Assets/tray*.png), quick NativeMenu,
-/// double-click → Action Center, tooltip with unread count.
+/// System tray (notify area): outline IslandIcons-style tray.png / tray-unread.png.
+/// Left-click: show/hide island. Right-click: NativeMenu. Double-click: Action Center.
 /// </summary>
 internal sealed class TrayService : IDisposable
 {
@@ -19,6 +19,7 @@ internal sealed class TrayService : IDisposable
     private readonly TrayIcon _tray;
     private readonly NativeMenuItem _toggleIsland;
     private readonly NativeMenuItem _toggleWeather;
+    private readonly NativeMenuItem _toggleDemo;
     private DateTime _lastClickUtc = DateTime.MinValue;
     private bool _disposed;
 
@@ -31,17 +32,17 @@ internal sealed class TrayService : IDisposable
             ToolTipText = "NotifyIsland"
         };
 
-        _toggleIsland = new NativeMenuItem("Скрыть островок");
-        _toggleIsland.Click += (_, _) => _overlay.ToggleIslandVisible();
+        var settings = new NativeMenuItem("Открыть настройки");
+        settings.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.OpenSettings);
 
-        _toggleWeather = new NativeMenuItem("Погода выкл");
-        _toggleWeather.Click += (_, _) => _overlay.ToggleWeatherFromTray();
+        _toggleIsland = new NativeMenuItem("Показать/скрыть островок");
+        _toggleIsland.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.ToggleIslandVisible);
 
-        var openAc = new NativeMenuItem("Открыть центр уведомлений");
-        openAc.Click += (_, _) => OpenActionCenter();
+        _toggleDemo = new NativeMenuItem("Демо вкл");
+        _toggleDemo.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.ToggleDemoFromTray);
 
-        var settings = new NativeMenuItem("Настройки…");
-        settings.Click += (_, _) => _overlay.OpenSettings();
+        _toggleWeather = new NativeMenuItem("Погода вкл");
+        _toggleWeather.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.ToggleWeatherFromTray);
 
         var exit = new NativeMenuItem("Выход");
         exit.Click += (_, _) =>
@@ -51,11 +52,11 @@ internal sealed class TrayService : IDisposable
         };
 
         var menu = new NativeMenu();
-        menu.Add(openAc);
+        menu.Add(settings);
         menu.Add(_toggleIsland);
+        menu.Add(_toggleDemo);
         menu.Add(_toggleWeather);
         menu.Add(new NativeMenuItemSeparator());
-        menu.Add(settings);
         menu.Add(exit);
         _tray.Menu = menu;
 
@@ -72,6 +73,7 @@ internal sealed class TrayService : IDisposable
         var s = _overlay.Settings;
         _toggleIsland.Header = s.IslandVisible ? "Скрыть островок" : "Показать островок";
         _toggleWeather.Header = s.WeatherEnabled ? "Погода выкл" : "Погода вкл";
+        _toggleDemo.Header = _overlay.IsDemoRunning ? "Демо выкл" : "Демо вкл";
     }
 
     public void RefreshIcon(int unread)
@@ -90,7 +92,6 @@ internal sealed class TrayService : IDisposable
         catch (Exception ex)
         {
             AppLog.Warn("TrayService.RefreshIcon failed", ex);
-            // Fallback: try file path next to exe
             try
             {
                 var name = unread > 0 ? "tray-unread.png" : "tray.png";
@@ -112,9 +113,15 @@ internal sealed class TrayService : IDisposable
             OpenActionCenter();
             return;
         }
+
         _lastClickUtc = now;
-        // Single click: NativeMenu is shown by the platform when Menu is set;
-        // on some hosts Clicked fires without opening menu — no-op is fine.
+        // Deferred single-click: toggle island if no second click arrives.
+        DispatcherTimer.RunOnce(() =>
+        {
+            if (_lastClickUtc == DateTime.MinValue) return; // double-click consumed
+            if ((DateTime.UtcNow - _lastClickUtc).TotalMilliseconds >= 350)
+                _overlay.ToggleIslandVisible();
+        }, TimeSpan.FromMilliseconds(380));
     }
 
     internal static void OpenActionCenter()

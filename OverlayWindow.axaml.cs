@@ -414,6 +414,15 @@ public partial class OverlayWindow : Window
 
     public void ToggleWeatherFromTray() => ToggleWeather();
 
+    public bool IsDemoRunning => _demoOn;
+
+    public void ToggleDemoFromTray()
+    {
+        if (_demoOn) StopDemo();
+        else StartDemo();
+        _tray?.RefreshLabels();
+    }
+
     private void ApplyIslandVisibility()
     {
         // Hide without closing — keep tray/settings alive
