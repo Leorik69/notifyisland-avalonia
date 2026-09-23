@@ -28,7 +28,13 @@
                   Orientation="Horizontal"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
-                  Spacing="8">
+                  Spacing="6">
+        <TextBlock x:Name="ClockGlyph"
+                   VerticalAlignment="Center"
+                   FontFamily="Segoe UI Symbol, Segoe UI Variable, Segoe UI"
+                   FontSize="11"
+                   Foreground="#C8C8CC"
+                   Text="⏱" />
         <TextBlock x:Name="ClockText"
                    VerticalAlignment="Center"
                    FontFamily="Segoe UI Variable, Inter, Segoe UI"
@@ -37,13 +43,13 @@
                    Foreground="#FFFFFF"
                    Text="00:00" />
         <Border x:Name="UnreadDot"
-                Width="7" Height="7"
-                CornerRadius="3.5"
+                Width="8" Height="8"
+                CornerRadius="4"
                 Background="#3D9CF0"
                 VerticalAlignment="Center"
                 Opacity="0"
                 IsHitTestVisible="False"
-                BoxShadow="0 0 8 2 #AA3D9CF0" />
+                BoxShadow="0 0 10 3 #CC3D9CF0" />
       </StackPanel>
 
       <!-- Expanded single-row: icon | title/subtitle | badge -->
@@ -103,21 +109,19 @@
                      VerticalAlignment="Center" />
         </Button>
 
-        <StackPanel Spacing="0" VerticalAlignment="Center">
-          <TextBlock x:Name="OverlayTitle"
-                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                     FontSize="12"
-                     FontWeight="SemiBold"
-                     Foreground="#FFFFFF"
-                     TextTrimming="CharacterEllipsis"
-                     Text="Обзор" />
-          <TextBlock x:Name="OverlaySubtitle"
-                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                     FontSize="10"
-                     FontWeight="Normal"
-                     Foreground="#C8C8CC"
-                     TextTrimming="CharacterEllipsis" />
-        </StackPanel>
+        <TextBlock x:Name="OverlayTitle"
+                   VerticalAlignment="Center"
+                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   Foreground="#FFFFFF"
+                   TextTrimming="CharacterEllipsis"
+                   Text="Обзор" />
+        <TextBlock x:Name="OverlaySubtitle"
+                   IsVisible="False"
+                   Height="0"
+                   FontSize="1"
+                   Text="" />
       </DockPanel>
 
       <!-- Thin progress strip (does not change capsule height) -->

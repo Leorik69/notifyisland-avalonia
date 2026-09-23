@@ -17,7 +17,7 @@ public partial class OverlayWindow : Window
     private readonly OverlayMachine _machine = new();
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
-    private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(2.4) };
+    private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(1.8) };
     private bool _demoOn;
 
     public OverlayWindow()
@@ -71,7 +71,10 @@ public partial class OverlayWindow : Window
     private void StartDemo()
     {
         _demoOn = true; _demo.Start();
-        _machine.Dispatch(OverlayCommand.DemoNext); ApplySize(); Paint();
+        // Seed unread + show a notification immediately so morph is visible.
+        _machine.Dispatch(OverlayCommand.Clear);
+        _machine.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Сообщение", Body = "Демо уведомление" });
+        ApplySize(); Paint();
     }
 
     private void StopDemo()
@@ -127,13 +130,18 @@ public partial class OverlayWindow : Window
         OverlayPanel.IsVisible = overlayOn;
         CollapsedRow.IsVisible = !overlayOn;
 
-        OverlayTitle.Text = string.IsNullOrWhiteSpace(p.Title) ? Fallback(kind) : p.Title;
+        var title = string.IsNullOrWhiteSpace(p.Title) ? Fallback(kind) : p.Title;
         var sub = string.IsNullOrWhiteSpace(p.Subtitle) ? p.Body : p.Subtitle;
         if (kind == OverlayKind.Timer)
-            sub = TimeSpan.FromSeconds(Math.Ceiling(p.RemainingSeconds)).ToString(@"mm\:ss");
+        {
+            var ts = TimeSpan.FromSeconds(Math.Ceiling(p.RemainingSeconds));
+            sub = $"{(int)ts.TotalMinutes:00}:{ts.Seconds:00}";
+        }
         else if (kind == OverlayKind.Progress && string.IsNullOrWhiteSpace(sub))
             sub = $"{(int)Math.Round(p.Progress * 100)}%";
-        OverlaySubtitle.Text = sub;
+        // Single-row capsule: fold subtitle into title so height stays fixed.
+        OverlayTitle.Text = string.IsNullOrWhiteSpace(sub) ? title : $"{title} · {sub}";
+        OverlaySubtitle.Text = "";
 
         OverlayProgress.Value = p.Progress * 100;
         OverlayProgress.IsVisible = kind is OverlayKind.Progress or OverlayKind.Media;
