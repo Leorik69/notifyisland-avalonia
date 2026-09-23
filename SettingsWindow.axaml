@@ -1,0 +1,87 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="NotifyIsland.SettingsWindow"
+        Title="Настройки NotifyIsland"
+        Width="460" Height="640"
+        MinWidth="400" MinHeight="480"
+        CanResize="True"
+        WindowStartupLocation="Manual"
+        ShowInTaskbar="True"
+        SystemDecorations="Full"
+        Background="#1C1C1E">
+  <DockPanel Margin="0">
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="10"
+                Margin="20,8,20,16" HorizontalAlignment="Right">
+      <Button x:Name="CancelBtn" Content="Отмена" Width="100" Click="OnCancel"/>
+      <Button x:Name="ApplyBtn" Content="Применить" Width="110" Click="OnApply"/>
+      <Button x:Name="OkBtn" Content="OK" Width="100" Click="OnOk"/>
+    </StackPanel>
+
+    <ScrollViewer Padding="20,16,20,8">
+      <StackPanel Spacing="12">
+        <TextBlock Text="Островок" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF"/>
+
+        <CheckBox x:Name="IslandVisibleBox" Content="Показывать островок" Foreground="#FFFFFF"/>
+        <CheckBox x:Name="AllowDragBox" Content="Перетаскивание (удержание ЛКМ &gt;200 мс)" Foreground="#FFFFFF"/>
+        <CheckBox x:Name="WeatherEnabledBox" Content="Погода" Foreground="#FFFFFF"/>
+
+        <TextBlock Text="Погода относительно часов" Foreground="#C8C8CC" Margin="0,6,0,0"/>
+        <ComboBox x:Name="WeatherSideBox" Width="220">
+          <ComboBoxItem Tag="Left" Content="Слева"/>
+          <ComboBoxItem Tag="Right" Content="Справа"/>
+        </ComboBox>
+
+        <TextBlock Text="Край экрана" Foreground="#C8C8CC" Margin="0,6,0,0"/>
+        <ComboBox x:Name="EdgeBox" Width="220">
+          <ComboBoxItem Tag="Top" Content="Сверху"/>
+          <ComboBoxItem Tag="Bottom" Content="Снизу"/>
+          <ComboBoxItem Tag="Left" Content="Слева"/>
+          <ComboBoxItem Tag="Right" Content="Справа"/>
+        </ComboBox>
+
+        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" Margin="0,2,0,0">
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="Смещение X (px)" Foreground="#C8C8CC"/>
+          <TextBlock Grid.Row="0" Grid.Column="1" Text="Смещение Y (px)" Foreground="#C8C8CC" Margin="12,0,0,0"/>
+          <NumericUpDown x:Name="OffsetXBox" Grid.Row="1" Grid.Column="0" Minimum="-4000" Maximum="4000" Increment="1" FormatString="0" Width="160" HorizontalAlignment="Left"/>
+          <NumericUpDown x:Name="OffsetYBox" Grid.Row="1" Grid.Column="1" Minimum="-4000" Maximum="4000" Increment="1" FormatString="0" Width="160" HorizontalAlignment="Left" Margin="12,0,0,0"/>
+        </Grid>
+
+        <TextBlock Text="Ориентация" Foreground="#C8C8CC" Margin="0,6,0,0"/>
+        <ComboBox x:Name="OrientationBox" Width="260">
+          <ComboBoxItem Tag="Auto" Content="Авто (по краю)"/>
+          <ComboBoxItem Tag="Horizontal" Content="Горизонтальная"/>
+          <ComboBoxItem Tag="Vertical" Content="Вертикальная"/>
+        </ComboBox>
+
+        <TextBlock Text="Слой (z-order)" Foreground="#C8C8CC" Margin="0,6,0,0"/>
+        <ComboBox x:Name="ZOrderBox" Width="340">
+          <ComboBoxItem Tag="Topmost" Content="Поверх всех окон"/>
+          <ComboBoxItem Tag="Desktop" Content="Над иконками рабочего стола"/>
+          <ComboBoxItem Tag="BehindApps" Content="Под окнами приложений"/>
+        </ComboBox>
+        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#888890"
+                   Text="На Win11 режимы «рабочий стол» и «под окнами» — best-effort (DWM/Widgets могут переставлять). Надёжный режим — поверх всех. Прозрачность капсулы на z-order не влияет."/>
+
+        <TextBlock Text="Прозрачность фона" Foreground="#C8C8CC" Margin="0,6,0,0"/>
+        <DockPanel>
+          <TextBlock x:Name="OpacityLabel" DockPanel.Dock="Right" Width="48" Text="100%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+          <Slider x:Name="OpacitySlider" Minimum="35" Maximum="100" Value="100" TickFrequency="5"/>
+        </DockPanel>
+
+        <TextBlock Text="Звуки" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,10,0,0"/>
+        <CheckBox x:Name="SoundEnabledBox" Content="Звуки островка" Foreground="#FFFFFF"/>
+        <TextBlock Text="Громкость" Foreground="#C8C8CC"/>
+        <DockPanel>
+          <TextBlock x:Name="VolumeLabel" DockPanel.Dock="Right" Width="48" Text="35%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+          <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="35" TickFrequency="5"/>
+        </DockPanel>
+        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#888890"
+                   Text="Короткие системные сигналы: уведомление, морф, свайп, ошибка. Не на тик часов и не на hover."/>
+
+        <TextBlock Text="Иконки" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,10,0,0"/>
+        <TextBlock TextWrapping="Wrap" Foreground="#C8C8CC" FontSize="12"
+                   Text="Используется встроенный outline-набор IslandIcons (часы, погода, медиа, трей). Отдельный выбор пакета пока не нужен."/>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>

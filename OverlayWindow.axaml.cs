@@ -7,7 +7,6 @@ using Avalonia;
 using Avalonia.Animation;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
-using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -27,30 +26,48 @@ public partial class OverlayWindow : Window
     private bool _demoOn;
     private CancellationTokenSource? _weatherCts;
 
-    // Swipe tracking
     private Point _pressOrigin;
+    private PixelPoint _dragOriginPos;
     private bool _pressing;
+    private bool _dragging;
     private bool _weatherIconFlip;
     private string _lastWeatherIconKey = "";
     private readonly TranslateTransform _pillTranslate = new();
+    private readonly Stopwatch _pressWatch = new();
+    private OverlayKind _lastKind = OverlayKind.Idle;
+    private SettingsWindow? _settingsWindow;
+    private TrayService? _tray;
+    private Color _pillFill = Color.Parse("#080808");
+    private double _idleFillA = 1.0;
+
+    public AppSettings Settings => _settings;
 
     public OverlayWindow()
     {
         InitializeComponent();
         Pill.RenderTransform = _pillTranslate;
         _settings = AppSettings.Load();
+        _settings.Normalize();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
         _weather = new WindowsWeatherSource(_settings.Latitude, _settings.Longitude);
+        _pillFill = Color.Parse(OverlayTokens.FillHex);
+        _idleFillA = _settings.Opacity;
 
         EnableMorphTransitions();
         WirePointerGestures();
         SeedIcons();
+        ApplyWeatherSide();
+        ApplyOpacity();
+        ApplyIslandVisibility();
 
         Opened += (_, _) =>
         {
             Win32Overlay.ApplyNoActivate(this);
-            PlaceTopCenter();
+            Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
+            PlaceIsland();
             _ = RefreshWeatherAsync();
+            _tray ??= new TrayService(this);
+            _tray.RefreshIcon(_machine.UnreadCount);
         };
         KeyDown += OnKey;
         _clock.Tick += (_, _) => TickClock();
@@ -58,10 +75,21 @@ public partial class OverlayWindow : Window
         {
             var before = _machine.Snapshot().Kind;
             _machine.Tick(200);
+            var after = _machine.Snapshot().Kind;
+            if (before != after) OnKindChanged(before, after);
             Paint();
-            if (before != _machine.Snapshot().Kind) ApplySize();
+            if (before != after) ApplySize();
+            _tray?.RefreshIcon(_machine.UnreadCount);
         };
-        _demo.Tick += (_, _) => { _machine.Dispatch(OverlayCommand.DemoNext); ApplySize(); Paint(); };
+        _demo.Tick += (_, _) =>
+        {
+            var before = _machine.Snapshot().Kind;
+            _machine.Dispatch(OverlayCommand.DemoNext);
+            var after = _machine.Snapshot().Kind;
+            if (before != after) OnKindChanged(before, after);
+            ApplySize();
+            Paint();
+        };
         _weatherTimer.Tick += (_, _) => _ = RefreshWeatherAsync();
 
         _clock.Start();
@@ -91,10 +119,12 @@ public partial class OverlayWindow : Window
         Transitions = new Transitions
         {
             new DoubleTransition { Property = WidthProperty, Duration = duration, Easing = softOut },
+            new DoubleTransition { Property = HeightProperty, Duration = duration, Easing = softOut },
         };
         Pill.Transitions = new Transitions
         {
             new DoubleTransition { Property = Border.WidthProperty, Duration = duration, Easing = softOut },
+            new DoubleTransition { Property = Border.HeightProperty, Duration = duration, Easing = softOut },
             new BrushTransition { Property = Border.BorderBrushProperty, Duration = TimeSpan.FromMilliseconds(160), Easing = softInOut },
             new BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(160), Easing = softInOut },
         };
@@ -119,13 +149,54 @@ public partial class OverlayWindow : Window
         Pill.PointerEntered += (_, _) =>
         {
             Pill.BorderBrush = new SolidColorBrush(Color.Parse("#55FFFFFF"));
-            Pill.Background = new SolidColorBrush(Color.Parse("#121214"));
+            Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, Math.Min(1.0, _idleFillA + 0.08)));
         };
         Pill.PointerExited += (_, _) =>
         {
             Pill.BorderBrush = new SolidColorBrush(Color.Parse("#28FFFFFF"));
-            Pill.Background = new SolidColorBrush(Color.Parse("#080808"));
+            ApplyOpacity();
         };
+    }
+
+    private static Color WithAlpha(Color c, double a) =>
+        Color.FromArgb((byte)Math.Clamp((int)Math.Round(a * 255), 0, 255), c.R, c.G, c.B);
+
+    private void ApplyOpacity()
+    {
+        _idleFillA = Math.Clamp(_settings.Opacity, 0.35, 1.0);
+        Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, _idleFillA));
+    }
+
+    private void ApplyWeatherSide()
+    {
+        // Reorder: clock block vs weather — Left = weather before clock
+        var row = CollapsedRow;
+        var clockIcon = ClockIconHost;
+        var clockText = ClockText;
+        var weather = MinimalWeather;
+        var dot = UnreadDot;
+        row.Children.Clear();
+        if (_settings.WeatherSide == WeatherSide.Left)
+        {
+            row.Children.Add(weather);
+            row.Children.Add(clockIcon);
+            row.Children.Add(clockText);
+            row.Children.Add(dot);
+        }
+        else
+        {
+            row.Children.Add(clockIcon);
+            row.Children.Add(clockText);
+            row.Children.Add(weather);
+            row.Children.Add(dot);
+        }
+    }
+
+    private void ApplyOrientationLayout()
+    {
+        var vertical = IslandLayout.IsVertical(_settings.Orientation, _settings.Edge);
+        CollapsedRow.Orientation = vertical ? Avalonia.Layout.Orientation.Vertical : Avalonia.Layout.Orientation.Horizontal;
+        MinimalWeather.Orientation = vertical ? Avalonia.Layout.Orientation.Vertical : Avalonia.Layout.Orientation.Horizontal;
     }
 
     private void WirePointerGestures()
@@ -133,7 +204,7 @@ public partial class OverlayWindow : Window
         Pill.PointerPressed += OnPillPointerPressed;
         Pill.PointerMoved += OnPillPointerMoved;
         Pill.PointerReleased += OnPillPointerReleased;
-        Pill.PointerCaptureLost += (_, _) => ResetSwipeVisual();
+        Pill.PointerCaptureLost += (_, _) => { ResetSwipeVisual(); _dragging = false; };
     }
 
     private void OnPillPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -149,7 +220,10 @@ public partial class OverlayWindow : Window
         if (!props.IsLeftButtonPressed) return;
 
         _pressOrigin = e.GetPosition(this);
+        _dragOriginPos = Position;
         _pressing = true;
+        _dragging = false;
+        _pressWatch.Restart();
         e.Pointer.Capture(Pill);
         e.Handled = true;
     }
@@ -160,8 +234,25 @@ public partial class OverlayWindow : Window
         var pos = e.GetPosition(this);
         var dx = pos.X - _pressOrigin.X;
         var dy = pos.Y - _pressOrigin.Y;
-        var dist = Math.Sqrt(dx * dx + dy * dy);
-        // Rubber-band preview (clamped)
+
+        if (_settings.AllowDrag && !_dragging && _pressWatch.ElapsedMilliseconds >= IslandLayout.DragHoldMs)
+        {
+            // Convert to drag-reposition; cancel swipe rubber-band
+            _dragging = true;
+            _pillTranslate.X = 0;
+            _pillTranslate.Y = 0;
+        }
+
+        if (_dragging)
+        {
+            var scale = RenderScaling <= 0 ? 1 : RenderScaling;
+            var nx = _dragOriginPos.X + (int)Math.Round(dx * scale);
+            var ny = _dragOriginPos.Y + (int)Math.Round(dy * scale);
+            Position = new PixelPoint(nx, ny);
+            e.Handled = true;
+            return;
+        }
+
         var damp = 0.45;
         _pillTranslate.X = Math.Clamp(dx * damp, -56, 56);
         _pillTranslate.Y = Math.Clamp(dy * damp, -40, 40);
@@ -172,6 +263,7 @@ public partial class OverlayWindow : Window
         if (!_pressing) return;
         _pressing = false;
         e.Pointer.Capture(null);
+        _pressWatch.Stop();
 
         var pos = e.GetPosition(this);
         var dx = pos.X - _pressOrigin.X;
@@ -180,49 +272,63 @@ public partial class OverlayWindow : Window
         var ady = Math.Abs(dy);
         var dist = Math.Sqrt(dx * dx + dy * dy);
 
+        if (_dragging)
+        {
+            _dragging = false;
+            ResetSwipeVisual();
+            CommitDragOffsets();
+            e.Handled = true;
+            return;
+        }
+
         ResetSwipeVisual();
 
         if (dist <= OverlayTokens.SwipeClickMaxPx)
         {
-            // Short click → Action Center when idle/collapsed
             var kind = _machine.Snapshot().Kind;
             if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
-                OpenActionCenter();
+                TrayService.OpenActionCenter();
             e.Handled = true;
             return;
         }
 
         if (dist < OverlayTokens.SwipeFirePx)
         {
-            // Under threshold — rubber-band already snapped via ResetSwipeVisual
             e.Handled = true;
             return;
         }
 
+        var before = _machine.Snapshot().Kind;
         if (adx >= ady)
-        {
-            // Horizontal: left = next, right = prev
             _machine.Dispatch(dx < 0 ? OverlayCommand.CycleNext : OverlayCommand.CyclePrev);
-            ApplySize();
-            Paint();
-        }
+        else if (dy > 0)
+            _machine.Dispatch(OverlayCommand.Collapse);
         else
-        {
-            if (dy > 0)
-            {
-                _machine.Dispatch(OverlayCommand.Collapse);
-                ApplySize();
-                Paint();
-            }
-            else
-            {
-                _machine.Dispatch(OverlayCommand.ExpandWidget);
-                ApplySize();
-                Paint();
-            }
-        }
+            _machine.Dispatch(OverlayCommand.ExpandWidget);
 
+        var after = _machine.Snapshot().Kind;
+        IslandSounds.Play(IslandSoundKind.Swipe, _settings);
+        if (before != after) OnKindChanged(before, after);
+        ApplySize();
+        Paint();
         e.Handled = true;
+    }
+
+    private void CommitDragOffsets()
+    {
+        var screen = Screens.Primary ?? Screens.ScreenFromWindow(this);
+        if (screen is null) return;
+        var wa = screen.WorkingArea;
+        var scale = RenderScaling <= 0 ? 1 : RenderScaling;
+        var pw = (int)Math.Round(Width * scale);
+        var ph = (int)Math.Round(Height * scale);
+        var (ox, oy) = IslandLayout.OffsetsFromPosition(
+            wa.X, wa.Y, wa.Width, wa.Height, pw, ph,
+            _settings.Edge, Position.X, Position.Y);
+        _settings.OffsetX = ox;
+        _settings.OffsetY = oy;
+        _settings.Save();
+        // Refresh Numeric fields if settings open — user sees new offsets next open
     }
 
     private void ResetSwipeVisual()
@@ -238,9 +344,84 @@ public partial class OverlayWindow : Window
         menu.Items.Add(Menu("Demo F9", () => { if (_demoOn) StopDemo(); else StartDemo(); }));
         var weatherLabel = _settings.WeatherEnabled ? "Погода выкл" : "Погода вкл";
         menu.Items.Add(Menu(weatherLabel, ToggleWeather));
-        menu.Items.Add(Menu("Свернуть", () => { _machine.Dispatch(OverlayCommand.Collapse); ApplySize(); Paint(); }));
-        menu.Items.Add(Menu("Выход", () => (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown()));
+        menu.Items.Add(Menu("Свернуть", () =>
+        {
+            var before = _machine.Snapshot().Kind;
+            _machine.Dispatch(OverlayCommand.Collapse);
+            OnKindChanged(before, _machine.Snapshot().Kind);
+            ApplySize(); Paint();
+        }));
+        menu.Items.Add(Menu("Настройки…", OpenSettings));
+        menu.Items.Add(Menu("Выход", () =>
+            (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown()));
         menu.Open(Pill);
+    }
+
+    public void OpenSettings()
+    {
+        if (_settingsWindow is { IsVisible: true })
+        {
+            _settingsWindow.Activate();
+            _settingsWindow.Topmost = true;
+            _settingsWindow.Topmost = false;
+            return;
+        }
+
+        _settingsWindow = new SettingsWindow(_settings, ApplySettingsFromUi);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show();
+    }
+
+    private void ApplySettingsFromUi(AppSettings draft)
+    {
+        draft.CopyTo(_settings);
+        _settings.Normalize();
+        _settings.Save();
+        _machine.WeatherEnabled = _settings.WeatherEnabled;
+        if (!_settings.WeatherEnabled && _machine.Snapshot().Kind == OverlayKind.Weather)
+            _machine.Dispatch(OverlayCommand.Collapse);
+        ApplyWeatherSide();
+        ApplyOrientationLayout();
+        ApplyOpacity();
+        ApplyIslandVisibility();
+        Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
+        ApplySize();
+        Paint();
+        _tray?.RefreshLabels();
+        _tray?.RefreshIcon(_machine.UnreadCount);
+        if (_settings.WeatherEnabled)
+            _ = RefreshWeatherAsync();
+    }
+
+    public void ToggleIslandVisible()
+    {
+        _settings.IslandVisible = !_settings.IslandVisible;
+        _settings.Save();
+        ApplyIslandVisibility();
+        _tray?.RefreshLabels();
+    }
+
+    public void ToggleWeatherFromTray() => ToggleWeather();
+
+    private void ApplyIslandVisibility()
+    {
+        // Hide without closing — keep tray/settings alive
+        Opacity = _settings.IslandVisible ? 1 : 0;
+        IsHitTestVisible = _settings.IslandVisible;
+        ShowInTaskbar = false;
+        if (_settings.IslandVisible)
+        {
+            Show();
+            Win32Overlay.ApplyNoActivate(this);
+            Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
+            PlaceIsland();
+        }
+        else
+        {
+            // Keep window open but invisible; alternative Hide() breaks some tray hosts
+            // Use Hide for true disappearance from hit-testing/DWM
+            Hide();
+        }
     }
 
     private void ToggleWeather()
@@ -252,8 +433,24 @@ public partial class OverlayWindow : Window
             _machine.Dispatch(OverlayCommand.Collapse);
         ApplySize();
         Paint();
+        _tray?.RefreshLabels();
         if (_settings.WeatherEnabled)
             _ = RefreshWeatherAsync();
+    }
+
+    private void OnKindChanged(OverlayKind before, OverlayKind after)
+    {
+        var wasCollapsed = before is OverlayKind.Idle or OverlayKind.Collapsed;
+        var nowCollapsed = after is OverlayKind.Idle or OverlayKind.Collapsed;
+        if (after == OverlayKind.Notification)
+            IslandSounds.Play(IslandSoundKind.Notify, _settings);
+        else if (after == OverlayKind.Error)
+            IslandSounds.Play(IslandSoundKind.Error, _settings);
+        else if (wasCollapsed != nowCollapsed ||
+                 (wasCollapsed && !nowCollapsed) ||
+                 (!wasCollapsed && nowCollapsed))
+            IslandSounds.Play(IslandSoundKind.Morph, _settings);
+        _lastKind = after;
     }
 
     private async Task RefreshWeatherAsync()
@@ -281,14 +478,22 @@ public partial class OverlayWindow : Window
     private void OnKey(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.F9) { if (_demoOn) StopDemo(); else StartDemo(); e.Handled = true; }
-        else if (e.Key == Key.Escape) { _machine.Dispatch(OverlayCommand.Collapse); ApplySize(); Paint(); e.Handled = true; }
+        else if (e.Key == Key.Escape)
+        {
+            var before = _machine.Snapshot().Kind;
+            _machine.Dispatch(OverlayCommand.Collapse);
+            OnKindChanged(before, _machine.Snapshot().Kind);
+            ApplySize(); Paint(); e.Handled = true;
+        }
     }
 
     private void StartDemo()
     {
         _demoOn = true;
         _machine.Dispatch(OverlayCommand.Clear);
+        var before = _machine.Snapshot().Kind;
         _machine.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Сообщение", Body = "Демо уведомление" });
+        OnKindChanged(before, _machine.Snapshot().Kind);
         ApplySize(); Paint();
         _demo.Interval = TimeSpan.FromMilliseconds(OverlayTokens.DefaultNotifyMs + 1200);
         _demo.Start();
@@ -317,28 +522,30 @@ public partial class OverlayWindow : Window
     private void ApplySize()
     {
         var snap = _machine.Snapshot();
-        var h = OverlayTokens.CollapsedH;
-        Width = snap.Width;
+        ApplyOrientationLayout();
+        var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge);
+        Width = w;
         Height = h;
-        Pill.Width = snap.Width;
+        Pill.Width = w;
         Pill.Height = h;
-        Pill.CornerRadius = new CornerRadius(h / 2);
-        PlaceTopCenter();
+        var corner = Math.Min(w, h) / 2;
+        Pill.CornerRadius = new CornerRadius(corner);
+        PlaceIsland();
     }
 
-    private void PlaceTopCenter()
+    private void PlaceIsland()
     {
         var screen = Screens.Primary ?? Screens.ScreenFromWindow(this);
         if (screen is null) return;
         var wa = screen.WorkingArea;
-        var scale = RenderScaling;
+        var scale = RenderScaling <= 0 ? 1 : RenderScaling;
         var pw = (int)Math.Round(Width * scale);
         var ph = (int)Math.Round(Height * scale);
-        var maxX = Math.Max(wa.X, wa.X + wa.Width - pw);
-        var maxY = Math.Max(wa.Y, wa.Y + wa.Height - ph);
-        var x = Math.Clamp(wa.X + (wa.Width - pw) / 2, wa.X, maxX);
-        var y = Math.Clamp(wa.Y + 8, wa.Y, maxY);
+        var (x, y) = IslandLayout.Place(
+            wa.X, wa.Y, wa.Width, wa.Height, pw, ph,
+            _settings.Edge, _settings.OffsetX, _settings.OffsetY);
         Position = new PixelPoint(x, y);
+        Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
     }
 
     private void Paint()
@@ -352,7 +559,6 @@ public partial class OverlayWindow : Window
         OverlayPanel.IsVisible = overlayOn;
         CollapsedRow.IsVisible = !overlayOn;
 
-        // Minimal weather on idle/collapsed
         var showMinimalWx = !overlayOn && snap.WeatherEnabled;
         MinimalWeather.IsVisible = showMinimalWx;
         if (showMinimalWx)
@@ -441,7 +647,6 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        // Crossfade A ↔ B
         if (!_weatherIconFlip)
         {
             WeatherIconB.Child = path;
@@ -470,22 +675,6 @@ public partial class OverlayWindow : Window
         OverlayKind.Weather => "Погода",
         _ => ""
     };
-
-    private static void OpenActionCenter()
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "ms-actioncenter:",
-                UseShellExecute = true
-            });
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warn("OpenActionCenter failed", ex);
-        }
-    }
 
     private static MenuItem Menu(string header, Action act)
     {

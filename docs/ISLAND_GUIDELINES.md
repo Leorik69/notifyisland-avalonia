@@ -91,12 +91,13 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | `Weather` | dynamic weather icon · «Ясно · 18° · 0%» | ~360 |
 
 Правила:
-1. Высота всегда **`CollapsedH = 30`**.
-2. CornerRadius = `Height / 2` (пиксель-капсула).
-3. Notify инкрементит `UnreadCount`; `Clear` сбрасывает; `Collapse` **сохраняет** unread.
-4. Клик (движение ≤ **12 px**) по Idle/Collapsed → `ms-actioncenter:`.
-5. Right-click → контекстное меню (Demo / **Погода вкл↔выкл** / Свернуть / Выход). Полные настройки — **не** в этом меню (см. §7).
-6. Swipe cycle **не** инкрементит unread (Notification slot = demo seed).
+1. Горизонтальный режим: высота всегда **`CollapsedH = 30`**, морф только по ширине.
+2. Вертикальный режим (Orientation=Vertical или Auto на Left/Right): ширина = `CollapsedH`, морф по **высоте** (длинная ось).
+3. CornerRadius = `min(Width,Height) / 2` (пиксель-капсула).
+4. Notify инкрементит `UnreadCount`; `Clear` сбрасывает; `Collapse` **сохраняет** unread.
+5. Клик (движение ≤ **12 px**) по Idle/Collapsed → `ms-actioncenter:`.
+6. Right-click → быстрое меню (Demo / Погода / Свернуть / **Настройки…** / Выход). Полные настройки — только в окне Settings (§7).
+7. Swipe cycle **не** инкрементит unread (Notification slot = demo seed).
 
 ---
 
@@ -146,16 +147,19 @@ FSM: `OverlayMachine` / `OverlayKind`.
 ## 5. Функционал: есть / убрать / добавить
 
 ### Сейчас есть
-- Idle clock + unread glow + optional minimal weather
-- Notification (width morph, badge)
+- Idle clock + unread glow + optional minimal weather (+ WeatherSide L/R)
+- Notification morph (H: width / V: height), badge
 - Progress / Media / Timer / Error / **Weather** (FSM + demo)
 - Xiaomi-like swipe (L/R cycle, up expand, down collapse)
-- Weather toggle (ПКМ «Погода вкл/выкл», persist `%LOCALAPPDATA%/NotifyIsland/settings.json`)
-- Windows-primary weather source + local stub fallback (см. §10)
-- Unified outline icon pack + weather crossfade
-- Demo cycle (`--demo` / F9) включает `SetWeather`
-- Click → Action Center (short press)
-- Unit-тесты FSM + python FSM script
+- Weather toggle (tray / ПКМ / Settings), Windows-primary source (§10)
+- Unified outline icon pack + weather crossfade + tray icons
+- **Tray** quick menu + unread icon/tooltip
+- **Settings window** (отдельный Window, single-instance): placement, z-order, opacity, sounds, orientation, drag/XY
+- Z-order Topmost / Desktop / BehindApps (Win32 SetWindowPos)
+- Drag hold&gt;200 мс + Edge + OffsetX/Y
+- Opacity 0.35–1.0 на fill; SoundEnabled + SoundVolume
+- Demo cycle (`--demo` / F9); Click → Action Center
+- Unit-тесты FSM + AppSettings + IslandLayout + python FSM script
 
 ### Убрать / не раздувать (обоснование)
 | Что | Почему | Референс |
@@ -174,16 +178,16 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | Media/Progress/Timer/Weather kinds в FSM | Live Activities / Super Island templates |
 | Swipe cycle | Xiaomi multi-island |
 
-### Добавить (приоритет, ещё не в этом workstream)
-| Что | Обоснование | Референс |
-|---|---|---|
-| **Tray icon** + quick menu + unread indicator | Win11-паттерн; DI не нужен, нам нужен entry-point | Windows UX |
-| **Окно настроек** (не раздувать tray) | позиция, z-order, ориентация, weather toggle UI | Xiaomi: настройки островов отдельно |
-| Позиция top/bottom/left/right + X/Y px + drag | ПК ≠ iPhone notch | — |
-| Z-order: Topmost / Desktop / BehindApps | три явных режима | — |
-| Реальный **SMTC** media (опционально) | заменить мок `Night Drive` | аналог DI Now Playing |
-| Очередь уведомлений / счётчик >1 | DI minimal + Xiaomi multi-island | — |
-| Полный CsWinRT Geolocator + стабильный Bing cache parser | углубить §10 primary path | Win11 |
+### Добавлено в этом workstream
+Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, Opacity, Sounds.
+
+### Добавить позже
+| Что | Обоснование |
+|---|---|
+| Реальный **SMTC** media | заменить мок `Night Drive` |
+| Очередь уведомлений / счётчик &gt;1 | multi-island |
+| Полный CsWinRT Geolocator + стабильный Bing cache parser | углубить §10 |
+| Start with Windows | удобство |
 
 ---
 
@@ -197,29 +201,41 @@ FSM: `OverlayMachine` / `OverlayKind`.
 
 ---
 
-## 7. Трей и настройки (спека)
+## 7. Трей и настройки
 
-### Tray (ещё не реализован — спека)
-- Иконка в notification area (тот же outline pack).
-- Отражает unread (overlay icon / badge-dot).
-- **Одиночный клик / ПКМ:** меню быстрых действий только:
+### Tray (реализовано)
+- `TrayService` + `Assets/tray.png` / `tray-unread.png` (outline notify).
+- Tooltip с числом непрочитанных; иконка меняется при unread &gt; 0.
+- **Клик / ПКМ:** NativeMenu быстрых действий:
   - Открыть центр уведомлений
   - Показать/скрыть островок
   - Погода вкл/выкл
   - Настройки…
   - Выход
-- **Двойной клик:** центр уведомлений.
+- **Двойной клик:** `ms-actioncenter:`.
 
-### Сейчас (без tray)
-- ПКМ по островку: Demo / Погода вкл↔выкл / Свернуть / Выход.
-- Persist: `%LOCALAPPDATA%/NotifyIsland/settings.json` (`WeatherEnabled`, lat/lon defaults Moscow 55.75,37.62).
+### Окно настроек (отдельный Avalonia `Window`)
+- Открытие: трей «Настройки…» **и** ПКМ по островку «Настройки…».
+- **Не** popup / не flyout / не dump в ContextMenu.
+- Single-instance: повторное открытие → `Activate()` существующего.
+- Геометрия окна Settings persist: `SettingsWindowX/Y/Width/Height` (отдельно от OffsetX/Y островка).
+- Содержимое (RU):
+  1. Показать островок / перетаскивание / погода
+  2. Погода слева|справа от часов (`WeatherSide`)
+  3. Край: Top/Bottom/Left/Right + OffsetX/Y px
+  4. Ориентация: Auto | Horizontal | Vertical
+  5. Z-order: Topmost / Desktop / BehindApps (Win11: Desktop/BehindApps best-effort)
+  6. Прозрачность фона капсулы (`Opacity` 0.35–1.0) — только fill alpha; border/text читаемые; z-order не меняет
+  7. Звуки: `SoundEnabled` + `SoundVolume` 0–1 (SystemSounds/MessageBeep; не на clock/hover)
+  8. Заметка про outline IslandIcons
 
-### Окно настроек (ещё не реализовано — спека)
-1. Расположение: сверху / снизу / слева / справа.
-2. Ручной drag островка + поля X/Y (пиксели).
-3. Ориентация: Auto | Horizontal | Vertical.
-4. Z-order (три режима): Topmost / Desktop / BehindApps.
-5. Тогглы: weather, demo, start with Windows (позже).
+### Drag
+- `AllowDrag` default true; удержание ЛКМ **&gt;200 мс** (`IslandLayout.DragHoldMs`) → reposition; быстрый flick (&lt;200 мс / swipe thresholds) → свайп.
+- После drag пересчитываются OffsetX/Y и Save.
+
+### Persist
+`%LOCALAPPDATA%/NotifyIsland/settings.json` — все поля `AppSettings` (Weather*, Edge, Offsets, Orientation, ZOrder, Opacity, Sound*, IslandVisible, SettingsWindow*).
+
 
 ---
 
@@ -241,6 +257,9 @@ FSM: `OverlayMachine` / `OverlayKind`.
 - [ ] Swipe thresholds 12 / 48 / 180 задокументированы и в токенах.
 - [ ] Новые kinds описаны здесь и покрыты тестом в `NotifyIsland.Tests`.
 - [ ] CONTEXT.md не дублирует числа — ссылается сюда.
+- [ ] Settings — отдельный Window; tray меню только quick actions.
+- [ ] Opacity только fill alpha; z-order не ломается.
+- [ ] Звуки не на clock/hover; mute через SoundEnabled/Volume.
 
 ---
 

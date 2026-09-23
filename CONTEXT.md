@@ -20,7 +20,12 @@
 | Windows weather source (no HTTP) | `WindowsWeatherSource.cs` |
 | Outline icons | `IslandIcons.cs`, `Assets/Icons/README.md` |
 | UI overlay | `OverlayWindow.axaml` + `.axaml.cs` |
-| Settings JSON | `AppSettings.cs` → `%LOCALAPPDATA%/NotifyIsland/settings.json` |
+| Settings JSON | `NotifyIsland.Core/AppSettings.cs` → `%LOCALAPPDATA%/NotifyIsland/settings.json` |
+| Layout helpers | `NotifyIsland.Core/IslandLayout.cs` |
+| Settings UI | `SettingsWindow.axaml(.cs)` — отдельный Window |
+| Tray | `TrayService.cs` + `Assets/tray*.png` |
+| Z-order | `Win32Overlay.ApplyZOrder` |
+| Sounds | `IslandSounds.cs` (SystemSounds / MessageBeep) |
 | Как собирать | этот файл + `README.md` |
 
 **Не дублировать** тайминги и правила в README/комментах — править только GUIDELINES + OverlayTokens.
@@ -37,8 +42,10 @@ NotifyIsland.sln
 NotifyIsland.Av.csproj          # entry Avalonia app (имя exe: NotifyIsland)
 OverlayWindow.axaml(.cs)        # капсула + swipe + weather UI
 WindowsWeatherSource.cs         # WinRT/Bing cache/stub — NO Open-Meteo
-AppSettings.cs                  # settings.json
-IslandIcons.cs                  # outline icon pack
+NotifyIsland.Core/AppSettings.cs / IslandLayout.cs
+SettingsWindow.axaml(.cs)       # полное окно настроек
+TrayService.cs / IslandSounds.cs
+IslandIcons.cs + Assets/tray*.png
 Assets/Icons/README.md
 NotifyIsland.Core/              # OverlayMachine, OverlayTokens, WeatherCodes
 NotifyIsland.Tests/             # unit tests FSM
@@ -62,11 +69,11 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 ## Функционал: есть / убрать / добавить
 Кратко (детали — в GUIDELINES §5 / §10):
 
-**Есть:** Idle clock + unread glow; minimal+expanded weather (Windows-primary / stub); Notification morph; Progress/Media/Timer/Error/Weather FSM; Xiaomi-like swipe; ПКМ weather toggle; outline icons; demo mocks; Action Center click; tests+CI.
+**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; swipe; tray + Settings window; WeatherSide; Edge+Offset+drag; Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; demo; tests+CI.
 
-**Убрать/не раздувать:** demo как продукт; Open-Meteo/third-party weather HTTP; Xiaomi pull-down window; второй detached island.
+**Убрать/не раздувать:** demo как продукт; Open-Meteo; Xiaomi pull-down; detached second island.
 
-**Добавить позже:** tray icon + unread; Settings window (позиция, drag, X/Y, orientation, 3 z-order); optional real SMTC; deeper CsWinRT geolocation.
+**Добавить позже:** optional real SMTC; deeper CsWinRT geolocation; start with Windows.
 
 ## Погода — откуда данные?
 **Не Open-Meteo.** Конвейер Windows-only: WinRT geolocation (когда доступен) → Bing Weather / Widgets local cache → on-disk cache → `LocalStubWeather` (Sandbox). См. GUIDELINES §10.
