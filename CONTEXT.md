@@ -13,6 +13,7 @@
 | Тема | Где |
 |---|---|
 | Анимации, состояния, свайпы, погода, иконки, трей, настройки, референсы | [`docs/ISLAND_GUIDELINES.md`](docs/ISLAND_GUIDELINES.md) |
+| Превью фич простым языком (для утверждения) | [`docs/ISLAND_PREVIEW.md`](docs/ISLAND_PREVIEW.md) |
 | Числовые токены в коде | `NotifyIsland.Core/OverlayTokens.cs` |
 | FSM | `NotifyIsland.Core/OverlayMachine.cs` |
 | Weather labels / WMO-like map | `NotifyIsland.Core/WeatherCodes.cs` |
