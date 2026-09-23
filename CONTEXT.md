@@ -42,7 +42,7 @@
 ```
 NotifyIsland.sln
 NotifyIsland.Av.csproj          # entry Avalonia app (имя exe: NotifyIsland)
-OverlayWindow.axaml(.cs)        # капсула + swipe + weather UI
+OverlayWindow.axaml(.cs)        # капсула + clicks + weather UI
 WindowsWeatherSource.cs         # WinRT/Bing cache/stub — NO Open-Meteo
 WindowsMediaSessionSource.cs    # SMTC Now Playing (WinRT)
 WindowsPowerSource.cs           # Battery / AC (WinForms PowerStatus)
@@ -73,9 +73,9 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 ## Функционал: есть / убрать / добавить
 Кратко (детали — в GUIDELINES §5 / §10):
 
-**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; swipe; tray + Settings window; WeatherSide; Edge+Offset+drag; Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; demo; tests+CI.
+**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); idle breath; tray + Settings window; WeatherSide; Edge+Offset; Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; demo; tests+CI.
 
-**Убрать/не раздувать:** demo как продукт; Open-Meteo; Xiaomi pull-down; detached second island.
+**Убрать/не раздувать:** demo как продукт; Open-Meteo; Xiaomi pull-down / swipe gestures; detached second island.
 
 **Добавить позже:** timer polish / hover; deeper CsWinRT geolocation; file shelf / clipboard / launcher.
 
@@ -88,10 +88,13 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 
 ## Медиа — откуда данные?
 **Live:** `WindowsMediaSessionSource` → Windows SMTC (`GlobalSystemMediaTransportControlsSessionManager`). При активной сессии островок получает `SetMedia` (title/artist/progress/playing/artwork).  
-**Demo:** свайп / F9 по-прежнему используют `"Night Drive"` / `"Local Radio"` в `OverlayMachine`. Если SMTC недоступен — demo/idle без принуждения Media.
+**Demo:** F9 по-прежнему использует `"Night Drive"` / `"Local Radio"` в `OverlayMachine`. Если SMTC недоступен — demo/idle без принуждения Media.
 
-## Свайпы
-`SwipeClickMaxPx=12`, `SwipeFirePx=48`, `SwipeRubberMs=180` — GUIDELINES §3b / OverlayTokens.
+## Ввод (клики)
+Жесты свайпа **убраны** (1.8.1). `ClickMaxPx=12` — GUIDELINES §3b / OverlayTokens. `CycleNext`/`CyclePrev` остаются в FSM для тестов/API.
+
+## Idle breath
+`BreathScaleAmp=0.04`, `BreathWidthAmpPx=7`, `BreathGlowAmp=0.14`, `BreathPeriodMs=2600` — только Idle/Collapsed при `AnimBreathEnabled`.
 
 ## Как подключать контекст в инструментах
 1. **Cursor / Copilot / любой агент:** открыть репо → прочитать `CONTEXT.md`, затем `docs/ISLAND_GUIDELINES.md`, затем `OverlayTokens.cs`.

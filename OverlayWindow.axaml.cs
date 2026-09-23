@@ -55,6 +55,8 @@ public partial class OverlayWindow : Window
     private double _breathPhase;
     private bool _pulseActive;
     private bool _breathActive;
+    private double _breathBaseW;
+    private double _breathBaseH;
     private bool _hoverWired;
 
     // Explicit width/height morph (Avalonia Window Width Transitions are unreliable).
@@ -103,7 +105,7 @@ public partial class OverlayWindow : Window
         _idleFillA = _settings.Opacity;
 
         EnableMorphTransitions();
-        WirePointerGestures();
+        WirePointerClicks();
         SeedIcons();
         ApplyWeatherSide();
         ApplyPalette();
@@ -380,8 +382,14 @@ public partial class OverlayWindow : Window
             return;
         }
         if (_breathActive) return;
+        if (_morphActive) return;
         _breathActive = true;
         _breathPhase = 0;
+        // Capture settled layout size so width morph does not fight ApplySize.
+        _breathBaseW = Pill.Width > 0 ? Pill.Width : Width;
+        _breathBaseH = Pill.Height > 0 ? Pill.Height : Height;
+        if (_breathBaseW <= 0) _breathBaseW = OverlayTokens.CollapsedW;
+        if (_breathBaseH <= 0) _breathBaseH = OverlayTokens.CollapsedH;
         _breathTimer.Tick -= OnBreathTick;
         _breathTimer.Tick += OnBreathTick;
         _breathTimer.Start();
@@ -394,6 +402,16 @@ public partial class OverlayWindow : Window
             _breathTimer.Stop();
             _breathTimer.Tick -= OnBreathTick;
             _breathActive = false;
+            if (_breathBaseW > 0 && !_morphActive)
+            {
+                Width = _breathBaseW;
+                Height = _breathBaseH > 0 ? _breathBaseH : Height;
+                Pill.Width = _breathBaseW;
+                if (_breathBaseH > 0) Pill.Height = _breathBaseH;
+                Pill.CornerRadius = new CornerRadius(Math.Min(Pill.Width, Pill.Height) / 2);
+            }
+            ApplyOpacity();
+            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#28FFFFFF"));
         }
         _pillScale.ScaleX = 1.0;
         _pillScale.ScaleY = 1.0;
@@ -402,7 +420,7 @@ public partial class OverlayWindow : Window
     private void OnBreathTick(object? sender, EventArgs e)
     {
         var breathSpeed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimIdleBreath);
-        if (!_settings.AnimBreathEnabled || !AnimationTiming.IsEnabled(breathSpeed))
+        if (!_settings.AnimBreathEnabled || !AnimationTiming.IsEnabled(breathSpeed) || _morphActive)
         {
             StopBreathing();
             return;
@@ -410,10 +428,21 @@ public partial class OverlayWindow : Window
         var period = AnimationTiming.ScaleMs(AnimationTiming.BreathPeriodMs, breathSpeed);
         _breathPhase += (Math.PI * 2.0) * (33.0 / Math.Max(1, period));
         if (_breathPhase > Math.PI * 2.0) _breathPhase -= Math.PI * 2.0;
-        // Subtle but perceptible ±2.5% scale breath (no Scale Transition fighting this timer)
-        var s = 1.0 + 0.025 * Math.Sin(_breathPhase);
-        _pillScale.ScaleX = s;
-        _pillScale.ScaleY = s;
+        var wave = Math.Sin(_breathPhase);
+        // Visible idle life: scale ~1.0↔1.04 (+ slight X bias), width ±7px, fill glow pulse.
+        var sy = 1.0 + OverlayTokens.BreathScaleAmp * wave;
+        var sx = sy + OverlayTokens.BreathScaleXExtra * wave;
+        _pillScale.ScaleX = sx;
+        _pillScale.ScaleY = sy;
+        var w = Math.Max(40, _breathBaseW + OverlayTokens.BreathWidthAmpPx * wave);
+        Width = w;
+        Pill.Width = w;
+        Pill.CornerRadius = new CornerRadius(Math.Min(w, Pill.Height > 0 ? Pill.Height : _breathBaseH) / 2);
+        var glow = Math.Clamp(_idleFillA + OverlayTokens.BreathGlowAmp * wave, 0.35, 1.0);
+        Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, glow));
+        // Soft border shimmer synced with breath
+        var borderA = 0.16 + 0.14 * (0.5 + 0.5 * wave);
+        Pill.BorderBrush = new SolidColorBrush(Color.FromArgb((byte)(borderA * 255), 255, 255, 255));
     }
 
     private static Color WithAlpha(Color c, double a) =>
@@ -500,12 +529,12 @@ public partial class OverlayWindow : Window
         MinimalWeather.Orientation = vertical ? Avalonia.Layout.Orientation.Vertical : Avalonia.Layout.Orientation.Horizontal;
     }
 
-    private void WirePointerGestures()
+    /// <summary>Clicks only (1.8.1). Swipe L/R/U/D cycle/collapse removed — CycleNext/Prev remain for API/tests/demo.</summary>
+    private void WirePointerClicks()
     {
         Pill.PointerPressed += OnPillPointerPressed;
-        Pill.PointerMoved += OnPillPointerMoved;
         Pill.PointerReleased += OnPillPointerReleased;
-        Pill.PointerCaptureLost += (_, _) => ResetSwipeVisual();
+        Pill.PointerCaptureLost += (_, _) => ResetPressState();
     }
 
     private void OnPillPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -527,18 +556,6 @@ public partial class OverlayWindow : Window
         e.Handled = true;
     }
 
-    private void OnPillPointerMoved(object? sender, PointerEventArgs e)
-    {
-        if (!_pressing) return;
-        // Drag-reposition removed: pointer is reserved for swipe gestures only.
-        var pos = e.GetPosition(this);
-        var dx = pos.X - _pressOrigin.X;
-        var dy = pos.Y - _pressOrigin.Y;
-        var damp = 0.45;
-        _pillTranslate.X = Math.Clamp(dx * damp, -56, 56);
-        _pillTranslate.Y = Math.Clamp(dy * damp, -40, 40);
-    }
-
     private void OnPillPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         if (!_pressing) return;
@@ -549,13 +566,12 @@ public partial class OverlayWindow : Window
         var pos = e.GetPosition(this);
         var dx = pos.X - _pressOrigin.X;
         var dy = pos.Y - _pressOrigin.Y;
-        var adx = Math.Abs(dx);
-        var ady = Math.Abs(dy);
         var dist = Math.Sqrt(dx * dx + dy * dy);
 
-        ResetSwipeVisual();
+        ResetPressState();
 
-        if (dist <= OverlayTokens.SwipeClickMaxPx)
+        // Clicks only — any drag beyond ClickMaxPx is ignored (no swipe cycle / expand / collapse).
+        if (dist <= OverlayTokens.ClickMaxPx)
         {
             var kind = _machine.Snapshot().Kind;
             if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
@@ -564,33 +580,11 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        if (dist < OverlayTokens.SwipeFirePx)
-        {
-            e.Handled = true;
-            return;
-        }
-
-        var before = _machine.Snapshot().Kind;
-        if (adx >= ady)
-            _machine.Dispatch(dx < 0 ? OverlayCommand.CycleNext : OverlayCommand.CyclePrev);
-        else if (dy > 0)
-            _machine.Dispatch(OverlayCommand.Collapse);
-        else
-            _machine.Dispatch(OverlayCommand.ExpandWidget);
-
-        var after = _machine.Snapshot().Kind;
-        IslandSounds.Play(IslandSoundKind.Swipe, _settings);
-        if (before != after) OnKindChanged(before, after);
-        ApplySize();
-        Paint();
         e.Handled = true;
     }
 
-
-    private void ResetSwipeVisual()
+    private void ResetPressState()
     {
-        _pillTranslate.X = 0;
-        _pillTranslate.Y = 0;
         _pressing = false;
     }
 
@@ -852,8 +846,13 @@ public partial class OverlayWindow : Window
             && snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed;
         var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge, batteryChip);
 
-        var fromW = Pill.Width > 0 ? Pill.Width : Width;
-        var fromH = Pill.Height > 0 ? Pill.Height : Height;
+        // If idle breath is morphing width, measure from the settled base so we don't spuriously morph.
+        var fromW = _breathActive && _breathBaseW > 0
+            ? _breathBaseW
+            : (Pill.Width > 0 ? Pill.Width : Width);
+        var fromH = _breathActive && _breathBaseH > 0
+            ? _breathBaseH
+            : (Pill.Height > 0 ? Pill.Height : Height);
         if (fromW <= 0) fromW = w;
         if (fromH <= 0) fromH = h;
 
@@ -882,6 +881,11 @@ public partial class OverlayWindow : Window
         Pill.Width = w;
         Pill.Height = h;
         Pill.CornerRadius = new CornerRadius(Math.Min(w, h) / 2);
+        if (_breathActive)
+        {
+            _breathBaseW = w;
+            _breathBaseH = h;
+        }
         PlaceIsland();
     }
 

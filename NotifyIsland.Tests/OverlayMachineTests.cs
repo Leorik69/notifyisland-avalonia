@@ -210,9 +210,10 @@ public class OverlayMachineTests
         Assert.Equal("#3D9CF0", OverlayTokens.AccentHex);
         Assert.True(OverlayTokens.CollapsedW <= 200);
         Assert.True(OverlayTokens.CollapsedH <= 30);
-        Assert.Equal(48, OverlayTokens.SwipeFirePx);
-        Assert.Equal(12, OverlayTokens.SwipeClickMaxPx);
-        Assert.Equal(180, OverlayTokens.SwipeRubberMs);
+        Assert.Equal(12, OverlayTokens.ClickMaxPx);
+        Assert.Equal(OverlayTokens.ClickMaxPx, OverlayTokens.SwipeClickMaxPx);
+        Assert.Equal(0.04, OverlayTokens.BreathScaleAmp);
+        Assert.Equal(7, OverlayTokens.BreathWidthAmpPx);
     }
 
     [Fact]

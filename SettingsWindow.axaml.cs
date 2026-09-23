@@ -44,7 +44,6 @@ public partial class SettingsWindow : Window
         BindPct(VolNotifySlider, VolNotifyLabel, v => $"{(int)v}%");
         BindPct(VolExpandSlider, VolExpandLabel, v => $"{(int)v}%");
         BindPct(VolCollapseSlider, VolCollapseLabel, v => $"{(int)v}%");
-        BindPct(VolSwipeSlider, VolSwipeLabel, v => $"{(int)v}%");
         BindPct(VolErrorSlider, VolErrorLabel, v => $"{(int)v}%");
         BindPct(VolHoverSlider, VolHoverLabel, v => $"{(int)v}%");
         FontSizeSlider.PropertyChanged += (_, e) =>
@@ -175,7 +174,6 @@ public partial class SettingsWindow : Window
         VolNotifySlider.Value = Math.Round(_draft.SoundVolNotify * 100);
         VolExpandSlider.Value = Math.Round(_draft.SoundVolExpand * 100);
         VolCollapseSlider.Value = Math.Round(_draft.SoundVolCollapse * 100);
-        VolSwipeSlider.Value = Math.Round(_draft.SoundVolSwipe * 100);
         VolErrorSlider.Value = Math.Round(_draft.SoundVolError * 100);
         VolHoverSlider.Value = Math.Round(_draft.SoundVolHover * 100);
         OpacityLabel.Text = $"{(int)OpacitySlider.Value}%";
@@ -184,7 +182,6 @@ public partial class SettingsWindow : Window
         VolNotifyLabel.Text = $"{(int)VolNotifySlider.Value}%";
         VolExpandLabel.Text = $"{(int)VolExpandSlider.Value}%";
         VolCollapseLabel.Text = $"{(int)VolCollapseSlider.Value}%";
-        VolSwipeLabel.Text = $"{(int)VolSwipeSlider.Value}%";
         VolErrorLabel.Text = $"{(int)VolErrorSlider.Value}%";
         VolHoverLabel.Text = $"{(int)VolHoverSlider.Value}%";
         SelectByTag(WeatherSideBox, _draft.WeatherSide.ToString());
@@ -200,7 +197,6 @@ public partial class SettingsWindow : Window
         SelectByTag(AnimUnreadPulseBox, _draft.AnimUnreadPulse.ToString());
         SelectByTag(AnimIdleBreathBox, _draft.AnimIdleBreath.ToString());
         SelectByTag(AnimHoverBox, _draft.AnimHover.ToString());
-        SelectByTag(AnimSwipeRubberBox, _draft.AnimSwipeRubber.ToString());
         AnimPulseEnabledBox.IsChecked = _draft.AnimPulseEnabled;
         AnimBreathEnabledBox.IsChecked = _draft.AnimBreathEnabled;
         SelectByTag(IconPackBox, _draft.IconPack);
@@ -347,7 +343,6 @@ public partial class SettingsWindow : Window
         _draft.SoundVolNotify = Math.Clamp(VolNotifySlider.Value / 100.0, 0.0, 1.0);
         _draft.SoundVolExpand = Math.Clamp(VolExpandSlider.Value / 100.0, 0.0, 1.0);
         _draft.SoundVolCollapse = Math.Clamp(VolCollapseSlider.Value / 100.0, 0.0, 1.0);
-        _draft.SoundVolSwipe = Math.Clamp(VolSwipeSlider.Value / 100.0, 0.0, 1.0);
         _draft.SoundVolError = Math.Clamp(VolErrorSlider.Value / 100.0, 0.0, 1.0);
         _draft.SoundVolHover = Math.Clamp(VolHoverSlider.Value / 100.0, 0.0, 1.0);
         PersistGeometry();
@@ -378,8 +373,6 @@ public partial class SettingsWindow : Window
             _draft.AnimIdleBreath = ib;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimHoverBox), true, out var hv))
             _draft.AnimHover = hv;
-        if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimSwipeRubberBox), true, out var sr))
-            _draft.AnimSwipeRubber = sr;
         _draft.AnimPulseEnabled = AnimPulseEnabledBox.IsChecked == true;
         _draft.AnimBreathEnabled = AnimBreathEnabledBox.IsChecked == true;
 

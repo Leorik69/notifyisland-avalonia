@@ -37,8 +37,8 @@ public static class AnimationTiming
     /// <summary>Base unread-dot pulse full cycle (ms) at Normal speed.</summary>
     public const int PulsePeriodMs = 1600;
 
-    /// <summary>Base idle breathing full cycle (ms) at Normal speed.</summary>
-    public const int BreathPeriodMs = 3200;
+    /// <summary>Base idle breathing full cycle (ms) at Normal speed. Slightly quicker so amp is readable.</summary>
+    public const int BreathPeriodMs = 2600;
 
     /// <summary>Base hover brush transition (ms).</summary>
     public const int HoverMs = 160;

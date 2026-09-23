@@ -23,7 +23,7 @@
 | Weather (Windows-only) | есть |
 | Tray | WinForms NotifyIcon |
 | Settings tabs | есть |
-| Gesture swipes | есть |
+| Gesture swipes | **убраны** (1.8.1) — только клики |
 | Animation speed | есть |
 | Color palette | есть (Вид) |
 | Icon packs | IslandIcons + Tabler/Lucide vendored |
@@ -84,7 +84,7 @@
 |---|---|---|
 | Состояния | compact / minimal / expanded | **summary** ↔ **expanded** (+ AOD / lock / shade) |
 | Несколько | minimal detached | свайп между островами; свайп «за край» — скрыть все |
-| Жесты | tap, long-press | tap, swipe, **pull-down → мини-окно**, drag-to-share |
+| Жесты | tap, long-press | ~~swipe~~ **clicks only** (1.8.1); no pull-down |
 | Автосворот expanded | системный | по умолчанию **~5 с** (`islandFirstFloat` / `enableFloat`) |
 | Архитектура | ActivityKit | поверх Focus Notification + payload `param_v2.*` |
 
@@ -145,26 +145,30 @@ FSM: `OverlayMachine` / `OverlayKind`.
 4. Notify инкрементит `UnreadCount`; `Clear` сбрасывает; `Collapse` **сохраняет** unread.
 5. Клик (движение ≤ **12 px**) по Idle/Collapsed → `ms-actioncenter:`.
 6. Right-click → быстрое меню (Demo / Погода / Свернуть / **Настройки…** / Выход). Полные настройки — только в окне Settings (§7).
-7. Swipe cycle **не** инкрементит unread (Notification slot = demo seed).
+7. CycleNext/Prev (API) **не** инкрементит unread (Notification slot = demo seed). UI-свайпов нет.
 
 ---
 
-## 3b. Свайп-жесты (Xiaomi-like)
-
-Пороги (`OverlayTokens`):
+## 3b. Ввод: только клики (жесты убраны в 1.8.1)
 
 | Константа | Значение | Смысл |
 |---|---:|---|
-| `SwipeClickMaxPx` | **12** | ≤12 px → click (Action Center), не свайп |
-| `SwipeFirePx` | **48** | ≥48 px → жест срабатывает |
-| `SwipeRubberMs` | **180** | rubber-band назад, если 12 &lt; dist &lt; 48 |
+| `ClickMaxPx` | **12** | ≤12 px → click (Action Center на Idle/Collapsed) |
+| (legacy) `SwipeFirePx` / `SwipeRubberMs` | 48 / 180 | **не используются** UI; оставлены для совместимости |
 
-Направления (доминирующая ось):
-- **Left / Right** → `CycleNext` / `CyclePrev` среди `IslandSlot`: Idle ↔ Notification ↔ Weather (если enabled) ↔ Media.
-- **Down** → `Collapse` (minimal / Idle-Collapsed).
-- **Up** → `ExpandWidget` (из Idle: Weather если enabled, иначе Notification seed).
+- Свайп L/R/U/D **не** циклит слоты и **не** expand/collapse.
+- `CycleNext` / `CyclePrev` остаются в `OverlayMachine` для API / unit-тестов / demo.
+- ПКМ → контекстное меню; Media Prev/Play/Next — отдельные кнопки; F9–F11 demos — клавиатура.
 
-Во время drag: `TranslateTransform` с damping; при release под fire — snap-back 180 мс.
+### Idle breath (усилен 1.8.1)
+| Токен | Значение |
+|---|---:|
+| `BreathPeriodMs` | **2600** |
+| `BreathScaleAmp` | **0.04** (~1.0↔1.04) |
+| `BreathWidthAmpPx` | **±7** |
+| `BreathGlowAmp` | **0.14** |
+
+Только Idle/Collapsed при `AnimBreathEnabled` (default ON). Стоп на notification/media/battery/expanded.
 
 ---
 
@@ -198,7 +202,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 - Idle clock + unread glow + optional minimal weather (+ WeatherSide L/R)
 - Notification morph (H: width / V: height), badge
 - Progress / Media / Timer / Error / **Weather** (FSM + demo)
-- Xiaomi-like swipe (L/R cycle, up expand, down collapse)
+- **Clicks only** (no swipe); idle breath scale/width/glow
 - Weather toggle (tray / ПКМ / Settings), Windows-primary source (§10)
 - Unified outline icon pack + weather crossfade + tray icons
 - **Tray** quick menu + unread icon/tooltip
@@ -224,7 +228,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | Unread dot + badge | Nothing Glyph minimalism + DI trailing badge |
 | Action Center click | Windows-native аналог «открыть уведомления» |
 | Media/Progress/Timer/Weather kinds в FSM | Live Activities / Super Island templates |
-| Swipe cycle | Xiaomi multi-island |
+| Click → Action Center | Windows-native |
 
 ### Добавлено в этом workstream
 Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order×3, Opacity, AnimationSpeed (+ pulse/breath), color palette, Sound packs, icon pack stub.
@@ -322,7 +326,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 - [ ] Morph Width base 420 мс Soft easing (× AnimationSpeed); Appear/Dismiss styles на Notification.
 - [ ] Unread: Notify++, Clear=0, Collapse сохраняет; cycle seed не ++.
 - [ ] Нет Open-Meteo / third-party weather HTTP.
-- [ ] Swipe thresholds 12 / 48 / 180 задокументированы и в токенах.
+- [x] Clicks only (`ClickMaxPx=12`); swipe UI removed (1.8.1). Idle breath tokens documented.
 - [ ] Новые kinds описаны здесь и покрыты тестом в `NotifyIsland.Tests`.
 - [ ] CONTEXT.md не дублирует числа — ссылается сюда.
 - [ ] Settings — отдельный Window; tray меню только quick actions.

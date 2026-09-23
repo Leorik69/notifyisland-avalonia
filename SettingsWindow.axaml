@@ -214,7 +214,7 @@
             <TextBlock Classes="sectionTitle" Text="Вид"/>
             <CheckBox x:Name="ShowNowPlayingBox" Content="Показывать Now Playing"/>
             <TextBlock Classes="mutedNote"
-                       Text="Системный SMTC (Spotify, Edge, …). Выкл — только демо Media (свайп / F9)."/>
+                       Text="Системный SMTC (Spotify, Edge, …). Выкл — только демо Media (F9)."/>
 
             <TextBlock Classes="sectionTitle" Text="Питание" Margin="0,18,0,10"/>
             <CheckBox x:Name="ShowBatteryAlertsBox" Content="Оповещения зарядки и низкого заряда"/>
@@ -348,6 +348,8 @@
 
             <CheckBox x:Name="AnimPulseEnabledBox" Content="Pulse непрочитанных" Margin="0,12,0,2"/>
             <CheckBox x:Name="AnimBreathEnabledBox" Content="Дыхание в простое"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Мягкий пульс масштаба/ширины/свечения, когда островок свёрнут (Idle). Выкл при уведомлении/медиа."/>
 
             <TextBlock Classes="fieldLabel" Text="Морф / появление (inflate)"/>
             <ComboBox x:Name="AnimMorphInflateBox" Width="260">
@@ -379,13 +381,6 @@
             </ComboBox>
             <TextBlock Classes="fieldLabel" Text="Hover"/>
             <ComboBox x:Name="AnimHoverBox" Width="260">
-              <ComboBoxItem Tag="Slow" Content="Медленнее"/>
-              <ComboBoxItem Tag="Normal" Content="Обычная"/>
-              <ComboBoxItem Tag="Fast" Content="Быстрее"/>
-              <ComboBoxItem Tag="Off" Content="Выкл"/>
-            </ComboBox>
-            <TextBlock Classes="fieldLabel" Text="Свайп rubber-band"/>
-            <ComboBox x:Name="AnimSwipeRubberBox" Width="260">
               <ComboBoxItem Tag="Slow" Content="Медленнее"/>
               <ComboBoxItem Tag="Normal" Content="Обычная"/>
               <ComboBoxItem Tag="Fast" Content="Быстрее"/>
@@ -424,9 +419,6 @@
               <TextBlock Grid.Row="2" Grid.Column="0" Text="Сворачивание" Foreground="#C8C8CC" VerticalAlignment="Center"/>
               <Slider x:Name="VolCollapseSlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="100" Value="75" Margin="8,0"/>
               <TextBlock x:Name="VolCollapseLabel" Grid.Row="2" Grid.Column="2" Text="75%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
-              <TextBlock Grid.Row="3" Grid.Column="0" Text="Свайп" Foreground="#C8C8CC" VerticalAlignment="Center"/>
-              <Slider x:Name="VolSwipeSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="100" Value="70" Margin="8,0"/>
-              <TextBlock x:Name="VolSwipeLabel" Grid.Row="3" Grid.Column="2" Text="70%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
               <TextBlock Grid.Row="4" Grid.Column="0" Text="Ошибка" Foreground="#C8C8CC" VerticalAlignment="Center"/>
               <Slider x:Name="VolErrorSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="100" Value="100" Margin="8,0"/>
               <TextBlock x:Name="VolErrorLabel" Grid.Row="4" Grid.Column="2" Text="100%" Foreground="#FFFFFF" VerticalAlignment="Center"/>

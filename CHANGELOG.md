@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.8.1 — Clicks only + stronger idle breath
+
+### Changed
+- **Gestures removed**: no swipe L/R/U/D to cycle slots or expand/collapse. Pointer is **clicks only** (≤`ClickMaxPx` → Action Center on Idle/Collapsed; right-click menu unchanged). Media Prev/Play/Next, tray, Settings, F9–F11 demos kept. `CycleNext`/`CyclePrev` remain in `OverlayMachine` for API/tests/demo.
+- **Idle breath** more visible: scale ~1.0↔1.04 (+ slight X bias), width morph ±7 px, fill glow + border shimmer; period 2600 ms. Stops while expanded/notification/media/battery overlay; resumes on Idle/Collapsed. `AnimBreathEnabled` default ON.
+- Settings: removed «Свайп rubber-band» and «Свайп» volume row; SMTC note no longer mentions свайп.
+
+### Docs
+- GUIDELINES / CONTEXT: gestures out, clicks only; breath tokens documented.
+
+### Note
+- Battery 1.8.0 + SMTC 1.7.0 preserved. Version **1.8.1**.
+
 ## 1.8.0 — Charging / battery pill + low-battery alert
 
 ### Added

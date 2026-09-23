@@ -21,12 +21,23 @@ public static class OverlayTokens
     /// <summary>Soft-Out morph base duration (ms) at Normal. Raised in 1.5.8 for smoother/slower feel.</summary>
     public const int MorphMs = 420;
     public const int DefaultNotifyMs = 4000;
-    /// <summary>Swipe must exceed this many DIPs to fire a gesture.</summary>
+    /// <summary>Movement at or below this DIP distance is a click (Action Center).</summary>
+    public const int ClickMaxPx = 12;
+    /// <summary>Legacy alias — gestures removed in 1.8.1; kept for older tests/docs.</summary>
+    public const int SwipeClickMaxPx = ClickMaxPx;
+    /// <summary>Obsolete (gestures removed). Kept so persisted AnimSwipeRubber scale still resolves.</summary>
     public const int SwipeFirePx = 48;
-    /// <summary>Movement at or below this is treated as a click (Action Center).</summary>
-    public const int SwipeClickMaxPx = 12;
-    /// <summary>Rubber-band snap-back when swipe under fire threshold (ms).</summary>
+    /// <summary>Obsolete rubber-band ms (gestures removed).</summary>
     public const int SwipeRubberMs = 180;
+
+    /// <summary>Idle breath peak scale delta (±). ~1.0 ↔ 1.04 — clearly visible in Sandbox.</summary>
+    public const double BreathScaleAmp = 0.04;
+    /// <summary>Idle breath horizontal scale bias (extra width feel without layout fight).</summary>
+    public const double BreathScaleXExtra = 0.012;
+    /// <summary>Idle breath width morph half-amplitude in DIPs (±).</summary>
+    public const double BreathWidthAmpPx = 7;
+    /// <summary>Idle breath fill-alpha pulse half-amplitude.</summary>
+    public const double BreathGlowAmp = 0.14;
     /// <summary>How often to refresh Windows weather source (ms).</summary>
     public const int WeatherRefreshMs = 15 * 60 * 1000;
     /// <summary>Weather glyph crossfade between conditions (ms).</summary>
