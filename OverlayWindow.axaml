@@ -43,13 +43,13 @@
                    Foreground="#FFFFFF"
                    Text="00:00" />
         <Border x:Name="UnreadDot"
-                Width="8" Height="8"
-                CornerRadius="4"
-                Background="#3D9CF0"
+                Width="7" Height="7"
+                CornerRadius="3.5"
+                Background="#5CB6FF"
                 VerticalAlignment="Center"
                 Opacity="0"
                 IsHitTestVisible="False"
-                BoxShadow="0 0 10 3 #CC3D9CF0" />
+                BoxShadow="0 0 12 4 #E05CB6FF" />
       </StackPanel>
 
       <!-- Expanded single-row: icon | title/subtitle | badge -->

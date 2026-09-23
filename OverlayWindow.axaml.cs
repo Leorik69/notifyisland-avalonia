@@ -47,6 +47,7 @@ public partial class OverlayWindow : Window
     {
         var duration = TimeSpan.FromMilliseconds(OverlayTokens.MorphMs);
         var softOut = new CubicEaseOut();
+        var softInOut = new CubicEaseInOut();
         // Width-only morph; height stays fixed across all kinds.
         Transitions = new Transitions
         {
@@ -55,10 +56,22 @@ public partial class OverlayWindow : Window
         Pill.Transitions = new Transitions
         {
             new DoubleTransition { Property = Border.WidthProperty, Duration = duration, Easing = softOut },
+            new BrushTransition { Property = Border.BorderBrushProperty, Duration = TimeSpan.FromMilliseconds(160), Easing = softInOut },
+            new BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(160), Easing = softInOut },
         };
         UnreadDot.Transitions = new Transitions
         {
             new DoubleTransition { Property = OpacityProperty, Duration = duration, Easing = softOut },
+        };
+        Pill.PointerEntered += (_, _) =>
+        {
+            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#55FFFFFF"));
+            Pill.Background = new SolidColorBrush(Color.Parse("#121214"));
+        };
+        Pill.PointerExited += (_, _) =>
+        {
+            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#28FFFFFF"));
+            Pill.Background = new SolidColorBrush(Color.Parse("#080808"));
         };
     }
 
@@ -70,11 +83,21 @@ public partial class OverlayWindow : Window
 
     private void StartDemo()
     {
-        _demoOn = true; _demo.Start();
+        _demoOn = true;
         // Seed unread + show a notification immediately so morph is visible.
+        // Delay scene cycling until after the first notify collapses (unread glow stays).
         _machine.Dispatch(OverlayCommand.Clear);
         _machine.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Сообщение", Body = "Демо уведомление" });
         ApplySize(); Paint();
+        _demo.Interval = TimeSpan.FromMilliseconds(OverlayTokens.DefaultNotifyMs + 1200);
+        _demo.Start();
+        // Subsequent ticks use the normal cadence.
+        void OnFirst(object? s, EventArgs e)
+        {
+            _demo.Tick -= OnFirst;
+            _demo.Interval = TimeSpan.FromSeconds(1.8);
+        }
+        _demo.Tick += OnFirst;
     }
 
     private void StopDemo()
