@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.5.6 — no-drag, morph fix, palette, icon packs
+
+### Fixed
+- **Animations visible again:** Avalonia `Transitions` on `Window.Width` were unreliable; morph now uses an explicit 16 ms timer (`StartMorph` / `OnMorphTick`) with CubicEaseOut on both Window and Pill size. Demo alternates expand ↔ collapse so inflate/collapse is obvious.
+- Unread pulse and idle breath were killed by Opacity/Scale `Transitions` fighting 33 ms timers — those transitions removed; pulse 0.40↔1.0, breath ±2.5%.
+- Temporary `AppLog.Info` line when morph starts (`%TEMP%/notifyisland.log`).
+
+### Removed
+- Mouse drag-reposition (`AllowDrag` hold >200 мс). Position only via Settings **Расположение** (Edge + Offset X/Y). Pointer kept for swipes / click Action Center. Checkbox removed; `Normalize()` forces `AllowDrag=false`.
+
+### Added
+- Color palette in Settings **Вид**: capsule fill, accent, primary/secondary text (`ColorCapsuleFill` / `ColorAccent` / `ColorTextPrimary` / `ColorTextSecondary`); live Apply.
+- Icon pack stub in **Иконки** + research doc [`docs/ICON_PACKS.md`](docs/ICON_PACKS.md) (Tabler MIT, Lucide ISC, Phosphor MIT, Fluent MIT, Heroicons MIT).
+- Target stack section in `ISLAND_GUIDELINES.md` §0 / `ISLAND_PREVIEW.md`.
+
+### Docs
+- Drag removed; animation table; palette; icon packs; product pick (must vs backlog differentiators).
+
+
 ## 1.5.5 — situation-aware island animations
 
 ### Added

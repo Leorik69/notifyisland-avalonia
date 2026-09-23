@@ -75,8 +75,11 @@ public sealed class AppSettings
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public IslandOrientation Orientation { get; set; } = IslandOrientation.Auto;
 
-    /// <summary>When true, left-button hold &gt;200ms without release starts drag-reposition.</summary>
-    public bool AllowDrag { get; set; } = true;
+    /// <summary>
+    /// Legacy: mouse drag-reposition removed. Always false; position only via Edge + OffsetX/Y.
+    /// Kept for JSON compat; Normalize() forces false so old settings never re-enable drag.
+    /// </summary>
+    public bool AllowDrag { get; set; } = false;
 
     public bool IslandVisible { get; set; } = true;
 
@@ -103,6 +106,21 @@ public sealed class AppSettings
     /// <summary>Island morph / pulse / breath speed. Default Normal.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AnimationSpeed AnimationSpeed { get; set; } = AnimationSpeed.Normal;
+
+    /// <summary>Capsule fill (#RRGGBB). Default dark island.</summary>
+    public string ColorCapsuleFill { get; set; } = "#080808";
+
+    /// <summary>Accent for badges / unread dot (#RRGGBB).</summary>
+    public string ColorAccent { get; set; } = "#3D9CF0";
+
+    /// <summary>Primary text (#RRGGBB).</summary>
+    public string ColorTextPrimary { get; set; } = "#FFFFFF";
+
+    /// <summary>Secondary text (#RRGGBB).</summary>
+    public string ColorTextSecondary { get; set; } = "#C8C8CC";
+
+    /// <summary>Icon pack id: IslandIcons (built-in) or planned packs from docs/ICON_PACKS.md.</summary>
+    public string IconPack { get; set; } = "IslandIcons";
 
     /// <summary>Persisted Settings window geometry (separate from island OffsetX/Y).</summary>
     public int? SettingsWindowX { get; set; }
@@ -177,7 +195,7 @@ public sealed class AppSettings
         target.OffsetX = OffsetX;
         target.OffsetY = OffsetY;
         target.Orientation = Orientation;
-        target.AllowDrag = AllowDrag;
+        target.AllowDrag = false; // drag removed
         target.IslandVisible = IslandVisible;
         target.Opacity = Math.Clamp(Opacity, 0.35, 1.0);
         target.SoundEnabled = SoundEnabled;
@@ -190,6 +208,11 @@ public sealed class AppSettings
         target.SoundVolError = Math.Clamp(SoundVolError, 0.0, 1.0);
         target.SoundVolHover = Math.Clamp(SoundVolHover, 0.0, 1.0);
         target.AnimationSpeed = AnimationSpeed;
+        target.ColorCapsuleFill = NormalizeHex(ColorCapsuleFill, "#080808");
+        target.ColorAccent = NormalizeHex(ColorAccent, "#3D9CF0");
+        target.ColorTextPrimary = NormalizeHex(ColorTextPrimary, "#FFFFFF");
+        target.ColorTextSecondary = NormalizeHex(ColorTextSecondary, "#C8C8CC");
+        target.IconPack = string.IsNullOrWhiteSpace(IconPack) ? "IslandIcons" : IconPack.Trim();
         target.SettingsWindowX = SettingsWindowX;
         target.SettingsWindowY = SettingsWindowY;
         target.SettingsWindowWidth = SettingsWindowWidth;
@@ -199,6 +222,14 @@ public sealed class AppSettings
     /// <summary>Clamp opacity / volume into valid ranges after deserialize.</summary>
     public void Normalize()
     {
+        // Drag-to-reposition removed: never engage regardless of persisted JSON.
+        AllowDrag = false;
+        ColorCapsuleFill = NormalizeHex(ColorCapsuleFill, "#080808");
+        ColorAccent = NormalizeHex(ColorAccent, "#3D9CF0");
+        ColorTextPrimary = NormalizeHex(ColorTextPrimary, "#FFFFFF");
+        ColorTextSecondary = NormalizeHex(ColorTextSecondary, "#C8C8CC");
+        if (string.IsNullOrWhiteSpace(IconPack)) IconPack = "IslandIcons";
+        else IconPack = IconPack.Trim();
         Opacity = Math.Clamp(Opacity <= 0 ? 1.0 : Opacity, 0.35, 1.0);
         SoundVolume = Math.Clamp(SoundVolume < 0 ? 0.35 : SoundVolume, 0.0, 1.0);
         SoundVolNotify = Math.Clamp(SoundVolNotify < 0 ? 1.0 : SoundVolNotify, 0.0, 1.0);
@@ -209,5 +240,19 @@ public sealed class AppSettings
         SoundVolHover = Math.Clamp(SoundVolHover < 0 ? 0.35 : SoundVolHover, 0.0, 1.0);
         if (SettingsWindowWidth < 360) SettingsWindowWidth = 520;
         if (SettingsWindowHeight < 400) SettingsWindowHeight = 640;
+    }
+
+    /// <summary>Accept #RGB / #RRGGBB / #AARRGGBB; fallback on parse failure.</summary>
+    public static string NormalizeHex(string? value, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return fallback;
+        var v = value.Trim();
+        if (v[0] != '#') v = "#" + v;
+        if (v.Length is not (4 or 7 or 9)) return fallback;
+        foreach (var c in v.AsSpan(1))
+        {
+            if (!char.IsAsciiHexDigit(c)) return fallback;
+        }
+        return v.ToUpperInvariant();
     }
 }

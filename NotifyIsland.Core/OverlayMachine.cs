@@ -325,11 +325,15 @@ public sealed class OverlayMachine
 
     private void RunDemoStep()
     {
+        // Alternate expand ↔ collapse so width morph is obvious in demo.
         var steps = new OverlayCommand[]
         {
-            OverlayCommand.Clear, OverlayCommand.Collapse, OverlayCommand.SetWeather,
-            OverlayCommand.Notify, OverlayCommand.SetProgress, OverlayCommand.SetMedia,
-            OverlayCommand.SetTimer, OverlayCommand.SetError
+            OverlayCommand.Notify, OverlayCommand.Collapse,
+            OverlayCommand.SetWeather, OverlayCommand.Collapse,
+            OverlayCommand.SetMedia, OverlayCommand.Collapse,
+            OverlayCommand.SetProgress, OverlayCommand.Collapse,
+            OverlayCommand.SetTimer, OverlayCommand.Collapse,
+            OverlayCommand.SetError, OverlayCommand.Collapse
         };
         var cmd = steps[_demoIndex % steps.Length];
         _demoIndex++;

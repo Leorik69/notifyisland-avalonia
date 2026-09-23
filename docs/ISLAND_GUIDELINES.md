@@ -7,6 +7,41 @@
 
 ---
 
+## 0. Целевой стек (near-term product pick)
+
+**NotifyIsland** — свой островок для Win11 (не копия Apple TM Dynamic Island / Live Activities и не Xiaomi Super Island «один в один»).  
+Имена Apple / «Live Activities» в продукте не используем; глубину LA без Win API не имитируем.
+
+### Must (near-term — уже есть или в работе)
+| Фича | Статус |
+|---|---|
+| Now Playing (media kind; позже SMTC) | FSM + UI; SMTC — backlog |
+| Timer / charging-style alerts (progress/timer/error) | есть |
+| Compact ↔ expanded morph (width-only) | есть (явный timer morph) |
+| Top-center capsule | Edge=Top + Offset |
+| Fullscreen-safe / no-activate overlay | Win32 no-activate + z-order |
+| Weather (Windows-only) | есть |
+| Tray | WinForms NotifyIcon |
+| Settings tabs | есть |
+| Gesture swipes | есть |
+| Animation speed | есть |
+| Color palette | есть (Вид) |
+| Icon packs | IslandIcons + stub + `docs/ICON_PACKS.md` |
+
+### Desktop differentiators (backlog — не реализовывать сейчас)
+- File shelf (полка файлов у островка)
+- Clipboard history chip
+- Quick launcher / app strip
+
+### Не делаем
+- Копирование naming Apple TM / «Live Activities» как бренд
+- Fake multi-island detached без Win cutout API
+- Open-Meteo / third-party weather HTTP
+- Mouse drag-reposition островка (позиция только Settings: Edge + Offset X/Y)
+
+
+---
+
 ## 1. Референсы (выжимка)
 
 ### 1.1 iOS Dynamic Island + Live Activities
@@ -54,7 +89,7 @@
 
 ## 2. Правила анимаций NotifyIsland (actionable)
 
-Код: `OverlayTokens.MorphMs`, `AnimationTiming` + `AppSettings.AnimationSpeed`, Avalonia `Transitions` на `Width` / `Pill.Width` / opacity точки / hover brushes / swipe rubber-band / icon crossfade; `ApplyAnimationSettings()` в `OverlayWindow`.
+Код: `OverlayTokens.MorphMs`, `AnimationTiming` + `AppSettings.AnimationSpeed`; **явный timer-morph** `StartMorph`/`OnMorphTick` на `Window`+`Pill` Width/Height (Avalonia `Transitions` на Window Width ненадёжны); hover brushes / swipe rubber-band / icon crossfade через `Transitions`; pulse/breath — timer без Opacity/Scale Transition (иначе гасятся); `ApplyAnimationSettings()` в ctor + Settings Apply.
 
 Базовые длительности (**Normal**). Множители: **Slow≈1.6×**, **Normal=1×**, **Fast≈0.55×**, **Off→1 мс** (без pulse/breath).
 
@@ -63,8 +98,8 @@
 | Width morph (idle ↔ notify/media/weather/…) | **280 мс** | `CubicEaseOut` | только ширина; высота **всегда** `CollapsedH`; soft inflate/collapse |
 | Hover border/background | **160 мс** | `CubicEaseInOut` | лёгкий +0.06 fill alpha; без scale-прыжков |
 | Unread-dot show/hide | **280 мс** | `CubicEaseOut` | 0 ↔ 1 |
-| Unread-dot pulse (unread &gt; 0) | **1600 мс**/цикл | sine | opacity 0.55↔1.0; только Idle/Collapsed; Off выкл |
-| Idle breathing (Idle/Collapsed) | **3200 мс**/цикл | sine | scale ±1.2% на Pill; выкл при active overlay / Anim Off |
+| Unread-dot pulse (unread &gt; 0) | **1600 мс**/цикл | sine | opacity 0.40↔1.0; только Idle/Collapsed; Off выкл |
+| Idle breathing (Idle/Collapsed) | **3200 мс**/цикл | sine | scale ±2.5% на Pill; выкл при active overlay / Anim Off |
 | Notify auto-dismiss | **4000 мс** | — | затем возврат в previous/idle |
 | Demo scene cycle (после первого notify) | **1800 мс** | — | только `--demo` / F9 |
 | Контент-апдейты внутри expanded | ≤ **450 мс** | soft-out | не дольше Apple max 2 с |
@@ -128,10 +163,10 @@ FSM: `OverlayMachine` / `OverlayKind`.
 
 | Токен | Значение |
 |---|---|
-| Fill | `#080808` |
-| Text | `#FFFFFF` |
-| Text secondary | `#C8C8CC` |
-| Accent / badge / unread | `#3D9CF0` (dot glow ярче: `#5CB6FF`) |
+| Fill | `#080808` (настраивается: `ColorCapsuleFill`) |
+| Text | `#FFFFFF` (`ColorTextPrimary`) |
+| Text secondary | `#C8C8CC` (`ColorTextSecondary`) |
+| Accent / badge / unread | `#3D9CF0` (`ColorAccent`; glow чуть ярче) |
 | Error | `#E8A0A0` |
 | Font | Segoe UI Variable / Segoe UI, title SemiBold 12, clock 12, badge 10 |
 | Unread dot | 7×7, BoxShadow glow, opacity transition |
@@ -160,7 +195,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 - **Tray** quick menu + unread icon/tooltip
 - **Settings window** (отдельный Window, single-instance, **TabControl** по категориям): placement, z-order, opacity, sounds, orientation, drag/XY
 - Z-order Topmost / Desktop / BehindApps (Win32 SetWindowPos)
-- Drag hold&gt;200 мс + Edge + OffsetX/Y
+- Edge + OffsetX/Y (без mouse drag)
 - Opacity 0.35–1.0 на fill; AnimationSpeed (Slow|Normal|Fast|Off) с pulse/breath; SoundPack (Nothing|Ios|System|Off) + SoundEnabled + master/per-event volumes
 - Demo cycle (`--demo` / F9); Click → Action Center
 - Unit-тесты FSM + AppSettings + IslandLayout + python FSM script
@@ -183,7 +218,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | Swipe cycle | Xiaomi multi-island |
 
 ### Добавлено в этом workstream
-Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, Opacity, AnimationSpeed (+ pulse/breath), Sound packs (Nothing/iOS/System/Off).
+Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order×3, Opacity, AnimationSpeed (+ pulse/breath), color palette, Sound packs, icon pack stub.
 
 ### Добавить позже
 | Что | Обоснование |
@@ -224,17 +259,18 @@ Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, O
 - Геометрия окна Settings persist: `SettingsWindowX/Y/Width/Height` (отдельно от OffsetX/Y островка); default ~**520×640**.
 - UI: Avalonia **`TabControl`** по категориям (тёмная тема `#1C1C1E`), не один длинный scroll-pile. Низ окна — DockPanel: Отмена / Применить / OK.
 - Вкладки (RU):
-  1. **Островок** — `IslandVisible`, `AllowDrag`
+  1. **Островок** — `IslandVisible` (drag убран)
   2. **Погода** — `WeatherEnabled`, `WeatherSide` (+ краткая заметка: Windows-only, без third-party HTTP)
   3. **Расположение** — `Edge` (Top/Bottom/Left/Right), `OffsetX`/`OffsetY`, `Orientation` (Auto|Horizontal|Vertical)
-  4. **Вид** — `ZOrderMode` (Topmost / Desktop / BehindApps; Win11 Desktop/BehindApps best-effort) + `Opacity` 0.35–1.0 (только fill alpha) + `AnimationSpeed` (Slow|Normal|Fast|Off)
+  4. **Вид** — `ZOrderMode` + `Opacity` + `AnimationSpeed` + **палитра** (`ColorCapsuleFill` / `ColorAccent` / `ColorTextPrimary` / `ColorTextSecondary`)
   5. **Звуки** — `SoundEnabled`, pack `Nothing`|`Ios`|`System`|`Off`, master `SoundVolume`, per-event `SoundVol*` + legal note (оригинальные WAV, не proprietary)
-  6. **Иконки** — заметка про встроенный outline `IslandIcons` (выбор пакета пока не нужен)
+  6. **Иконки** — `IconPack` stub (IslandIcons + план Tabler/Lucide/Phosphor); см. `docs/ICON_PACKS.md`
 - Все `x:Name` контролов сохранены — `LoadUi` / `ReadUi` / `WireVolumeLabels` без ломки.
 
-### Drag
-- `AllowDrag` default true; удержание ЛКМ **&gt;200 мс** (`IslandLayout.DragHoldMs`) → reposition; быстрый flick (&lt;200 мс / swipe thresholds) → свайп.
-- После drag пересчитываются OffsetX/Y и Save.
+### Позиция (без drag)
+- Мышиное перетаскивание островка **удалено**. `AllowDrag` всегда `false` (Normalize мигрирует старые settings).
+- Позиция только через **Расположение**: Edge + OffsetX/Y (+ Orientation).
+- Указатель на островке: свайпы L/R (виджеты), up expand, down collapse, click → Action Center.
 
 ### Persist
 `%LOCALAPPDATA%/NotifyIsland/settings.json` — все поля `AppSettings` (Weather*, Edge, Offsets, Orientation, ZOrder, Opacity, AnimationSpeed, Sound*, IslandVisible, SettingsWindow*).

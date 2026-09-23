@@ -9,7 +9,7 @@ public class AppSettingsTests
     {
         var s = new AppSettings();
         Assert.True(s.WeatherEnabled);
-        Assert.True(s.AllowDrag);
+        Assert.False(s.AllowDrag);
         Assert.True(s.IslandVisible);
         Assert.True(s.SoundEnabled);
         Assert.Equal(SoundPack.Nothing, s.SoundPack);
@@ -25,6 +25,11 @@ public class AppSettingsTests
         Assert.Equal(1.0, s.SoundVolNotify);
         Assert.Equal(55.75, s.Latitude);
         Assert.Equal(37.62, s.Longitude);
+        Assert.Equal("#080808", s.ColorCapsuleFill);
+        Assert.Equal("#3D9CF0", s.ColorAccent);
+        Assert.Equal("#FFFFFF", s.ColorTextPrimary);
+        Assert.Equal("#C8C8CC", s.ColorTextSecondary);
+        Assert.Equal("IslandIcons", s.IconPack);
     }
 
     [Fact]
@@ -52,6 +57,11 @@ public class AppSettingsTests
             SoundVolError = 0.95,
             SoundVolHover = 0.2,
             AnimationSpeed = AnimationSpeed.Slow,
+            ColorCapsuleFill = "#101010",
+            ColorAccent = "#FF8800",
+            ColorTextPrimary = "#EEEEEE",
+            ColorTextSecondary = "#AAAAAA",
+            IconPack = "Tabler",
             SettingsWindowX = 100,
             SettingsWindowY = 200,
             SettingsWindowWidth = 500,
@@ -80,6 +90,12 @@ public class AppSettingsTests
         Assert.Equal(0.95, back.SoundVolError);
         Assert.Equal(0.2, back.SoundVolHover);
         Assert.Equal(AnimationSpeed.Slow, back.AnimationSpeed);
+        Assert.Equal("#101010", back.ColorCapsuleFill);
+        Assert.Equal("#FF8800", back.ColorAccent);
+        Assert.Equal("#EEEEEE", back.ColorTextPrimary);
+        Assert.Equal("#AAAAAA", back.ColorTextSecondary);
+        Assert.Equal("Tabler", back.IconPack);
+        Assert.False(back.AllowDrag); // migrated off
         Assert.Equal(100, back.SettingsWindowX);
         Assert.Equal(200, back.SettingsWindowY);
         Assert.Equal(500, back.SettingsWindowWidth);
@@ -97,6 +113,23 @@ public class AppSettingsTests
     }
 
     [Fact]
+    public void Normalize_ForcesAllowDragFalse_AndHexColors()
+    {
+        var s = new AppSettings
+        {
+            AllowDrag = true,
+            ColorCapsuleFill = "080808",
+            ColorAccent = "notahex",
+            IconPack = "  "
+        };
+        s.Normalize();
+        Assert.False(s.AllowDrag);
+        Assert.Equal("#080808", s.ColorCapsuleFill);
+        Assert.Equal("#3D9CF0", s.ColorAccent); // fallback
+        Assert.Equal("IslandIcons", s.IconPack);
+    }
+
+    [Fact]
     public void CopyTo_CopiesAll()
     {
         var a = new AppSettings
@@ -106,7 +139,10 @@ public class AppSettingsTests
             SoundVolume = 0.2,
             SoundPack = SoundPack.System,
             SoundVolSwipe = 0.33,
-            AnimationSpeed = AnimationSpeed.Fast
+            AnimationSpeed = AnimationSpeed.Fast,
+            ColorAccent = "#112233",
+            IconPack = "Lucide",
+            AllowDrag = true
         };
         var b = new AppSettings();
         a.CopyTo(b);
@@ -116,6 +152,9 @@ public class AppSettingsTests
         Assert.Equal(SoundPack.System, b.SoundPack);
         Assert.Equal(0.33, b.SoundVolSwipe);
         Assert.Equal(AnimationSpeed.Fast, b.AnimationSpeed);
+        Assert.Equal("#112233", b.ColorAccent);
+        Assert.Equal("Lucide", b.IconPack);
+        Assert.False(b.AllowDrag);
     }
 }
 

@@ -79,9 +79,8 @@
           <StackPanel Spacing="4">
             <TextBlock Classes="sectionTitle" Text="Островок"/>
             <CheckBox x:Name="IslandVisibleBox" Content="Показывать островок"/>
-            <CheckBox x:Name="AllowDragBox" Content="Перетаскивание (удержание ЛКМ &gt;200 мс)"/>
             <TextBlock Classes="mutedNote"
-                       Text="Островок можно также показать или скрыть из трея. Перетаскивание срабатывает после удержания ЛКМ дольше 200 мс; короткий жест остаётся свайпом."/>
+                       Text="Островок можно также показать или скрыть из трея. Позиция только через вкладку «Расположение» (край + смещение X/Y). Перетаскивание мышью отключено — указатель на островке остаётся для свайпов."/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
@@ -167,6 +166,18 @@
             </ComboBox>
             <TextBlock Classes="mutedNote"
                        Text="Морф ширины, pulse точки непрочитанных и лёгкое «дыхание» в простое. Выкл — мгновенные переходы без pulse/breath."/>
+
+            <TextBlock Classes="sectionTitle" Text="Палитра" Margin="0,18,0,10"/>
+            <TextBlock Classes="fieldLabel" Text="Заливка капсулы (#RRGGBB)"/>
+            <TextBox x:Name="ColorFillBox" Width="160" MaxLength="9" Watermark="#080808"/>
+            <TextBlock Classes="fieldLabel" Text="Акцент (бейджи / точка)"/>
+            <TextBox x:Name="ColorAccentBox" Width="160" MaxLength="9" Watermark="#3D9CF0"/>
+            <TextBlock Classes="fieldLabel" Text="Текст основной"/>
+            <TextBox x:Name="ColorTextPrimaryBox" Width="160" MaxLength="9" Watermark="#FFFFFF"/>
+            <TextBlock Classes="fieldLabel" Text="Текст вторичный"/>
+            <TextBox x:Name="ColorTextSecondaryBox" Width="160" MaxLength="9" Watermark="#C8C8CC"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Цвета применяются сразу по «Применить». По умолчанию — тёмная капсула с синим акцентом."/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
@@ -224,10 +235,17 @@
         <ScrollViewer Classes="tabBody">
           <StackPanel Spacing="4">
             <TextBlock Classes="sectionTitle" Text="Иконки"/>
-            <TextBlock TextWrapping="Wrap" Foreground="#C8C8CC" FontSize="12" LineHeight="18"
-                       Text="Используется встроенный outline-набор IslandIcons (часы, погода, медиа, трей). Отдельный выбор пакета пока не нужен."/>
+            <TextBlock Classes="fieldLabel" Text="Пакет иконок"/>
+            <ComboBox x:Name="IconPackBox" Width="320">
+              <ComboBoxItem Tag="IslandIcons" Content="IslandIcons (встроенный outline)"/>
+              <ComboBoxItem Tag="Tabler" Content="Tabler Icons (план, MIT)"/>
+              <ComboBoxItem Tag="Lucide" Content="Lucide (план, ISC)"/>
+              <ComboBoxItem Tag="Phosphor" Content="Phosphor Light (план, MIT)"/>
+            </ComboBox>
+            <TextBlock TextWrapping="Wrap" Foreground="#C8C8CC" FontSize="12" LineHeight="18" Margin="0,10,0,0"
+                       Text="Сейчас активен встроенный IslandIcons. Плановые пакеты — см. docs/ICON_PACKS.md (MIT/ISC outline)."/>
             <TextBlock Classes="mutedNote"
-                       Text="Стиль: outline, stroke 1.75, 24×24 design space. Палитра secondary #C8C8CC на тёмной капсуле."/>
+                       Text="Стиль: outline, stroke 1.75, 24×24. Вторичный цвет текста — из палитры «Вид»."/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>

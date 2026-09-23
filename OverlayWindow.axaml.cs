@@ -27,9 +27,7 @@ public partial class OverlayWindow : Window
     private CancellationTokenSource? _weatherCts;
 
     private Point _pressOrigin;
-    private PixelPoint _dragOriginPos;
     private bool _pressing;
-    private bool _dragging;
     private bool _weatherIconFlip;
     private string _lastWeatherIconKey = "";
     private readonly TranslateTransform _pillTranslate = new();
@@ -51,6 +49,13 @@ public partial class OverlayWindow : Window
     private bool _breathActive;
     private bool _hoverWired;
 
+    // Explicit width/height morph (Avalonia Window Width Transitions are unreliable).
+    private readonly DispatcherTimer _morphTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    private readonly Stopwatch _morphWatch = new();
+    private bool _morphActive;
+    private double _morphFromW, _morphFromH, _morphToW, _morphToH;
+    private int _morphDurationMs = OverlayTokens.MorphMs;
+
     public AppSettings Settings => _settings;
 
     public OverlayWindow()
@@ -63,13 +68,14 @@ public partial class OverlayWindow : Window
         _settings.Normalize();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
         _weather = new WindowsWeatherSource(_settings.Latitude, _settings.Longitude);
-        _pillFill = Color.Parse(OverlayTokens.FillHex);
+        _pillFill = ParseColor(_settings.ColorCapsuleFill, OverlayTokens.FillHex);
         _idleFillA = _settings.Opacity;
 
         EnableMorphTransitions();
         WirePointerGestures();
         SeedIcons();
         ApplyWeatherSide();
+        ApplyPalette();
         ApplyOpacity();
         ApplyIslandVisibility();
 
@@ -156,7 +162,7 @@ public partial class OverlayWindow : Window
     private void SeedIcons()
     {
         ClockIconHost.Child = IslandIcons.Create("clock", OverlayTokens.IconSizeCollapsed,
-            new SolidColorBrush(Color.Parse(OverlayTokens.TextSecondaryHex)));
+            new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex)));
         SetKindIcon(OverlayKind.Idle);
         SetWeatherIcons(WeatherCodes.IconKey(_machine.LastWeather.WeatherCode ?? 0), animate: false);
     }
@@ -186,29 +192,24 @@ public partial class OverlayWindow : Window
     private void ApplyAnimationSettings()
     {
         var speed = _settings.AnimationSpeed;
-        var morph = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(OverlayTokens.MorphMs, speed));
         var fade = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(OverlayTokens.IconCrossfadeMs, speed));
         var rubber = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(OverlayTokens.SwipeRubberMs, speed));
         var hover = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(160, speed));
         var softOut = new CubicEaseOut();
         var softInOut = new CubicEaseInOut();
 
-        Transitions = new Transitions
-        {
-            new DoubleTransition { Property = WidthProperty, Duration = morph, Easing = softOut },
-            new DoubleTransition { Property = HeightProperty, Duration = morph, Easing = softOut },
-        };
+        // Window Width/Height Transitions are unreliable on transparent borderless windows —
+        // morph is driven by explicit timer in ApplySize/OnMorphTick.
+        Transitions = null;
+
+        // Pill: only brush hover transitions. Width/Height animated manually (see StartMorph).
+        // Do NOT put Opacity/Scale transitions here — they fight pulse/breath timers.
         Pill.Transitions = new Transitions
         {
-            new DoubleTransition { Property = Border.WidthProperty, Duration = morph, Easing = softOut },
-            new DoubleTransition { Property = Border.HeightProperty, Duration = morph, Easing = softOut },
             new BrushTransition { Property = Border.BorderBrushProperty, Duration = hover, Easing = softInOut },
             new BrushTransition { Property = Border.BackgroundProperty, Duration = hover, Easing = softInOut },
         };
-        UnreadDot.Transitions = new Transitions
-        {
-            new DoubleTransition { Property = OpacityProperty, Duration = morph, Easing = softOut },
-        };
+        UnreadDot.Transitions = null;
         WeatherIconA.Transitions = new Transitions
         {
             new DoubleTransition { Property = OpacityProperty, Duration = fade, Easing = softOut },
@@ -222,20 +223,16 @@ public partial class OverlayWindow : Window
             new DoubleTransition { Property = TranslateTransform.XProperty, Duration = rubber, Easing = softOut },
             new DoubleTransition { Property = TranslateTransform.YProperty, Duration = rubber, Easing = softOut },
         };
-        _pillScale.Transitions = new Transitions
-        {
-            new DoubleTransition { Property = ScaleTransform.ScaleXProperty, Duration = morph, Easing = softInOut },
-            new DoubleTransition { Property = ScaleTransform.ScaleYProperty, Duration = morph, Easing = softInOut },
-        };
+        _pillScale.Transitions = null;
 
         if (!AnimationTiming.IsEnabled(speed))
         {
+            StopMorph(snapToTarget: true);
             StopUnreadPulse(resetOpacity: false);
             StopBreathing();
         }
         else
         {
-            // Re-sync situational loops against current paint state
             var snap = _machine.Snapshot();
             var overlayOn = IsOverlayKind(snap.Kind);
             SyncUnreadPulse(!overlayOn && snap.UnreadCount > 0);
@@ -284,8 +281,8 @@ public partial class OverlayWindow : Window
         var period = AnimationTiming.ScaleMs(AnimationTiming.PulsePeriodMs, _settings.AnimationSpeed);
         _pulsePhase += (Math.PI * 2.0) * (33.0 / Math.Max(1, period));
         if (_pulsePhase > Math.PI * 2.0) _pulsePhase -= Math.PI * 2.0;
-        // Gentle 0.55 ↔ 1.0 opacity pulse
-        UnreadDot.Opacity = 0.775 + 0.225 * Math.Sin(_pulsePhase);
+        // Visible 0.40 ↔ 1.0 opacity pulse (no Opacity Transition fighting this timer)
+        UnreadDot.Opacity = 0.70 + 0.30 * Math.Sin(_pulsePhase);
     }
 
     private void SyncBreathing(bool shouldBreath)
@@ -325,8 +322,8 @@ public partial class OverlayWindow : Window
         var period = AnimationTiming.ScaleMs(AnimationTiming.BreathPeriodMs, _settings.AnimationSpeed);
         _breathPhase += (Math.PI * 2.0) * (33.0 / Math.Max(1, period));
         if (_breathPhase > Math.PI * 2.0) _breathPhase -= Math.PI * 2.0;
-        // Very subtle ±1.2% scale "breath"
-        var s = 1.0 + 0.012 * Math.Sin(_breathPhase);
+        // Subtle but perceptible ±2.5% scale breath (no Scale Transition fighting this timer)
+        var s = 1.0 + 0.025 * Math.Sin(_breathPhase);
         _pillScale.ScaleX = s;
         _pillScale.ScaleY = s;
     }
@@ -338,6 +335,43 @@ public partial class OverlayWindow : Window
     {
         _idleFillA = Math.Clamp(_settings.Opacity, 0.35, 1.0);
         Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, _idleFillA));
+    }
+
+    /// <summary>Apply user palette (capsule / accent / text) live from settings.</summary>
+    private void ApplyPalette()
+    {
+        _pillFill = ParseColor(_settings.ColorCapsuleFill, OverlayTokens.FillHex);
+        var text = ParseColor(_settings.ColorTextPrimary, OverlayTokens.TextHex);
+        var textSec = ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex);
+        var accent = ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex);
+        // Brighter glow variant for unread dot
+        var glow = Color.FromArgb(0xE0,
+            (byte)Math.Min(255, accent.R + 40),
+            (byte)Math.Min(255, accent.G + 30),
+            (byte)Math.Min(255, accent.B + 20));
+
+        ClockText.Foreground = new SolidColorBrush(text);
+        WeatherTempText.Foreground = new SolidColorBrush(textSec);
+        OverlayTitle.Foreground = new SolidColorBrush(text);
+        BadgeText.Foreground = new SolidColorBrush(Colors.White);
+        UnreadDot.Background = new SolidColorBrush(glow);
+        UnreadDot.BoxShadow = new BoxShadows(new BoxShadow
+        {
+            Blur = 12, Spread = 4, Color = glow
+        });
+        UnreadBadge.Background = new SolidColorBrush(accent);
+        AppIcon.Background = new SolidColorBrush(accent);
+        OverlayProgress.Foreground = new SolidColorBrush(accent);
+        MediaPlayGlyph.Foreground = new SolidColorBrush(accent);
+        ClockIconHost.Child = IslandIcons.Create("clock", OverlayTokens.IconSizeCollapsed,
+            new SolidColorBrush(textSec));
+        ApplyOpacity();
+    }
+
+    private static Color ParseColor(string? hex, string fallback)
+    {
+        try { return Color.Parse(string.IsNullOrWhiteSpace(hex) ? fallback : hex); }
+        catch { return Color.Parse(fallback); }
     }
 
     private void ApplyWeatherSide()
@@ -377,7 +411,7 @@ public partial class OverlayWindow : Window
         Pill.PointerPressed += OnPillPointerPressed;
         Pill.PointerMoved += OnPillPointerMoved;
         Pill.PointerReleased += OnPillPointerReleased;
-        Pill.PointerCaptureLost += (_, _) => { ResetSwipeVisual(); _dragging = false; };
+        Pill.PointerCaptureLost += (_, _) => ResetSwipeVisual();
     }
 
     private void OnPillPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -393,9 +427,7 @@ public partial class OverlayWindow : Window
         if (!props.IsLeftButtonPressed) return;
 
         _pressOrigin = e.GetPosition(this);
-        _dragOriginPos = Position;
         _pressing = true;
-        _dragging = false;
         _pressWatch.Restart();
         e.Pointer.Capture(Pill);
         e.Handled = true;
@@ -404,28 +436,10 @@ public partial class OverlayWindow : Window
     private void OnPillPointerMoved(object? sender, PointerEventArgs e)
     {
         if (!_pressing) return;
+        // Drag-reposition removed: pointer is reserved for swipe gestures only.
         var pos = e.GetPosition(this);
         var dx = pos.X - _pressOrigin.X;
         var dy = pos.Y - _pressOrigin.Y;
-
-        if (_settings.AllowDrag && !_dragging && _pressWatch.ElapsedMilliseconds >= IslandLayout.DragHoldMs)
-        {
-            // Convert to drag-reposition; cancel swipe rubber-band
-            _dragging = true;
-            _pillTranslate.X = 0;
-            _pillTranslate.Y = 0;
-        }
-
-        if (_dragging)
-        {
-            var scale = RenderScaling <= 0 ? 1 : RenderScaling;
-            var nx = _dragOriginPos.X + (int)Math.Round(dx * scale);
-            var ny = _dragOriginPos.Y + (int)Math.Round(dy * scale);
-            Position = new PixelPoint(nx, ny);
-            e.Handled = true;
-            return;
-        }
-
         var damp = 0.45;
         _pillTranslate.X = Math.Clamp(dx * damp, -56, 56);
         _pillTranslate.Y = Math.Clamp(dy * damp, -40, 40);
@@ -444,15 +458,6 @@ public partial class OverlayWindow : Window
         var adx = Math.Abs(dx);
         var ady = Math.Abs(dy);
         var dist = Math.Sqrt(dx * dx + dy * dy);
-
-        if (_dragging)
-        {
-            _dragging = false;
-            ResetSwipeVisual();
-            CommitDragOffsets();
-            e.Handled = true;
-            return;
-        }
 
         ResetSwipeVisual();
 
@@ -487,22 +492,6 @@ public partial class OverlayWindow : Window
         e.Handled = true;
     }
 
-    private void CommitDragOffsets()
-    {
-        var screen = Screens.Primary ?? Screens.ScreenFromWindow(this);
-        if (screen is null) return;
-        var wa = screen.WorkingArea;
-        var scale = RenderScaling <= 0 ? 1 : RenderScaling;
-        var pw = (int)Math.Round(Width * scale);
-        var ph = (int)Math.Round(Height * scale);
-        var (ox, oy) = IslandLayout.OffsetsFromPosition(
-            wa.X, wa.Y, wa.Width, wa.Height, pw, ph,
-            _settings.Edge, Position.X, Position.Y);
-        _settings.OffsetX = ox;
-        _settings.OffsetY = oy;
-        _settings.Save();
-        // Refresh Numeric fields if settings open — user sees new offsets next open
-    }
 
     private void ResetSwipeVisual()
     {
@@ -563,6 +552,7 @@ public partial class OverlayWindow : Window
             _machine.Dispatch(OverlayCommand.Collapse);
         ApplyWeatherSide();
         ApplyOrientationLayout();
+        ApplyPalette();
         ApplyOpacity();
         ApplyAnimationSettings();
         ApplyIslandVisibility();
@@ -720,13 +710,92 @@ public partial class OverlayWindow : Window
         var snap = _machine.Snapshot();
         ApplyOrientationLayout();
         var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge);
+
+        var fromW = Pill.Width > 0 ? Pill.Width : Width;
+        var fromH = Pill.Height > 0 ? Pill.Height : Height;
+        if (fromW <= 0) fromW = w;
+        if (fromH <= 0) fromH = h;
+
+        var same = Math.Abs(fromW - w) < 0.5 && Math.Abs(fromH - h) < 0.5;
+        if (same || !AnimationTiming.IsEnabled(_settings.AnimationSpeed) || !IsVisible)
+        {
+            StopMorph(snapToTarget: false);
+            SetSizeImmediate(w, h);
+            return;
+        }
+
+        StartMorph(fromW, fromH, w, h);
+    }
+
+    private void SetSizeImmediate(double w, double h)
+    {
         Width = w;
         Height = h;
         Pill.Width = w;
         Pill.Height = h;
-        var corner = Math.Min(w, h) / 2;
-        Pill.CornerRadius = new CornerRadius(corner);
+        Pill.CornerRadius = new CornerRadius(Math.Min(w, h) / 2);
         PlaceIsland();
+    }
+
+    private void StartMorph(double fromW, double fromH, double toW, double toH)
+    {
+        _morphFromW = fromW;
+        _morphFromH = fromH;
+        _morphToW = toW;
+        _morphToH = toH;
+        _morphDurationMs = AnimationTiming.ScaleMs(OverlayTokens.MorphMs, _settings.AnimationSpeed);
+        AppLog.Info($"Morph {_morphFromW:0}×{_morphFromH:0} → {_morphToW:0}×{_morphToH:0} ({_morphDurationMs} ms, {_settings.AnimationSpeed})");
+
+        if (_morphActive)
+        {
+            // Retarget mid-flight from current visual size
+            _morphFromW = Pill.Width > 0 ? Pill.Width : fromW;
+            _morphFromH = Pill.Height > 0 ? Pill.Height : fromH;
+        }
+        else
+        {
+            _morphTimer.Tick -= OnMorphTick;
+            _morphTimer.Tick += OnMorphTick;
+            _morphActive = true;
+        }
+
+        _morphWatch.Restart();
+        _morphTimer.Start();
+    }
+
+    private void StopMorph(bool snapToTarget)
+    {
+        if (_morphActive)
+        {
+            _morphTimer.Stop();
+            _morphTimer.Tick -= OnMorphTick;
+            _morphActive = false;
+        }
+        _morphWatch.Reset();
+        if (snapToTarget && _morphToW > 0 && _morphToH > 0)
+            SetSizeImmediate(_morphToW, _morphToH);
+    }
+
+    private void OnMorphTick(object? sender, EventArgs e)
+    {
+        var dur = Math.Max(1, _morphDurationMs);
+        var t = Math.Clamp(_morphWatch.ElapsedMilliseconds / (double)dur, 0.0, 1.0);
+        // CubicEaseOut
+        var eased = 1.0 - Math.Pow(1.0 - t, 3.0);
+        var cw = _morphFromW + (_morphToW - _morphFromW) * eased;
+        var ch = _morphFromH + (_morphToH - _morphFromH) * eased;
+        Width = cw;
+        Height = ch;
+        Pill.Width = cw;
+        Pill.Height = ch;
+        Pill.CornerRadius = new CornerRadius(Math.Min(cw, ch) / 2);
+        PlaceIsland();
+
+        if (t >= 1.0)
+        {
+            StopMorph(snapToTarget: false);
+            SetSizeImmediate(_morphToW, _morphToH);
+        }
     }
 
     private void PlaceIsland()
@@ -788,8 +857,11 @@ public partial class OverlayWindow : Window
         OverlayProgress.Value = p.Progress * 100;
         OverlayProgress.IsVisible = kind is OverlayKind.Progress or OverlayKind.Media;
 
-        OverlayTitle.Foreground = new SolidColorBrush(Color.Parse(kind == OverlayKind.Error ? OverlayTokens.ErrorHex : OverlayTokens.TextHex));
-        AppIcon.Background = new SolidColorBrush(Color.Parse(kind == OverlayKind.Error ? OverlayTokens.ErrorHex : OverlayTokens.AccentHex));
+        var textPrimary = ParseColor(_settings.ColorTextPrimary, OverlayTokens.TextHex);
+        var accent = ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex);
+        OverlayTitle.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? Color.Parse(OverlayTokens.ErrorHex) : textPrimary);
+        AppIcon.Background = new SolidColorBrush(kind == OverlayKind.Error ? Color.Parse(OverlayTokens.ErrorHex) : accent);
+        UnreadBadge.Background = new SolidColorBrush(accent);
 
         if (kind == OverlayKind.Weather)
             SetKindIconWeather(p.WeatherCode ?? snap.LastWeather.WeatherCode ?? 0);
@@ -843,7 +915,7 @@ public partial class OverlayWindow : Window
         if (string.Equals(key, _lastWeatherIconKey, StringComparison.OrdinalIgnoreCase) && WeatherIconA.Child is not null)
             return;
 
-        var brush = new SolidColorBrush(Color.Parse(OverlayTokens.TextSecondaryHex));
+        var brush = new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex));
         var path = IslandIcons.Create(key, OverlayTokens.IconSizeCollapsed, brush);
 
         if (!animate || WeatherIconA.Child is null)

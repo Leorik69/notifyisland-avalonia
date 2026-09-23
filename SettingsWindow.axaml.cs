@@ -83,7 +83,6 @@ public partial class SettingsWindow : Window
     private void LoadUi()
     {
         IslandVisibleBox.IsChecked = _draft.IslandVisible;
-        AllowDragBox.IsChecked = _draft.AllowDrag;
         WeatherEnabledBox.IsChecked = _draft.WeatherEnabled;
         SoundEnabledBox.IsChecked = _draft.SoundEnabled;
         OffsetXBox.Value = _draft.OffsetX;
@@ -110,6 +109,11 @@ public partial class SettingsWindow : Window
         SelectByTag(ZOrderBox, _draft.ZOrderMode.ToString());
         SelectByTag(SoundPackBox, _draft.SoundPack.ToString());
         SelectByTag(AnimSpeedBox, _draft.AnimationSpeed.ToString());
+        SelectByTag(IconPackBox, _draft.IconPack);
+        ColorFillBox.Text = _draft.ColorCapsuleFill;
+        ColorAccentBox.Text = _draft.ColorAccent;
+        ColorTextPrimaryBox.Text = _draft.ColorTextPrimary;
+        ColorTextSecondaryBox.Text = _draft.ColorTextSecondary;
     }
 
     private static void SelectByTag(ComboBox box, string tag)
@@ -132,7 +136,7 @@ public partial class SettingsWindow : Window
     private void ReadUi()
     {
         _draft.IslandVisible = IslandVisibleBox.IsChecked == true;
-        _draft.AllowDrag = AllowDragBox.IsChecked == true;
+        _draft.AllowDrag = false;
         _draft.WeatherEnabled = WeatherEnabledBox.IsChecked == true;
         _draft.SoundEnabled = SoundEnabledBox.IsChecked == true;
         _draft.OffsetX = (int)(OffsetXBox.Value ?? 0);
@@ -159,6 +163,14 @@ public partial class SettingsWindow : Window
             _draft.SoundPack = pack;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimSpeedBox), true, out var anim))
             _draft.AnimationSpeed = anim;
+
+        _draft.ColorCapsuleFill = AppSettings.NormalizeHex(ColorFillBox.Text, "#080808");
+        _draft.ColorAccent = AppSettings.NormalizeHex(ColorAccentBox.Text, "#3D9CF0");
+        _draft.ColorTextPrimary = AppSettings.NormalizeHex(ColorTextPrimaryBox.Text, "#FFFFFF");
+        _draft.ColorTextSecondary = AppSettings.NormalizeHex(ColorTextSecondaryBox.Text, "#C8C8CC");
+        var iconPackTag = SelectedTag(IconPackBox);
+        // Persist selection; rendering still uses IslandIcons until packs are vendored (docs/ICON_PACKS.md).
+        _draft.IconPack = string.IsNullOrWhiteSpace(iconPackTag) ? "IslandIcons" : iconPackTag!;
     }
 
     private void OnApply(object? sender, RoutedEventArgs e)
