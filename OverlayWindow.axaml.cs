@@ -99,6 +99,8 @@ public partial class OverlayWindow : Window
         ApplySize();
         Paint();
         if (Program.DemoMode) StartDemo();
+        if (Program.SettingsMode)
+            Dispatcher.UIThread.Post(OpenSettings, DispatcherPriority.Background);
     }
 
     private void SeedIcons()
@@ -360,17 +362,25 @@ public partial class OverlayWindow : Window
 
     public void OpenSettings()
     {
-        if (_settingsWindow is { IsVisible: true })
+        try
         {
-            _settingsWindow.Activate();
-            _settingsWindow.Topmost = true;
-            _settingsWindow.Topmost = false;
-            return;
-        }
+            if (_settingsWindow is { IsVisible: true })
+            {
+                _settingsWindow.Activate();
+                _settingsWindow.Topmost = true;
+                _settingsWindow.Topmost = false;
+                return;
+            }
 
-        _settingsWindow = new SettingsWindow(_settings, ApplySettingsFromUi);
-        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-        _settingsWindow.Show();
+            _settingsWindow = new SettingsWindow(_settings, ApplySettingsFromUi);
+            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+            _settingsWindow.Show();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("OpenSettings failed", ex);
+            throw;
+        }
     }
 
     private void ApplySettingsFromUi(AppSettings draft)

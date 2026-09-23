@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.1 — Settings crash fix
+
+### Fixed
+- Opening **Настройки** from the island context menu no longer crashes.
+- Cause: hand-written `InitializeComponent()` called only `AvaloniaXamlLoader.Load` and never wired `x:Name` fields → `NullReferenceException` in `LoadUi()`.
+- Fix: use Avalonia-generated `InitializeComponent()`.
+
+
 ## 1.5.0 — sound packs
 
 ### Added

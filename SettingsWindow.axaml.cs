@@ -23,14 +23,14 @@ public partial class SettingsWindow : Window
         _draft = new AppSettings();
         live.CopyTo(_draft);
         _onApply = onApply;
+        // Use Avalonia-generated InitializeComponent so x:Name fields are wired.
+        // A hand-written AvaloniaXamlLoader.Load(this) left named controls null → NRE.
         InitializeComponent();
         RestoreGeometry();
         LoadUi();
         WireVolumeLabels();
         Closing += OnClosing;
     }
-
-    private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
     private void WireVolumeLabels()
     {
