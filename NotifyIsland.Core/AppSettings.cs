@@ -119,8 +119,39 @@ public sealed class AppSettings
     /// <summary>Secondary text (#RRGGBB).</summary>
     public string ColorTextSecondary { get; set; } = "#C8C8CC";
 
-    /// <summary>Icon pack id: IslandIcons (built-in) or planned packs from docs/ICON_PACKS.md.</summary>
+    /// <summary>Icon pack id: IslandIcons (built-in), Tabler, or Lucide.</summary>
     public string IconPack { get; set; } = "IslandIcons";
+
+    /// <summary>Island text size in px (clock, titles, weather temp). Range 10–18.</summary>
+    public double FontSize { get; set; } = 12;
+
+    /// <summary>Font family id: System | SpaceGrotesk | JetBrainsMono.</summary>
+    public string FontFamily { get; set; } = "System";
+
+    /// <summary>Per-action speeds (global AnimationSpeed=Off disables all).</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AnimationSpeed AnimMorphInflate { get; set; } = AnimationSpeed.Normal;
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AnimationSpeed AnimMorphCollapse { get; set; } = AnimationSpeed.Normal;
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AnimationSpeed AnimUnreadPulse { get; set; } = AnimationSpeed.Normal;
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AnimationSpeed AnimIdleBreath { get; set; } = AnimationSpeed.Normal;
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AnimationSpeed AnimHover { get; set; } = AnimationSpeed.Normal;
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AnimationSpeed AnimSwipeRubber { get; set; } = AnimationSpeed.Normal;
+
+    /// <summary>Enable unread-dot opacity pulse when unread &gt; 0.</summary>
+    public bool AnimPulseEnabled { get; set; } = true;
+
+    /// <summary>Enable idle breathing scale on collapsed pill.</summary>
+    public bool AnimBreathEnabled { get; set; } = true;
 
     /// <summary>Persisted Settings window geometry (separate from island OffsetX/Y).</summary>
     public int? SettingsWindowX { get; set; }
@@ -213,6 +244,16 @@ public sealed class AppSettings
         target.ColorTextPrimary = NormalizeHex(ColorTextPrimary, "#FFFFFF");
         target.ColorTextSecondary = NormalizeHex(ColorTextSecondary, "#C8C8CC");
         target.IconPack = string.IsNullOrWhiteSpace(IconPack) ? "IslandIcons" : IconPack.Trim();
+        target.FontSize = Math.Clamp(FontSize <= 0 ? 12 : FontSize, 10, 18);
+        target.FontFamily = NormalizeFontFamily(FontFamily);
+        target.AnimMorphInflate = AnimMorphInflate;
+        target.AnimMorphCollapse = AnimMorphCollapse;
+        target.AnimUnreadPulse = AnimUnreadPulse;
+        target.AnimIdleBreath = AnimIdleBreath;
+        target.AnimHover = AnimHover;
+        target.AnimSwipeRubber = AnimSwipeRubber;
+        target.AnimPulseEnabled = AnimPulseEnabled;
+        target.AnimBreathEnabled = AnimBreathEnabled;
         target.SettingsWindowX = SettingsWindowX;
         target.SettingsWindowY = SettingsWindowY;
         target.SettingsWindowWidth = SettingsWindowWidth;
@@ -230,6 +271,8 @@ public sealed class AppSettings
         ColorTextSecondary = NormalizeHex(ColorTextSecondary, "#C8C8CC");
         if (string.IsNullOrWhiteSpace(IconPack)) IconPack = "IslandIcons";
         else IconPack = IconPack.Trim();
+        FontSize = Math.Clamp(FontSize <= 0 ? 12 : FontSize, 10, 18);
+        FontFamily = NormalizeFontFamily(FontFamily);
         Opacity = Math.Clamp(Opacity <= 0 ? 1.0 : Opacity, 0.35, 1.0);
         SoundVolume = Math.Clamp(SoundVolume < 0 ? 0.35 : SoundVolume, 0.0, 1.0);
         SoundVolNotify = Math.Clamp(SoundVolNotify < 0 ? 1.0 : SoundVolNotify, 0.0, 1.0);
@@ -254,5 +297,19 @@ public sealed class AppSettings
             if (!char.IsAsciiHexDigit(c)) return fallback;
         }
         return v.ToUpperInvariant();
+    }
+
+    /// <summary>Accept System / SpaceGrotesk / JetBrainsMono (case-insensitive).</summary>
+    public static string NormalizeFontFamily(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "System";
+        var v = value.Trim();
+        if (v.Equals("SpaceGrotesk", StringComparison.OrdinalIgnoreCase) ||
+            v.Equals("Space Grotesk", StringComparison.OrdinalIgnoreCase))
+            return "SpaceGrotesk";
+        if (v.Equals("JetBrainsMono", StringComparison.OrdinalIgnoreCase) ||
+            v.Equals("JetBrains Mono", StringComparison.OrdinalIgnoreCase))
+            return "JetBrainsMono";
+        return "System";
     }
 }

@@ -1,0 +1,17 @@
+NotifyIsland vendored icon packs
+================================
+
+Tabler Icons (Assets/Icons/Tabler/)
+  License: MIT
+  Copyright (c) 2020-2024 Paweł Kuna / Tabler Icons contributors
+  Source: https://github.com/tabler/tabler-icons
+  See LICENSE in this folder.
+
+Lucide (Assets/Icons/Lucide/)
+  License: ISC
+  Copyright (c) Lucide Contributors
+  Source: https://github.com/lucide-icons/lucide
+  See LICENSE in this folder.
+
+Only outline SVGs needed by NotifyIsland keys are vendored (clock, weather-*,
+notify/bell, media/play, pause, timer, progress, error, battery).

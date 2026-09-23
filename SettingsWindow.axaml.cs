@@ -1,8 +1,9 @@
 using System;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 
 namespace NotifyIsland;
 
@@ -15,6 +16,8 @@ public partial class SettingsWindow : Window
     private readonly AppSettings _live;
     private readonly AppSettings _draft;
     private readonly Action<AppSettings> _onApply;
+    private bool _paletteWired;
+
     public SettingsWindow() : this(new AppSettings(), _ => { }) { }
 
     public SettingsWindow(AppSettings live, Action<AppSettings> onApply)
@@ -23,12 +26,11 @@ public partial class SettingsWindow : Window
         _draft = new AppSettings();
         live.CopyTo(_draft);
         _onApply = onApply;
-        // Use Avalonia-generated InitializeComponent so x:Name fields are wired.
-        // A hand-written AvaloniaXamlLoader.Load(this) left named controls null → NRE.
         InitializeComponent();
         RestoreGeometry();
         LoadUi();
         WireVolumeLabels();
+        WirePalettePreview();
         Closing += OnClosing;
     }
 
@@ -42,6 +44,70 @@ public partial class SettingsWindow : Window
         BindPct(VolSwipeSlider, VolSwipeLabel, v => $"{(int)v}%");
         BindPct(VolErrorSlider, VolErrorLabel, v => $"{(int)v}%");
         BindPct(VolHoverSlider, VolHoverLabel, v => $"{(int)v}%");
+        FontSizeSlider.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == Slider.ValueProperty)
+            {
+                FontSizeLabel.Text = $"{(int)FontSizeSlider.Value}";
+                UpdatePreview();
+            }
+        };
+    }
+
+    private void WirePalettePreview()
+    {
+        if (_paletteWired) return;
+        _paletteWired = true;
+        ColorFillPicker.PropertyChanged += OnPalettePickerChanged;
+        ColorAccentPicker.PropertyChanged += OnPalettePickerChanged;
+        ColorTextPrimaryPicker.PropertyChanged += OnPalettePickerChanged;
+        ColorTextSecondaryPicker.PropertyChanged += OnPalettePickerChanged;
+        UpdatePreview();
+    }
+
+    private void OnPalettePickerChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property.Name is "Color" or "HsvColor")
+            UpdatePreview();
+    }
+
+    private void UpdatePreview()
+    {
+        try
+        {
+            PreviewPill.Background = new SolidColorBrush(ColorFillPicker.Color);
+            PreviewDot.Fill = new SolidColorBrush(ColorAccentPicker.Color);
+            PreviewPrimary.Foreground = new SolidColorBrush(ColorTextPrimaryPicker.Color);
+            PreviewSecondary.Foreground = new SolidColorBrush(ColorTextSecondaryPicker.Color);
+            var fs = FontSizeSlider.Value;
+            PreviewPrimary.FontSize = fs;
+            PreviewSecondary.FontSize = fs;
+            PreviewPrimary.FontFamily = IslandFonts.Resolve(SelectedTag(FontFamilyBox));
+            PreviewSecondary.FontFamily = PreviewPrimary.FontFamily;
+        }
+        catch
+        {
+            // design-time / partial init
+        }
+    }
+
+    private void OnSwatchPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Border { Tag: string tag }) return;
+        var parts = tag.Split('|');
+        if (parts.Length != 2) return;
+        var hex = parts[1];
+        Color color;
+        try { color = Color.Parse(hex); }
+        catch { return; }
+        switch (parts[0])
+        {
+            case "ColorCapsuleFill": ColorFillPicker.Color = color; break;
+            case "ColorAccent": ColorAccentPicker.Color = color; break;
+            case "ColorTextPrimary": ColorTextPrimaryPicker.Color = color; break;
+            case "ColorTextSecondary": ColorTextSecondaryPicker.Color = color; break;
+        }
+        UpdatePreview();
     }
 
     private static void BindPct(Slider slider, TextBlock label, Func<double, string> fmt)
@@ -88,6 +154,7 @@ public partial class SettingsWindow : Window
         OffsetXBox.Value = _draft.OffsetX;
         OffsetYBox.Value = _draft.OffsetY;
         OpacitySlider.Value = Math.Round(_draft.Opacity * 100);
+        FontSizeSlider.Value = Math.Clamp(_draft.FontSize, 10, 18);
         VolumeSlider.Value = Math.Round(_draft.SoundVolume * 100);
         VolNotifySlider.Value = Math.Round(_draft.SoundVolNotify * 100);
         VolExpandSlider.Value = Math.Round(_draft.SoundVolExpand * 100);
@@ -96,6 +163,7 @@ public partial class SettingsWindow : Window
         VolErrorSlider.Value = Math.Round(_draft.SoundVolError * 100);
         VolHoverSlider.Value = Math.Round(_draft.SoundVolHover * 100);
         OpacityLabel.Text = $"{(int)OpacitySlider.Value}%";
+        FontSizeLabel.Text = $"{(int)FontSizeSlider.Value}";
         VolumeLabel.Text = $"{(int)VolumeSlider.Value}%";
         VolNotifyLabel.Text = $"{(int)VolNotifySlider.Value}%";
         VolExpandLabel.Text = $"{(int)VolExpandSlider.Value}%";
@@ -109,11 +177,28 @@ public partial class SettingsWindow : Window
         SelectByTag(ZOrderBox, _draft.ZOrderMode.ToString());
         SelectByTag(SoundPackBox, _draft.SoundPack.ToString());
         SelectByTag(AnimSpeedBox, _draft.AnimationSpeed.ToString());
+        SelectByTag(AnimMorphInflateBox, _draft.AnimMorphInflate.ToString());
+        SelectByTag(AnimMorphCollapseBox, _draft.AnimMorphCollapse.ToString());
+        SelectByTag(AnimUnreadPulseBox, _draft.AnimUnreadPulse.ToString());
+        SelectByTag(AnimIdleBreathBox, _draft.AnimIdleBreath.ToString());
+        SelectByTag(AnimHoverBox, _draft.AnimHover.ToString());
+        SelectByTag(AnimSwipeRubberBox, _draft.AnimSwipeRubber.ToString());
+        AnimPulseEnabledBox.IsChecked = _draft.AnimPulseEnabled;
+        AnimBreathEnabledBox.IsChecked = _draft.AnimBreathEnabled;
         SelectByTag(IconPackBox, _draft.IconPack);
-        ColorFillBox.Text = _draft.ColorCapsuleFill;
-        ColorAccentBox.Text = _draft.ColorAccent;
-        ColorTextPrimaryBox.Text = _draft.ColorTextPrimary;
-        ColorTextSecondaryBox.Text = _draft.ColorTextSecondary;
+        SelectByTag(FontFamilyBox, _draft.FontFamily);
+        SetPicker(ColorFillPicker, _draft.ColorCapsuleFill, "#080808");
+        SetPicker(ColorAccentPicker, _draft.ColorAccent, "#3D9CF0");
+        SetPicker(ColorTextPrimaryPicker, _draft.ColorTextPrimary, "#FFFFFF");
+        SetPicker(ColorTextSecondaryPicker, _draft.ColorTextSecondary, "#C8C8CC");
+        FontFamilyBox.SelectionChanged += (_, _) => UpdatePreview();
+        UpdatePreview();
+    }
+
+    private static void SetPicker(ColorPicker picker, string hex, string fallback)
+    {
+        try { picker.Color = Color.Parse(AppSettings.NormalizeHex(hex, fallback)); }
+        catch { picker.Color = Color.Parse(fallback); }
     }
 
     private static void SelectByTag(ComboBox box, string tag)
@@ -133,6 +218,8 @@ public partial class SettingsWindow : Window
     private static string? SelectedTag(ComboBox box) =>
         (box.SelectedItem as ComboBoxItem)?.Tag?.ToString();
 
+    private static string ColorToHex(Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+
     private void ReadUi()
     {
         _draft.IslandVisible = IslandVisibleBox.IsChecked == true;
@@ -142,6 +229,7 @@ public partial class SettingsWindow : Window
         _draft.OffsetX = (int)(OffsetXBox.Value ?? 0);
         _draft.OffsetY = (int)(OffsetYBox.Value ?? 0);
         _draft.Opacity = Math.Clamp(OpacitySlider.Value / 100.0, 0.35, 1.0);
+        _draft.FontSize = Math.Clamp(FontSizeSlider.Value, 10, 18);
         _draft.SoundVolume = Math.Clamp(VolumeSlider.Value / 100.0, 0.0, 1.0);
         _draft.SoundVolNotify = Math.Clamp(VolNotifySlider.Value / 100.0, 0.0, 1.0);
         _draft.SoundVolExpand = Math.Clamp(VolExpandSlider.Value / 100.0, 0.0, 1.0);
@@ -163,14 +251,27 @@ public partial class SettingsWindow : Window
             _draft.SoundPack = pack;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimSpeedBox), true, out var anim))
             _draft.AnimationSpeed = anim;
+        if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimMorphInflateBox), true, out var mi))
+            _draft.AnimMorphInflate = mi;
+        if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimMorphCollapseBox), true, out var mc))
+            _draft.AnimMorphCollapse = mc;
+        if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimUnreadPulseBox), true, out var up))
+            _draft.AnimUnreadPulse = up;
+        if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimIdleBreathBox), true, out var ib))
+            _draft.AnimIdleBreath = ib;
+        if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimHoverBox), true, out var hv))
+            _draft.AnimHover = hv;
+        if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimSwipeRubberBox), true, out var sr))
+            _draft.AnimSwipeRubber = sr;
+        _draft.AnimPulseEnabled = AnimPulseEnabledBox.IsChecked == true;
+        _draft.AnimBreathEnabled = AnimBreathEnabledBox.IsChecked == true;
 
-        _draft.ColorCapsuleFill = AppSettings.NormalizeHex(ColorFillBox.Text, "#080808");
-        _draft.ColorAccent = AppSettings.NormalizeHex(ColorAccentBox.Text, "#3D9CF0");
-        _draft.ColorTextPrimary = AppSettings.NormalizeHex(ColorTextPrimaryBox.Text, "#FFFFFF");
-        _draft.ColorTextSecondary = AppSettings.NormalizeHex(ColorTextSecondaryBox.Text, "#C8C8CC");
-        var iconPackTag = SelectedTag(IconPackBox);
-        // Persist selection; rendering still uses IslandIcons until packs are vendored (docs/ICON_PACKS.md).
-        _draft.IconPack = string.IsNullOrWhiteSpace(iconPackTag) ? "IslandIcons" : iconPackTag!;
+        _draft.ColorCapsuleFill = AppSettings.NormalizeHex(ColorToHex(ColorFillPicker.Color), "#080808");
+        _draft.ColorAccent = AppSettings.NormalizeHex(ColorToHex(ColorAccentPicker.Color), "#3D9CF0");
+        _draft.ColorTextPrimary = AppSettings.NormalizeHex(ColorToHex(ColorTextPrimaryPicker.Color), "#FFFFFF");
+        _draft.ColorTextSecondary = AppSettings.NormalizeHex(ColorToHex(ColorTextSecondaryPicker.Color), "#C8C8CC");
+        _draft.IconPack = IconPackService.NormalizePack(SelectedTag(IconPackBox));
+        _draft.FontFamily = AppSettings.NormalizeFontFamily(SelectedTag(FontFamilyBox));
     }
 
     private void OnApply(object? sender, RoutedEventArgs e)

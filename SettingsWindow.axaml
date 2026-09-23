@@ -2,8 +2,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="NotifyIsland.SettingsWindow"
         Title="Настройки NotifyIsland"
-        Width="520" Height="640"
-        MinWidth="440" MinHeight="480"
+        Width="560" Height="680"
+        MinWidth="460" MinHeight="500"
         CanResize="True"
         WindowStartupLocation="Manual"
         ShowInTaskbar="True"
@@ -20,7 +20,7 @@
     <Style Selector="TabItem">
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="Foreground" Value="#C8C8CC"/>
-      <Setter Property="Padding" Value="14,8"/>
+      <Setter Property="Padding" Value="12,8"/>
       <Setter Property="Margin" Value="0,0,4,0"/>
       <Setter Property="MinHeight" Value="34"/>
       <Setter Property="Background" Value="Transparent"/>
@@ -59,6 +59,24 @@
       <Setter Property="Foreground" Value="#FFFFFF"/>
       <Setter Property="Margin" Value="0,2,0,2"/>
     </Style>
+    <Style Selector="Border.swatch">
+      <Setter Property="Width" Value="28"/>
+      <Setter Property="Height" Value="28"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="BorderBrush" Value="#55FFFFFF"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Margin" Value="0,0,6,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Border.swatch:pointerover">
+      <Setter Property="BorderBrush" Value="#FFFFFF"/>
+    </Style>
+    <Style Selector="Border.previewPill">
+      <Setter Property="CornerRadius" Value="14"/>
+      <Setter Property="Height" Value="28"/>
+      <Setter Property="Padding" Value="12,0"/>
+      <Setter Property="HorizontalAlignment" Value="Left"/>
+    </Style>
   </Window.Styles>
 
   <DockPanel Margin="0">
@@ -73,7 +91,6 @@
     </Border>
 
     <TabControl Margin="0,4,0,0">
-      <!-- 1. Островок -->
       <TabItem Header="Островок">
         <ScrollViewer Classes="tabBody">
           <StackPanel Spacing="4">
@@ -85,7 +102,6 @@
         </ScrollViewer>
       </TabItem>
 
-      <!-- 2. Погода -->
       <TabItem Header="Погода">
         <ScrollViewer Classes="tabBody">
           <StackPanel Spacing="4">
@@ -102,7 +118,6 @@
         </ScrollViewer>
       </TabItem>
 
-      <!-- 3. Расположение -->
       <TabItem Header="Расположение">
         <ScrollViewer Classes="tabBody">
           <StackPanel Spacing="4">
@@ -114,7 +129,6 @@
               <ComboBoxItem Tag="Left" Content="Слева"/>
               <ComboBoxItem Tag="Right" Content="Справа"/>
             </ComboBox>
-
             <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" Margin="0,8,0,0">
               <TextBlock Grid.Row="0" Grid.Column="0" Text="Смещение X (px)" Foreground="#C8C8CC"/>
               <TextBlock Grid.Row="0" Grid.Column="1" Text="Смещение Y (px)" Foreground="#C8C8CC" Margin="12,0,0,0"/>
@@ -125,7 +139,6 @@
                              Minimum="-4000" Maximum="4000" Increment="1" FormatString="0"
                              Width="160" HorizontalAlignment="Left" Margin="12,4,0,0"/>
             </Grid>
-
             <TextBlock Classes="fieldLabel" Text="Ориентация"/>
             <ComboBox x:Name="OrientationBox" Width="260">
               <ComboBoxItem Tag="Auto" Content="Авто (по краю)"/>
@@ -136,7 +149,6 @@
         </ScrollViewer>
       </TabItem>
 
-      <!-- 4. Вид -->
       <TabItem Header="Вид">
         <ScrollViewer Classes="tabBody">
           <StackPanel Spacing="4">
@@ -147,8 +159,6 @@
               <ComboBoxItem Tag="Desktop" Content="Над иконками рабочего стола"/>
               <ComboBoxItem Tag="BehindApps" Content="Под окнами приложений"/>
             </ComboBox>
-            <TextBlock Classes="mutedNote"
-                       Text="На Win11 режимы «рабочий стол» и «под окнами» — best-effort (DWM/Widgets могут переставлять). Надёжный режим — поверх всех. Прозрачность капсулы на z-order не влияет."/>
 
             <TextBlock Classes="fieldLabel" Text="Прозрачность фона"/>
             <DockPanel>
@@ -157,32 +167,139 @@
               <Slider x:Name="OpacitySlider" Minimum="35" Maximum="100" Value="100" TickFrequency="5"/>
             </DockPanel>
 
-            <TextBlock Classes="fieldLabel" Text="Скорость анимаций"/>
+            <TextBlock Classes="fieldLabel" Text="Размер текста островка (px)"/>
+            <DockPanel>
+              <TextBlock x:Name="FontSizeLabel" DockPanel.Dock="Right" Width="40" Text="12"
+                         Foreground="#FFFFFF" VerticalAlignment="Center"/>
+              <Slider x:Name="FontSizeSlider" Minimum="10" Maximum="18" Value="12" TickFrequency="1" IsSnapToTickEnabled="True"/>
+            </DockPanel>
+
+            <TextBlock Classes="fieldLabel" Text="Шрифт"/>
+            <ComboBox x:Name="FontFamilyBox" Width="320">
+              <ComboBoxItem Tag="System" Content="Системный (Segoe UI / Inter)"/>
+              <ComboBoxItem Tag="SpaceGrotesk" Content="Space Grotesk (геометрия)"/>
+              <ComboBoxItem Tag="JetBrainsMono" Content="JetBrains Mono (техн.)"/>
+            </ComboBox>
+            <TextBlock Classes="mutedNote"
+                       Text="Шрифты Space Grotesk и JetBrains Mono — OFL (см. Assets/Fonts/NOTICE). NType82 / Glyph Matrix из Nothing OS не используются."/>
+
+            <TextBlock Classes="sectionTitle" Text="Палитра" Margin="0,18,0,10"/>
+            <TextBlock Classes="fieldLabel" Text="Превью"/>
+            <Border x:Name="PreviewPill" Classes="previewPill" Background="#080808" Margin="0,0,0,10">
+              <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Ellipse x:Name="PreviewDot" Width="7" Height="7" Fill="#3D9CF0"/>
+                <TextBlock x:Name="PreviewPrimary" Text="14:32" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <TextBlock x:Name="PreviewSecondary" Text="18°" Foreground="#C8C8CC" FontSize="12" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Border>
+
+            <TextBlock Classes="fieldLabel" Text="Заливка капсулы"/>
+            <StackPanel Orientation="Horizontal" Spacing="0" Margin="0,0,0,4">
+              <Border Classes="swatch" Background="#080808" Tag="ColorCapsuleFill|#080808" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#121212" Tag="ColorCapsuleFill|#121212" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#1C1C1E" Tag="ColorCapsuleFill|#1C1C1E" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#0A1628" Tag="ColorCapsuleFill|#0A1628" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#FFFFFF" Tag="ColorCapsuleFill|#FFFFFF" PointerPressed="OnSwatchPressed"/>
+            </StackPanel>
+            <ColorPicker x:Name="ColorFillPicker" Color="#080808" IsAlphaEnabled="False" Width="280" HorizontalAlignment="Left"/>
+
+            <TextBlock Classes="fieldLabel" Text="Акцент"/>
+            <StackPanel Orientation="Horizontal" Spacing="0" Margin="0,0,0,4">
+              <Border Classes="swatch" Background="#3D9CF0" Tag="ColorAccent|#3D9CF0" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#5CB6FF" Tag="ColorAccent|#5CB6FF" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#34C759" Tag="ColorAccent|#34C759" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#FF9F0A" Tag="ColorAccent|#FF9F0A" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#FF453A" Tag="ColorAccent|#FF453A" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#BF5AF2" Tag="ColorAccent|#BF5AF2" PointerPressed="OnSwatchPressed"/>
+            </StackPanel>
+            <ColorPicker x:Name="ColorAccentPicker" Color="#3D9CF0" IsAlphaEnabled="False" Width="280" HorizontalAlignment="Left"/>
+
+            <TextBlock Classes="fieldLabel" Text="Текст основной"/>
+            <StackPanel Orientation="Horizontal" Spacing="0" Margin="0,0,0,4">
+              <Border Classes="swatch" Background="#FFFFFF" Tag="ColorTextPrimary|#FFFFFF" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#F2F2F7" Tag="ColorTextPrimary|#F2F2F7" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#E5E5EA" Tag="ColorTextPrimary|#E5E5EA" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#000000" Tag="ColorTextPrimary|#000000" PointerPressed="OnSwatchPressed"/>
+            </StackPanel>
+            <ColorPicker x:Name="ColorTextPrimaryPicker" Color="#FFFFFF" IsAlphaEnabled="False" Width="280" HorizontalAlignment="Left"/>
+
+            <TextBlock Classes="fieldLabel" Text="Текст вторичный"/>
+            <StackPanel Orientation="Horizontal" Spacing="0" Margin="0,0,0,4">
+              <Border Classes="swatch" Background="#C8C8CC" Tag="ColorTextSecondary|#C8C8CC" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#8E8E93" Tag="ColorTextSecondary|#8E8E93" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#AEAEB2" Tag="ColorTextSecondary|#AEAEB2" PointerPressed="OnSwatchPressed"/>
+              <Border Classes="swatch" Background="#636366" Tag="ColorTextSecondary|#636366" PointerPressed="OnSwatchPressed"/>
+            </StackPanel>
+            <ColorPicker x:Name="ColorTextSecondaryPicker" Color="#C8C8CC" IsAlphaEnabled="False" Width="280" HorizontalAlignment="Left"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Свотчи + ColorPicker. Превью обновляется сразу; на островок — по «Применить»."/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Анимации">
+        <ScrollViewer Classes="tabBody">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="sectionTitle" Text="Анимации"/>
+            <TextBlock Classes="fieldLabel" Text="Общая скорость (мастер)"/>
             <ComboBox x:Name="AnimSpeedBox" Width="260">
+              <ComboBoxItem Tag="Slow" Content="Медленнее"/>
+              <ComboBoxItem Tag="Normal" Content="Обычная"/>
+              <ComboBoxItem Tag="Fast" Content="Быстрее"/>
+              <ComboBoxItem Tag="Off" Content="Выкл (всё)"/>
+            </ComboBox>
+            <TextBlock Classes="mutedNote"
+                       Text="«Выкл» отключает все анимации. Иначе применяются скорости по действиям ниже."/>
+
+            <CheckBox x:Name="AnimPulseEnabledBox" Content="Pulse непрочитанных" Margin="0,12,0,2"/>
+            <CheckBox x:Name="AnimBreathEnabledBox" Content="Дыхание в простое"/>
+
+            <TextBlock Classes="fieldLabel" Text="Морф / появление (inflate)"/>
+            <ComboBox x:Name="AnimMorphInflateBox" Width="260">
               <ComboBoxItem Tag="Slow" Content="Медленнее"/>
               <ComboBoxItem Tag="Normal" Content="Обычная"/>
               <ComboBoxItem Tag="Fast" Content="Быстрее"/>
               <ComboBoxItem Tag="Off" Content="Выкл"/>
             </ComboBox>
-            <TextBlock Classes="mutedNote"
-                       Text="Морф ширины, pulse точки непрочитанных и лёгкое «дыхание» в простое. Выкл — мгновенные переходы без pulse/breath."/>
-
-            <TextBlock Classes="sectionTitle" Text="Палитра" Margin="0,18,0,10"/>
-            <TextBlock Classes="fieldLabel" Text="Заливка капсулы (#RRGGBB)"/>
-            <TextBox x:Name="ColorFillBox" Width="160" MaxLength="9" Watermark="#080808"/>
-            <TextBlock Classes="fieldLabel" Text="Акцент (бейджи / точка)"/>
-            <TextBox x:Name="ColorAccentBox" Width="160" MaxLength="9" Watermark="#3D9CF0"/>
-            <TextBlock Classes="fieldLabel" Text="Текст основной"/>
-            <TextBox x:Name="ColorTextPrimaryBox" Width="160" MaxLength="9" Watermark="#FFFFFF"/>
-            <TextBlock Classes="fieldLabel" Text="Текст вторичный"/>
-            <TextBox x:Name="ColorTextSecondaryBox" Width="160" MaxLength="9" Watermark="#C8C8CC"/>
-            <TextBlock Classes="mutedNote"
-                       Text="Цвета применяются сразу по «Применить». По умолчанию — тёмная капсула с синим акцентом."/>
+            <TextBlock Classes="fieldLabel" Text="Сворачивание (collapse)"/>
+            <ComboBox x:Name="AnimMorphCollapseBox" Width="260">
+              <ComboBoxItem Tag="Slow" Content="Медленнее"/>
+              <ComboBoxItem Tag="Normal" Content="Обычная"/>
+              <ComboBoxItem Tag="Fast" Content="Быстрее"/>
+              <ComboBoxItem Tag="Off" Content="Выкл"/>
+            </ComboBox>
+            <TextBlock Classes="fieldLabel" Text="Pulse непрочитанных"/>
+            <ComboBox x:Name="AnimUnreadPulseBox" Width="260">
+              <ComboBoxItem Tag="Slow" Content="Медленнее"/>
+              <ComboBoxItem Tag="Normal" Content="Обычная"/>
+              <ComboBoxItem Tag="Fast" Content="Быстрее"/>
+              <ComboBoxItem Tag="Off" Content="Выкл"/>
+            </ComboBox>
+            <TextBlock Classes="fieldLabel" Text="Дыхание (idle)"/>
+            <ComboBox x:Name="AnimIdleBreathBox" Width="260">
+              <ComboBoxItem Tag="Slow" Content="Медленнее"/>
+              <ComboBoxItem Tag="Normal" Content="Обычная"/>
+              <ComboBoxItem Tag="Fast" Content="Быстрее"/>
+              <ComboBoxItem Tag="Off" Content="Выкл"/>
+            </ComboBox>
+            <TextBlock Classes="fieldLabel" Text="Hover"/>
+            <ComboBox x:Name="AnimHoverBox" Width="260">
+              <ComboBoxItem Tag="Slow" Content="Медленнее"/>
+              <ComboBoxItem Tag="Normal" Content="Обычная"/>
+              <ComboBoxItem Tag="Fast" Content="Быстрее"/>
+              <ComboBoxItem Tag="Off" Content="Выкл"/>
+            </ComboBox>
+            <TextBlock Classes="fieldLabel" Text="Свайп rubber-band"/>
+            <ComboBox x:Name="AnimSwipeRubberBox" Width="260">
+              <ComboBoxItem Tag="Slow" Content="Медленнее"/>
+              <ComboBoxItem Tag="Normal" Content="Обычная"/>
+              <ComboBoxItem Tag="Fast" Content="Быстрее"/>
+              <ComboBoxItem Tag="Off" Content="Выкл"/>
+            </ComboBox>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
 
-      <!-- 5. Звуки -->
       <TabItem Header="Звуки">
         <ScrollViewer Classes="tabBody">
           <StackPanel Spacing="4">
@@ -195,14 +312,12 @@
               <ComboBoxItem Tag="System" Content="Системные (Windows)"/>
               <ComboBoxItem Tag="Off" Content="Выкл"/>
             </ComboBox>
-
             <TextBlock Classes="fieldLabel" Text="Общая громкость"/>
             <DockPanel>
               <TextBlock x:Name="VolumeLabel" DockPanel.Dock="Right" Width="48" Text="35%"
                          Foreground="#FFFFFF" VerticalAlignment="Center"/>
               <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="35" TickFrequency="5"/>
             </DockPanel>
-
             <TextBlock Classes="fieldLabel" Text="Громкость по событиям"/>
             <Grid ColumnDefinitions="120,*,48" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,2,0,0">
               <TextBlock Grid.Row="0" Grid.Column="0" Text="Уведомление" Foreground="#C8C8CC" VerticalAlignment="Center"/>
@@ -230,22 +345,20 @@
         </ScrollViewer>
       </TabItem>
 
-      <!-- 6. Иконки -->
       <TabItem Header="Иконки">
         <ScrollViewer Classes="tabBody">
           <StackPanel Spacing="4">
             <TextBlock Classes="sectionTitle" Text="Иконки"/>
             <TextBlock Classes="fieldLabel" Text="Пакет иконок"/>
-            <ComboBox x:Name="IconPackBox" Width="320">
+            <ComboBox x:Name="IconPackBox" Width="340">
               <ComboBoxItem Tag="IslandIcons" Content="IslandIcons (встроенный outline)"/>
-              <ComboBoxItem Tag="Tabler" Content="Tabler Icons (план, MIT)"/>
-              <ComboBoxItem Tag="Lucide" Content="Lucide (план, ISC)"/>
-              <ComboBoxItem Tag="Phosphor" Content="Phosphor Light (план, MIT)"/>
+              <ComboBoxItem Tag="Tabler" Content="Tabler Icons (MIT, вендор)"/>
+              <ComboBoxItem Tag="Lucide" Content="Lucide (ISC, вендор)"/>
             </ComboBox>
             <TextBlock TextWrapping="Wrap" Foreground="#C8C8CC" FontSize="12" LineHeight="18" Margin="0,10,0,0"
-                       Text="Сейчас активен встроенный IslandIcons. Плановые пакеты — см. docs/ICON_PACKS.md (MIT/ISC outline)."/>
+                       Text="Вендор: Assets/Icons/Tabler и Assets/Icons/Lucide (только нужные SVG). Лицензии — NOTICE / LICENSE в папках. См. docs/ICON_PACKS.md."/>
             <TextBlock Classes="mutedNote"
-                       Text="Стиль: outline, stroke 1.75, 24×24. Вторичный цвет текста — из палитры «Вид»."/>
+                       Text="Стиль: outline ≈1.75, 24×24. При ошибке загрузки SVG — fallback на IslandIcons."/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>

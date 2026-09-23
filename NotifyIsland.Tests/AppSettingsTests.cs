@@ -30,6 +30,12 @@ public class AppSettingsTests
         Assert.Equal("#FFFFFF", s.ColorTextPrimary);
         Assert.Equal("#C8C8CC", s.ColorTextSecondary);
         Assert.Equal("IslandIcons", s.IconPack);
+        Assert.Equal(12, s.FontSize);
+        Assert.Equal("System", s.FontFamily);
+        Assert.Equal(AnimationSpeed.Normal, s.AnimMorphInflate);
+        Assert.Equal(AnimationSpeed.Normal, s.AnimMorphCollapse);
+        Assert.True(s.AnimPulseEnabled);
+        Assert.True(s.AnimBreathEnabled);
     }
 
     [Fact]
@@ -62,6 +68,16 @@ public class AppSettingsTests
             ColorTextPrimary = "#EEEEEE",
             ColorTextSecondary = "#AAAAAA",
             IconPack = "Tabler",
+            FontSize = 14,
+            FontFamily = "SpaceGrotesk",
+            AnimMorphInflate = AnimationSpeed.Fast,
+            AnimMorphCollapse = AnimationSpeed.Slow,
+            AnimUnreadPulse = AnimationSpeed.Fast,
+            AnimIdleBreath = AnimationSpeed.Off,
+            AnimHover = AnimationSpeed.Fast,
+            AnimSwipeRubber = AnimationSpeed.Slow,
+            AnimPulseEnabled = false,
+            AnimBreathEnabled = true,
             SettingsWindowX = 100,
             SettingsWindowY = 200,
             SettingsWindowWidth = 500,
@@ -95,7 +111,17 @@ public class AppSettingsTests
         Assert.Equal("#EEEEEE", back.ColorTextPrimary);
         Assert.Equal("#AAAAAA", back.ColorTextSecondary);
         Assert.Equal("Tabler", back.IconPack);
-        Assert.False(back.AllowDrag); // migrated off
+        Assert.Equal(14, back.FontSize);
+        Assert.Equal("SpaceGrotesk", back.FontFamily);
+        Assert.Equal(AnimationSpeed.Fast, back.AnimMorphInflate);
+        Assert.Equal(AnimationSpeed.Slow, back.AnimMorphCollapse);
+        Assert.Equal(AnimationSpeed.Fast, back.AnimUnreadPulse);
+        Assert.Equal(AnimationSpeed.Off, back.AnimIdleBreath);
+        Assert.Equal(AnimationSpeed.Fast, back.AnimHover);
+        Assert.Equal(AnimationSpeed.Slow, back.AnimSwipeRubber);
+        Assert.False(back.AnimPulseEnabled);
+        Assert.True(back.AnimBreathEnabled);
+        Assert.False(back.AllowDrag);
         Assert.Equal(100, back.SettingsWindowX);
         Assert.Equal(200, back.SettingsWindowY);
         Assert.Equal(500, back.SettingsWindowWidth);
@@ -105,11 +131,12 @@ public class AppSettingsTests
     [Fact]
     public void Normalize_ClampsOpacityAndVolume()
     {
-        var s = new AppSettings { Opacity = 0.1, SoundVolume = 2.0, SoundVolHover = 3.0 };
+        var s = new AppSettings { Opacity = 0.1, SoundVolume = 2.0, SoundVolHover = 3.0, FontSize = 99 };
         s.Normalize();
         Assert.Equal(0.35, s.Opacity);
         Assert.Equal(1.0, s.SoundVolume);
         Assert.Equal(1.0, s.SoundVolHover);
+        Assert.Equal(18, s.FontSize);
     }
 
     [Fact]
@@ -120,13 +147,15 @@ public class AppSettingsTests
             AllowDrag = true,
             ColorCapsuleFill = "080808",
             ColorAccent = "notahex",
-            IconPack = "  "
+            IconPack = "  ",
+            FontFamily = "space grotesk"
         };
         s.Normalize();
         Assert.False(s.AllowDrag);
         Assert.Equal("#080808", s.ColorCapsuleFill);
-        Assert.Equal("#3D9CF0", s.ColorAccent); // fallback
+        Assert.Equal("#3D9CF0", s.ColorAccent);
         Assert.Equal("IslandIcons", s.IconPack);
+        Assert.Equal("SpaceGrotesk", s.FontFamily);
     }
 
     [Fact]
@@ -142,6 +171,10 @@ public class AppSettingsTests
             AnimationSpeed = AnimationSpeed.Fast,
             ColorAccent = "#112233",
             IconPack = "Lucide",
+            FontSize = 16,
+            FontFamily = "JetBrainsMono",
+            AnimHover = AnimationSpeed.Slow,
+            AnimPulseEnabled = false,
             AllowDrag = true
         };
         var b = new AppSettings();
@@ -154,7 +187,10 @@ public class AppSettingsTests
         Assert.Equal(AnimationSpeed.Fast, b.AnimationSpeed);
         Assert.Equal("#112233", b.ColorAccent);
         Assert.Equal("Lucide", b.IconPack);
+        Assert.Equal(16, b.FontSize);
+        Assert.Equal("JetBrainsMono", b.FontFamily);
+        Assert.Equal(AnimationSpeed.Slow, b.AnimHover);
+        Assert.False(b.AnimPulseEnabled);
         Assert.False(b.AllowDrag);
     }
 }
-

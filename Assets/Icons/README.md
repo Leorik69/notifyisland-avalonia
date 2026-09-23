@@ -1,10 +1,10 @@
-# NotifyIsland icon pack
+# NotifyIsland icon packs
 
-Unified **outline** icons (stroke ≈ 1.75) for clock, kinds, and dynamic weather.
+- **IslandIcons** — built-in Avalonia `StreamGeometry` (`IslandIcons.cs`), stroke ≈ 1.75, 24×24.
+- **Tabler/** — vendored MIT outline SVGs (subset). See `LICENSE` + `../NOTICE`.
+- **Lucide/** — vendored ISC outline SVGs (subset). See `LICENSE` + `../NOTICE`.
 
-- **Source of truth:** `IslandIcons.cs` (Avalonia `StreamGeometry` path data, 24×24 design space).
-- **Style:** round caps/joins, secondary `#C8C8CC` on dark pill / white on accent chip; works on light+dark Win11 chrome.
-- **Weather keys:** `weather-clear`, `weather-partly`, `weather-cloud`, `weather-fog`, `weather-drizzle`, `weather-rain`, `weather-snow`, `weather-storm`.
-- **Kind keys:** `clock`, `notify`, `media`, `timer`, `progress`, `error`.
-- **License:** original geometries inspired by MIT Fluent System Icons / Tabler outline style — no paid/proprietary packages.
-- Crossfade between weather glyphs: `OverlayTokens.IconCrossfadeMs` (240 ms).
+Runtime: `IconPackService` loads `Assets/Icons/{pack}/{key}.svg` (tinted), falls back to IslandIcons.
+
+Keys: `clock`, `notify`, `media`, `pause`, `timer`, `progress`, `error`, `battery`,
+`weather-clear|partly|cloud|fog|drizzle|rain|snow|storm`.

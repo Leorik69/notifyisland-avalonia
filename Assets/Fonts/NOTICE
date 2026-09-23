@@ -1,0 +1,16 @@
+NotifyIsland vendored fonts
+===========================
+
+Space Grotesk (Assets/Fonts/SpaceGrotesk-*.ttf)
+  License: SIL Open Font License 1.1 (OFL)
+  Copyright 2020 The Space Grotesk Project Authors
+  Source: https://github.com/googlefonts/space-grotesk
+  See OFL-SpaceGrotesk.txt
+
+JetBrains Mono (Assets/Fonts/JetBrainsMono-*.ttf)
+  License: SIL Open Font License 1.1 (OFL)
+  Copyright 2020 The JetBrains Mono Project Authors
+  Source: https://github.com/JetBrains/JetBrainsMono
+  See OFL-JetBrainsMono.txt
+
+Inter is provided by the Avalonia.Fonts.Inter NuGet package (OFL).

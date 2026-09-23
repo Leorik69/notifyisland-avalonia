@@ -26,7 +26,10 @@
 | Gesture swipes | есть |
 | Animation speed | есть |
 | Color palette | есть (Вид) |
-| Icon packs | IslandIcons + stub + `docs/ICON_PACKS.md` |
+| Icon packs | IslandIcons + Tabler/Lucide vendored |
+| Font size / family | есть (Вид) |
+| Per-action animations | есть (вкладка Анимации) |
+| Nothing-inspired fonts | Space Grotesk / JB Mono (OFL), не NType82 |
 
 ### Desktop differentiators (backlog — не реализовывать сейчас)
 - File shelf (полка файлов у островка)
@@ -89,7 +92,7 @@
 
 ## 2. Правила анимаций NotifyIsland (actionable)
 
-Код: `OverlayTokens.MorphMs`, `AnimationTiming` + `AppSettings.AnimationSpeed`; **явный timer-morph** `StartMorph`/`OnMorphTick` на `Window`+`Pill` Width/Height (Avalonia `Transitions` на Window Width ненадёжны); hover brushes / swipe rubber-band / icon crossfade через `Transitions`; pulse/breath — timer без Opacity/Scale Transition (иначе гасятся); `ApplyAnimationSettings()` в ctor + Settings Apply.
+Код: `OverlayTokens.MorphMs`, `AnimationTiming` + `AppSettings.AnimationSpeed` + per-action (`AnimMorphInflate`/`AnimMorphCollapse`/`AnimUnreadPulse`/`AnimIdleBreath`/`AnimHover`/`AnimSwipeRubber`, toggles `AnimPulseEnabled`/`AnimBreathEnabled`); **явный timer-morph** `StartMorph`/`OnMorphTick` на `Window`+`Pill` Width/Height (Avalonia `Transitions` на Window Width ненадёжны); hover brushes / swipe rubber-band / icon crossfade через `Transitions`; pulse/breath — timer без Opacity/Scale Transition (иначе гасятся); `ApplyAnimationSettings()` в ctor + Settings Apply.
 
 Базовые длительности (**Normal**). Множители: **Slow≈1.6×**, **Normal=1×**, **Fast≈0.55×**, **Off→1 мс** (без pulse/breath).
 

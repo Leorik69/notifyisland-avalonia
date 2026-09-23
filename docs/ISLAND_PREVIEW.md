@@ -67,3 +67,12 @@
 Must: Now Playing, timer/progress alerts, compact↔expanded morph, top-center, fullscreen-safe, weather, tray, settings tabs, swipes, animation speed, palette, icon packs.  
 Backlog differentiators: file shelf / clipboard / launcher. Не копируем Apple TM naming; без fake Live Activities без Win API.
 
+
+## 1.5.7 UX
+
+- Размер шрифта 10–18 + семейство (System / Space Grotesk / JetBrains Mono)
+- Палитра: свотчи + ColorPicker + превью
+- Пакеты иконок Tabler (MIT) / Lucide (ISC) реально переключаются
+- Вкладка «Анимации»: скорость по действиям + pulse/breath toggles
+- Nothing-inspired: только OFL-шрифты и soft clicks; без NType82 / Glyph firmware
+

@@ -58,4 +58,28 @@ public class AnimationTimingTests
     {
         Assert.Equal(AnimationSpeed.Normal, new AppSettings().AnimationSpeed);
     }
+
+    [Fact]
+    public void Effective_GlobalOff_Wins()
+    {
+        Assert.Equal(AnimationSpeed.Off,
+            AnimationTiming.Effective(AnimationSpeed.Off, AnimationSpeed.Fast));
+    }
+
+    [Fact]
+    public void Effective_UsesPerAction_WhenGlobalOn()
+    {
+        Assert.Equal(AnimationSpeed.Fast,
+            AnimationTiming.Effective(AnimationSpeed.Normal, AnimationSpeed.Fast));
+        Assert.Equal(AnimationSpeed.Slow,
+            AnimationTiming.Effective(AnimationSpeed.Fast, AnimationSpeed.Slow));
+    }
+
+    [Fact]
+    public void ScaleActionMs_RespectsPerAction()
+    {
+        Assert.Equal(1, AnimationTiming.ScaleActionMs(280, AnimationSpeed.Off, AnimationSpeed.Normal));
+        Assert.Equal((int)System.Math.Round(280 * 0.55),
+            AnimationTiming.ScaleActionMs(280, AnimationSpeed.Normal, AnimationSpeed.Fast));
+    }
 }

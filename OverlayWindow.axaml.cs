@@ -161,10 +161,27 @@ public partial class OverlayWindow : Window
 
     private void SeedIcons()
     {
-        ClockIconHost.Child = IslandIcons.Create("clock", OverlayTokens.IconSizeCollapsed,
+        ClockIconHost.Child = IconPackService.Create(_settings.IconPack, "clock", OverlayTokens.IconSizeCollapsed,
             new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex)));
         SetKindIcon(OverlayKind.Idle);
         SetWeatherIcons(WeatherCodes.IconKey(_machine.LastWeather.WeatherCode ?? 0), animate: false);
+        ApplyTypography();
+    }
+
+    /// <summary>Apply FontSize + FontFamily to clock / titles / weather / badge.</summary>
+    private void ApplyTypography()
+    {
+        var fs = Math.Clamp(_settings.FontSize <= 0 ? 12 : _settings.FontSize, 10, 18);
+        var family = IslandFonts.Resolve(_settings.FontFamily);
+        ClockText.FontSize = fs;
+        ClockText.FontFamily = family;
+        WeatherTempText.FontSize = fs;
+        WeatherTempText.FontFamily = family;
+        OverlayTitle.FontSize = fs;
+        OverlayTitle.FontFamily = family;
+        BadgeText.FontSize = Math.Max(9, fs - 2);
+        BadgeText.FontFamily = family;
+        MediaPlayGlyph.FontSize = Math.Max(10, fs - 1);
     }
 
     private void EnableMorphTransitions()
@@ -191,10 +208,13 @@ public partial class OverlayWindow : Window
     /// </summary>
     private void ApplyAnimationSettings()
     {
-        var speed = _settings.AnimationSpeed;
-        var fade = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(OverlayTokens.IconCrossfadeMs, speed));
-        var rubber = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(OverlayTokens.SwipeRubberMs, speed));
-        var hover = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(160, speed));
+        var global = _settings.AnimationSpeed;
+        var fadeSpeed = AnimationTiming.Effective(global, _settings.AnimMorphInflate);
+        var rubberSpeed = AnimationTiming.Effective(global, _settings.AnimSwipeRubber);
+        var hoverSpeed = AnimationTiming.Effective(global, _settings.AnimHover);
+        var fade = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(OverlayTokens.IconCrossfadeMs, fadeSpeed));
+        var rubber = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(OverlayTokens.SwipeRubberMs, rubberSpeed));
+        var hover = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(AnimationTiming.HoverMs, hoverSpeed));
         var softOut = new CubicEaseOut();
         var softInOut = new CubicEaseInOut();
 
@@ -225,7 +245,7 @@ public partial class OverlayWindow : Window
         };
         _pillScale.Transitions = null;
 
-        if (!AnimationTiming.IsEnabled(speed))
+        if (!AnimationTiming.IsEnabled(global))
         {
             StopMorph(snapToTarget: true);
             StopUnreadPulse(resetOpacity: false);
@@ -246,7 +266,8 @@ public partial class OverlayWindow : Window
 
     private void SyncUnreadPulse(bool shouldPulse)
     {
-        if (!shouldPulse || !AnimationTiming.IsEnabled(_settings.AnimationSpeed))
+        var pulseSpeed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimUnreadPulse);
+        if (!shouldPulse || !_settings.AnimPulseEnabled || !AnimationTiming.IsEnabled(pulseSpeed))
         {
             StopUnreadPulse(resetOpacity: false);
             return;
@@ -273,12 +294,13 @@ public partial class OverlayWindow : Window
 
     private void OnPulseTick(object? sender, EventArgs e)
     {
-        if (!AnimationTiming.IsEnabled(_settings.AnimationSpeed))
+        var pulseSpeed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimUnreadPulse);
+        if (!_settings.AnimPulseEnabled || !AnimationTiming.IsEnabled(pulseSpeed))
         {
             StopUnreadPulse(resetOpacity: false);
             return;
         }
-        var period = AnimationTiming.ScaleMs(AnimationTiming.PulsePeriodMs, _settings.AnimationSpeed);
+        var period = AnimationTiming.ScaleMs(AnimationTiming.PulsePeriodMs, pulseSpeed);
         _pulsePhase += (Math.PI * 2.0) * (33.0 / Math.Max(1, period));
         if (_pulsePhase > Math.PI * 2.0) _pulsePhase -= Math.PI * 2.0;
         // Visible 0.40 ↔ 1.0 opacity pulse (no Opacity Transition fighting this timer)
@@ -287,7 +309,8 @@ public partial class OverlayWindow : Window
 
     private void SyncBreathing(bool shouldBreath)
     {
-        if (!shouldBreath || !AnimationTiming.IsEnabled(_settings.AnimationSpeed))
+        var breathSpeed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimIdleBreath);
+        if (!shouldBreath || !_settings.AnimBreathEnabled || !AnimationTiming.IsEnabled(breathSpeed))
         {
             StopBreathing();
             return;
@@ -314,12 +337,13 @@ public partial class OverlayWindow : Window
 
     private void OnBreathTick(object? sender, EventArgs e)
     {
-        if (!AnimationTiming.IsEnabled(_settings.AnimationSpeed))
+        var breathSpeed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimIdleBreath);
+        if (!_settings.AnimBreathEnabled || !AnimationTiming.IsEnabled(breathSpeed))
         {
             StopBreathing();
             return;
         }
-        var period = AnimationTiming.ScaleMs(AnimationTiming.BreathPeriodMs, _settings.AnimationSpeed);
+        var period = AnimationTiming.ScaleMs(AnimationTiming.BreathPeriodMs, breathSpeed);
         _breathPhase += (Math.PI * 2.0) * (33.0 / Math.Max(1, period));
         if (_breathPhase > Math.PI * 2.0) _breathPhase -= Math.PI * 2.0;
         // Subtle but perceptible ±2.5% scale breath (no Scale Transition fighting this timer)
@@ -363,9 +387,14 @@ public partial class OverlayWindow : Window
         AppIcon.Background = new SolidColorBrush(accent);
         OverlayProgress.Foreground = new SolidColorBrush(accent);
         MediaPlayGlyph.Foreground = new SolidColorBrush(accent);
-        ClockIconHost.Child = IslandIcons.Create("clock", OverlayTokens.IconSizeCollapsed,
+        ClockIconHost.Child = IconPackService.Create(_settings.IconPack, "clock", OverlayTokens.IconSizeCollapsed,
             new SolidColorBrush(textSec));
+        // Soft “dot matrix” unread: slightly squarer corners + tighter glow
+        UnreadDot.CornerRadius = new CornerRadius(2);
+        UnreadDot.Width = 6;
+        UnreadDot.Height = 6;
         ApplyOpacity();
+        ApplyTypography();
     }
 
     private static Color ParseColor(string? hex, string fallback)
@@ -554,7 +583,10 @@ public partial class OverlayWindow : Window
         ApplyOrientationLayout();
         ApplyPalette();
         ApplyOpacity();
+        ApplyTypography();
         ApplyAnimationSettings();
+        _lastWeatherIconKey = ""; // force weather icon reload for new pack
+        SeedIcons();
         ApplyIslandVisibility();
         Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
         ApplySize();
@@ -717,14 +749,18 @@ public partial class OverlayWindow : Window
         if (fromH <= 0) fromH = h;
 
         var same = Math.Abs(fromW - w) < 0.5 && Math.Abs(fromH - h) < 0.5;
-        if (same || !AnimationTiming.IsEnabled(_settings.AnimationSpeed) || !IsVisible)
+        var inflate = (w * h) >= (fromW * fromH);
+        var morphSpeed = AnimationTiming.Effective(
+            _settings.AnimationSpeed,
+            inflate ? _settings.AnimMorphInflate : _settings.AnimMorphCollapse);
+        if (same || !AnimationTiming.IsEnabled(morphSpeed) || !IsVisible)
         {
             StopMorph(snapToTarget: false);
             SetSizeImmediate(w, h);
             return;
         }
 
-        StartMorph(fromW, fromH, w, h);
+        StartMorph(fromW, fromH, w, h, morphSpeed);
     }
 
     private void SetSizeImmediate(double w, double h)
@@ -737,14 +773,14 @@ public partial class OverlayWindow : Window
         PlaceIsland();
     }
 
-    private void StartMorph(double fromW, double fromH, double toW, double toH)
+    private void StartMorph(double fromW, double fromH, double toW, double toH, AnimationSpeed morphSpeed)
     {
         _morphFromW = fromW;
         _morphFromH = fromH;
         _morphToW = toW;
         _morphToH = toH;
-        _morphDurationMs = AnimationTiming.ScaleMs(OverlayTokens.MorphMs, _settings.AnimationSpeed);
-        AppLog.Info($"Morph {_morphFromW:0}×{_morphFromH:0} → {_morphToW:0}×{_morphToH:0} ({_morphDurationMs} ms, {_settings.AnimationSpeed})");
+        _morphDurationMs = AnimationTiming.ScaleMs(OverlayTokens.MorphMs, morphSpeed);
+        AppLog.Info($"Morph {_morphFromW:0}×{_morphFromH:0} → {_morphToW:0}×{_morphToH:0} ({_morphDurationMs} ms, {morphSpeed})");
 
         if (_morphActive)
         {
@@ -900,14 +936,14 @@ public partial class OverlayWindow : Window
     {
         var key = IslandIcons.KindKey(kind);
         var brush = new SolidColorBrush(Colors.White);
-        AppIconHost.Child = IslandIcons.Create(key, OverlayTokens.IconSizeKind, brush, 1.5);
+        AppIconHost.Child = IconPackService.Create(_settings.IconPack, key, OverlayTokens.IconSizeKind, brush, 1.5);
     }
 
     private void SetKindIconWeather(int code)
     {
         var key = WeatherCodes.IconKey(code);
         var brush = new SolidColorBrush(Colors.White);
-        AppIconHost.Child = IslandIcons.Create(key, OverlayTokens.IconSizeKind, brush, 1.5);
+        AppIconHost.Child = IconPackService.Create(_settings.IconPack, key, OverlayTokens.IconSizeKind, brush, 1.5);
     }
 
     private void SetWeatherIcons(string key, bool animate)
@@ -916,7 +952,7 @@ public partial class OverlayWindow : Window
             return;
 
         var brush = new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex));
-        var path = IslandIcons.Create(key, OverlayTokens.IconSizeCollapsed, brush);
+        var path = IconPackService.Create(_settings.IconPack, key, OverlayTokens.IconSizeCollapsed, brush);
 
         if (!animate || WeatherIconA.Child is null)
         {

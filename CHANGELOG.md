@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.5.7 — UX: font size, palette swatches, icon packs, per-action anim, Nothing-inspired fonts
+
+### Added
+- **Font size** (10–18 px) in Settings **Вид**; persisted `FontSize`; applied to clock, titles, weather temp, badge.
+- **Font family** ComboBox: Системный / Space Grotesk / JetBrains Mono; OFL fonts in `Assets/Fonts/` (see `docs/NOTHING_INSPIRATION.md`).
+- **Visual palette**: preset swatches + Avalonia `ColorPicker` with live preview pill (replaces hex-only text boxes).
+- **Real icon packs**: vendored Tabler (MIT) and Lucide (ISC) SVGs under `Assets/Icons/{Tabler,Lucide}/`; ComboBox switches pack; `IconPackService` + IslandIcons fallback; `docs/ICON_PACKS.md` + NOTICE.
+- **Per-action animations** tab **Анимации**: master speed + toggle pulse/breath + Slow/Normal/Fast/Off for morph inflate, morph collapse, unread pulse, idle breath, hover, swipe rubber.
+- Docs: `docs/NOTHING_INSPIRATION.md` (legal inspiration vs NType82 / Glyph firmware).
+
+### Changed
+- Version **1.5.7**; Settings default size slightly larger for new controls.
+- Unread dot slightly more “matrix” (square-ish corners).
+
+### Note
+- No Open-Meteo. No proprietary Nothing/Apple firmware assets.
+
 ## 1.5.6 — no-drag, morph fix, palette, icon packs
 
 ### Fixed

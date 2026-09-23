@@ -1,25 +1,29 @@
 # Пакеты иконок для NotifyIsland
 
-Короткий список **открытых outline**-наборов, подходящих для Dynamic Island–подобного UI (погода, медиа, часы, уведомления).  
-Текущий рантайм: встроенный **IslandIcons** (`IslandIcons.cs`). Плановые пакеты выбираются в Настройки → Иконки (пока stub; ассеты не вендорятся в этом релизе).
+Короткий список **открытых outline**-наборов для Dynamic Island–подобного UI.  
+Рантайм: `IconPackService` → SVG из `Assets/Icons/{pack}/` или fallback **IslandIcons** (`IslandIcons.cs`).
 
-| Пакет | Лицензия | URL | Заметки |
+| Пакет | Лицензия | Статус | Путь |
 |---|---|---|---|
-| **IslandIcons** (текущий) | Original / inspired by Fluent+Tabler outline | `IslandIcons.cs`, `Assets/Icons/README.md` | Stroke 1.75, 24×24, weather+kind keys |
-| **[Tabler Icons](https://tabler.io/icons)** | **MIT** | https://github.com/tabler/tabler-icons | 6000+ SVG, 24×24, 2px stroke; отличные weather / player / bell / clock |
-| **[Lucide](https://lucide.dev)** | **ISC** (MIT-совместима) | https://github.com/lucide-icons/lucide | Форк Feather; чистый outline; clock, bell, cloud-sun, play |
-| **[Phosphor Icons](https://phosphoricons.com)** | **MIT** | https://github.com/phosphor-icons/core | Вес **Light/Thin** ≈ outline; media + weather набор |
-| **[Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons)** | **MIT** | https://github.com/microsoft/fluentui-system-icons | Regular (outline) от Microsoft; хорошо ложится на Win11 |
-| **[Heroicons](https://heroicons.com)** (outline) | **MIT** | https://github.com/tailwindlabs/heroicons | Компактный набор; меньше weather-специфики |
+| **IslandIcons** | Original / inspired by Fluent+Tabler | default, встроенный | `IslandIcons.cs` |
+| **Tabler Icons** | **MIT** | **вендор** | `Assets/Icons/Tabler/` + `LICENSE` |
+| **Lucide** | **ISC** | **вендор** | `Assets/Icons/Lucide/` + `LICENSE` |
+| Phosphor / Fluent / Heroicons | MIT | research only | не вендорятся |
 
-## Рекомендация near-term
+Сводка лицензий: [`Assets/Icons/NOTICE`](../Assets/Icons/NOTICE).
 
-1. Оставить **IslandIcons** как default (уже подогнан под капсулу).
-2. Следующий кандидат к вендорингу: **Tabler** (MIT, полный weather/media) или **Lucide** (ISC, легче по объёму).
-3. Не тянуть проприетарные / Apple SF Symbols / платные паки.
+## Вендор (1.5.7+)
 
-## Как вендорить позже
+Ключи SVG (24×24 outline): `clock`, `notify`, `media`, `pause`, `timer`, `progress`, `error`, `battery`,  
+`weather-clear`, `weather-partly`, `weather-cloud`, `weather-fog`, `weather-drizzle`, `weather-rain`, `weather-snow`, `weather-storm`.
 
-- Скопировать нужные SVG (только используемые ключи) в `Assets/Icons/{pack}/` с файлом `LICENSE`.
-- Маппинг ключей → файл в коде; Settings `IconPack` уже персистится.
-- Не коммитить иконки с лицензией, запрещающей redistribution.
+Источники файлов:
+- Tabler: https://github.com/tabler/tabler-icons (outline)
+- Lucide: https://github.com/lucide-icons/lucide
+
+Настройки → **Иконки** переключает пакет; при ошибке загрузки SVG — IslandIcons.
+
+## Не делаем
+
+- Проприетарные / Apple SF Symbols / платные паки
+- Извлечение иконок из прошивок Nothing OS / iOS
