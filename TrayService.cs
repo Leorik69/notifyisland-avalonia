@@ -17,6 +17,7 @@ internal sealed class TrayService : IDisposable
 {
     private readonly OverlayWindow _overlay;
     private readonly TrayIcon _tray;
+    private readonly TrayIcons _icons;
     private readonly NativeMenuItem _toggleIsland;
     private readonly NativeMenuItem _toggleWeather;
     private readonly NativeMenuItem _toggleDemo;
@@ -64,8 +65,15 @@ internal sealed class TrayService : IDisposable
         RefreshIcon(0);
         RefreshLabels();
 
+        // Keep a strong reference — TrayIcons must not be GC'd while tray is live.
+        _icons = new TrayIcons { _tray };
         if (Application.Current is { } app)
-            TrayIcon.SetIcons(app, new TrayIcons { _tray });
+        {
+            TrayIcon.SetIcons(app, _icons);
+            AppLog.Warn($"TrayService registered icons count={_icons.Count}");
+        }
+        else
+            AppLog.Warn("TrayService: Application.Current is null — tray may not show");
     }
 
     public void RefreshLabels()
@@ -80,11 +88,23 @@ internal sealed class TrayService : IDisposable
     {
         try
         {
-            var uri = unread > 0
-                ? new Uri("avares://NotifyIsland/Assets/tray-unread.png")
-                : new Uri("avares://NotifyIsland/Assets/tray.png");
-            using var stream = AssetLoader.Open(uri);
-            _tray.Icon = new WindowIcon(stream);
+            WindowIcon? icon = null;
+            // Prefer file next to exe (reliable on Win11 publish layout)
+            var name = unread > 0 ? "tray-unread.png" : "tray.png";
+            var path = Path.Combine(AppContext.BaseDirectory, "Assets", name);
+            if (File.Exists(path))
+                icon = new WindowIcon(path);
+            else
+            {
+                var uri = unread > 0
+                    ? new Uri("avares://NotifyIsland/Assets/tray-unread.png")
+                    : new Uri("avares://NotifyIsland/Assets/tray.png");
+                using var stream = AssetLoader.Open(uri);
+                icon = new WindowIcon(stream);
+            }
+
+            _tray.Icon = icon;
+            _tray.IsVisible = true;
             _tray.ToolTipText = unread > 0
                 ? $"NotifyIsland — непрочитанных: {unread}"
                 : "NotifyIsland";
@@ -92,14 +112,6 @@ internal sealed class TrayService : IDisposable
         catch (Exception ex)
         {
             AppLog.Warn("TrayService.RefreshIcon failed", ex);
-            try
-            {
-                var name = unread > 0 ? "tray-unread.png" : "tray.png";
-                var path = Path.Combine(AppContext.BaseDirectory, "Assets", name);
-                if (File.Exists(path))
-                    _tray.Icon = new WindowIcon(path);
-            }
-            catch { /* ignore */ }
         }
         RefreshLabels();
     }
@@ -115,10 +127,9 @@ internal sealed class TrayService : IDisposable
         }
 
         _lastClickUtc = now;
-        // Deferred single-click: toggle island if no second click arrives.
         DispatcherTimer.RunOnce(() =>
         {
-            if (_lastClickUtc == DateTime.MinValue) return; // double-click consumed
+            if (_lastClickUtc == DateTime.MinValue) return;
             if ((DateTime.UtcNow - _lastClickUtc).TotalMilliseconds >= 350)
                 _overlay.ToggleIslandVisible();
         }, TimeSpan.FromMilliseconds(380));
