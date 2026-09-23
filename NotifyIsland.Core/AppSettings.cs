@@ -103,8 +103,8 @@ public sealed class AppSettings
     /// <summary>Persisted Settings window geometry (separate from island OffsetX/Y).</summary>
     public int? SettingsWindowX { get; set; }
     public int? SettingsWindowY { get; set; }
-    public double SettingsWindowWidth { get; set; } = 460;
-    public double SettingsWindowHeight { get; set; } = 720;
+    public double SettingsWindowWidth { get; set; } = 520;
+    public double SettingsWindowHeight { get; set; } = 640;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -202,7 +202,7 @@ public sealed class AppSettings
         SoundVolSwipe = Math.Clamp(SoundVolSwipe < 0 ? 0.7 : SoundVolSwipe, 0.0, 1.0);
         SoundVolError = Math.Clamp(SoundVolError < 0 ? 1.0 : SoundVolError, 0.0, 1.0);
         SoundVolHover = Math.Clamp(SoundVolHover < 0 ? 0.35 : SoundVolHover, 0.0, 1.0);
-        if (SettingsWindowWidth < 360) SettingsWindowWidth = 460;
-        if (SettingsWindowHeight < 400) SettingsWindowHeight = 720;
+        if (SettingsWindowWidth < 360) SettingsWindowWidth = 520;
+        if (SettingsWindowHeight < 400) SettingsWindowHeight = 640;
     }
 }

@@ -2,114 +2,225 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="NotifyIsland.SettingsWindow"
         Title="Настройки NotifyIsland"
-        Width="460" Height="720"
-        MinWidth="400" MinHeight="520"
+        Width="520" Height="640"
+        MinWidth="440" MinHeight="480"
         CanResize="True"
         WindowStartupLocation="Manual"
         ShowInTaskbar="True"
         SystemDecorations="Full"
         Background="#1C1C1E">
+  <Window.Styles>
+    <Style Selector="TabControl">
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="TabControl /template/ ItemsPresenter#PART_ItemsPresenter">
+      <Setter Property="Margin" Value="12,10,12,0"/>
+    </Style>
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Foreground" Value="#C8C8CC"/>
+      <Setter Property="Padding" Value="14,8"/>
+      <Setter Property="Margin" Value="0,0,4,0"/>
+      <Setter Property="MinHeight" Value="34"/>
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="TabItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#2C2C2E"/>
+    </Style>
+    <Style Selector="TabItem:selected">
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="TabItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#3A3A3C"/>
+      <Setter Property="CornerRadius" Value="8"/>
+    </Style>
+    <Style Selector="ScrollViewer.tabBody">
+      <Setter Property="Padding" Value="20,16,20,12"/>
+    </Style>
+    <Style Selector="TextBlock.sectionTitle">
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="Margin" Value="0,0,0,10"/>
+    </Style>
+    <Style Selector="TextBlock.fieldLabel">
+      <Setter Property="Foreground" Value="#C8C8CC"/>
+      <Setter Property="Margin" Value="0,8,0,4"/>
+    </Style>
+    <Style Selector="TextBlock.mutedNote">
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Foreground" Value="#888890"/>
+      <Setter Property="Margin" Value="0,8,0,0"/>
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="Margin" Value="0,2,0,2"/>
+    </Style>
+  </Window.Styles>
+
   <DockPanel Margin="0">
-    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="10"
-                Margin="20,8,20,16" HorizontalAlignment="Right">
-      <Button x:Name="CancelBtn" Content="Отмена" Width="100" Click="OnCancel"/>
-      <Button x:Name="ApplyBtn" Content="Применить" Width="110" Click="OnApply"/>
-      <Button x:Name="OkBtn" Content="OK" Width="100" Click="OnOk"/>
-    </StackPanel>
-
-    <ScrollViewer Padding="20,16,20,8">
-      <StackPanel Spacing="12">
-        <TextBlock Text="Островок" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF"/>
-
-        <CheckBox x:Name="IslandVisibleBox" Content="Показывать островок" Foreground="#FFFFFF"/>
-        <CheckBox x:Name="AllowDragBox" Content="Перетаскивание (удержание ЛКМ &gt;200 мс)" Foreground="#FFFFFF"/>
-        <CheckBox x:Name="WeatherEnabledBox" Content="Погода" Foreground="#FFFFFF"/>
-
-        <TextBlock Text="Погода относительно часов" Foreground="#C8C8CC" Margin="0,6,0,0"/>
-        <ComboBox x:Name="WeatherSideBox" Width="220">
-          <ComboBoxItem Tag="Left" Content="Слева"/>
-          <ComboBoxItem Tag="Right" Content="Справа"/>
-        </ComboBox>
-
-        <TextBlock Text="Край экрана" Foreground="#C8C8CC" Margin="0,6,0,0"/>
-        <ComboBox x:Name="EdgeBox" Width="220">
-          <ComboBoxItem Tag="Top" Content="Сверху"/>
-          <ComboBoxItem Tag="Bottom" Content="Снизу"/>
-          <ComboBoxItem Tag="Left" Content="Слева"/>
-          <ComboBoxItem Tag="Right" Content="Справа"/>
-        </ComboBox>
-
-        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" Margin="0,2,0,0">
-          <TextBlock Grid.Row="0" Grid.Column="0" Text="Смещение X (px)" Foreground="#C8C8CC"/>
-          <TextBlock Grid.Row="0" Grid.Column="1" Text="Смещение Y (px)" Foreground="#C8C8CC" Margin="12,0,0,0"/>
-          <NumericUpDown x:Name="OffsetXBox" Grid.Row="1" Grid.Column="0" Minimum="-4000" Maximum="4000" Increment="1" FormatString="0" Width="160" HorizontalAlignment="Left"/>
-          <NumericUpDown x:Name="OffsetYBox" Grid.Row="1" Grid.Column="1" Minimum="-4000" Maximum="4000" Increment="1" FormatString="0" Width="160" HorizontalAlignment="Left" Margin="12,0,0,0"/>
-        </Grid>
-
-        <TextBlock Text="Ориентация" Foreground="#C8C8CC" Margin="0,6,0,0"/>
-        <ComboBox x:Name="OrientationBox" Width="260">
-          <ComboBoxItem Tag="Auto" Content="Авто (по краю)"/>
-          <ComboBoxItem Tag="Horizontal" Content="Горизонтальная"/>
-          <ComboBoxItem Tag="Vertical" Content="Вертикальная"/>
-        </ComboBox>
-
-        <TextBlock Text="Слой (z-order)" Foreground="#C8C8CC" Margin="0,6,0,0"/>
-        <ComboBox x:Name="ZOrderBox" Width="340">
-          <ComboBoxItem Tag="Topmost" Content="Поверх всех окон"/>
-          <ComboBoxItem Tag="Desktop" Content="Над иконками рабочего стола"/>
-          <ComboBoxItem Tag="BehindApps" Content="Под окнами приложений"/>
-        </ComboBox>
-        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#888890"
-                   Text="На Win11 режимы «рабочий стол» и «под окнами» — best-effort (DWM/Widgets могут переставлять). Надёжный режим — поверх всех. Прозрачность капсулы на z-order не влияет."/>
-
-        <TextBlock Text="Прозрачность фона" Foreground="#C8C8CC" Margin="0,6,0,0"/>
-        <DockPanel>
-          <TextBlock x:Name="OpacityLabel" DockPanel.Dock="Right" Width="48" Text="100%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
-          <Slider x:Name="OpacitySlider" Minimum="35" Maximum="100" Value="100" TickFrequency="5"/>
-        </DockPanel>
-
-        <TextBlock Text="Звуки" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,10,0,0"/>
-        <CheckBox x:Name="SoundEnabledBox" Content="Звуки островка" Foreground="#FFFFFF"/>
-        <TextBlock Text="Пакет звуков" Foreground="#C8C8CC" Margin="0,4,0,0"/>
-        <ComboBox x:Name="SoundPackBox" Width="300">
-          <ComboBoxItem Tag="Nothing" Content="Nothing (мягкие клики)"/>
-          <ComboBoxItem Tag="Ios" Content="iOS (мягкие тапы)"/>
-          <ComboBoxItem Tag="System" Content="Системные (Windows)"/>
-          <ComboBoxItem Tag="Off" Content="Выкл"/>
-        </ComboBox>
-        <TextBlock Text="Общая громкость" Foreground="#C8C8CC" Margin="0,6,0,0"/>
-        <DockPanel>
-          <TextBlock x:Name="VolumeLabel" DockPanel.Dock="Right" Width="48" Text="35%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
-          <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="35" TickFrequency="5"/>
-        </DockPanel>
-        <TextBlock Text="Громкость по событиям" Foreground="#C8C8CC" Margin="0,6,0,0"/>
-        <Grid ColumnDefinitions="120,* ,48" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,2,0,0">
-          <TextBlock Grid.Row="0" Grid.Column="0" Text="Уведомление" Foreground="#C8C8CC" VerticalAlignment="Center"/>
-          <Slider x:Name="VolNotifySlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="100" Value="100" Margin="8,0"/>
-          <TextBlock x:Name="VolNotifyLabel" Grid.Row="0" Grid.Column="2" Text="100%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
-          <TextBlock Grid.Row="1" Grid.Column="0" Text="Раскрытие" Foreground="#C8C8CC" VerticalAlignment="Center"/>
-          <Slider x:Name="VolExpandSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="100" Value="85" Margin="8,0"/>
-          <TextBlock x:Name="VolExpandLabel" Grid.Row="1" Grid.Column="2" Text="85%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
-          <TextBlock Grid.Row="2" Grid.Column="0" Text="Сворачивание" Foreground="#C8C8CC" VerticalAlignment="Center"/>
-          <Slider x:Name="VolCollapseSlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="100" Value="75" Margin="8,0"/>
-          <TextBlock x:Name="VolCollapseLabel" Grid.Row="2" Grid.Column="2" Text="75%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
-          <TextBlock Grid.Row="3" Grid.Column="0" Text="Свайп" Foreground="#C8C8CC" VerticalAlignment="Center"/>
-          <Slider x:Name="VolSwipeSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="100" Value="70" Margin="8,0"/>
-          <TextBlock x:Name="VolSwipeLabel" Grid.Row="3" Grid.Column="2" Text="70%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
-          <TextBlock Grid.Row="4" Grid.Column="0" Text="Ошибка" Foreground="#C8C8CC" VerticalAlignment="Center"/>
-          <Slider x:Name="VolErrorSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="100" Value="100" Margin="8,0"/>
-          <TextBlock x:Name="VolErrorLabel" Grid.Row="4" Grid.Column="2" Text="100%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
-          <TextBlock Grid.Row="5" Grid.Column="0" Text="Hover" Foreground="#C8C8CC" VerticalAlignment="Center"/>
-          <Slider x:Name="VolHoverSlider" Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="100" Value="35" Margin="8,0"/>
-          <TextBlock x:Name="VolHoverLabel" Grid.Row="5" Grid.Column="2" Text="35%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
-        </Grid>
-        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#888890"
-                   Text="Оригинальные короткие WAV (inspired by Glyph/iOS feel, не официальные системные звуки). Пакет System — SystemSounds. Hover с debounce. Не на тик часов."/>
-
-        <TextBlock Text="Иконки" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,10,0,0"/>
-        <TextBlock TextWrapping="Wrap" Foreground="#C8C8CC" FontSize="12"
-                   Text="Используется встроенный outline-набор IslandIcons (часы, погода, медиа, трей). Отдельный выбор пакета пока не нужен."/>
+    <Border DockPanel.Dock="Bottom"
+            BorderBrush="#2C2C2E" BorderThickness="0,1,0,0"
+            Background="#1C1C1E" Padding="20,12,20,16">
+      <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
+        <Button x:Name="CancelBtn" Content="Отмена" Width="100" Click="OnCancel"/>
+        <Button x:Name="ApplyBtn" Content="Применить" Width="110" Click="OnApply"/>
+        <Button x:Name="OkBtn" Content="OK" Width="100" Click="OnOk"/>
       </StackPanel>
-    </ScrollViewer>
+    </Border>
+
+    <TabControl Margin="0,4,0,0">
+      <!-- 1. Островок -->
+      <TabItem Header="Островок">
+        <ScrollViewer Classes="tabBody">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="sectionTitle" Text="Островок"/>
+            <CheckBox x:Name="IslandVisibleBox" Content="Показывать островок"/>
+            <CheckBox x:Name="AllowDragBox" Content="Перетаскивание (удержание ЛКМ &gt;200 мс)"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Островок можно также показать или скрыть из трея. Перетаскивание срабатывает после удержания ЛКМ дольше 200 мс; короткий жест остаётся свайпом."/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- 2. Погода -->
+      <TabItem Header="Погода">
+        <ScrollViewer Classes="tabBody">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="sectionTitle" Text="Погода"/>
+            <CheckBox x:Name="WeatherEnabledBox" Content="Показывать погоду"/>
+            <TextBlock Classes="fieldLabel" Text="Погода относительно часов"/>
+            <ComboBox x:Name="WeatherSideBox" Width="220">
+              <ComboBoxItem Tag="Left" Content="Слева"/>
+              <ComboBoxItem Tag="Right" Content="Справа"/>
+            </ComboBox>
+            <TextBlock Classes="mutedNote"
+                       Text="Данные берутся из Windows (системный кэш / геолокация). Сторонние HTTP-сервисы погоды не используются."/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- 3. Расположение -->
+      <TabItem Header="Расположение">
+        <ScrollViewer Classes="tabBody">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="sectionTitle" Text="Расположение"/>
+            <TextBlock Classes="fieldLabel" Text="Край экрана" Margin="0,0,0,4"/>
+            <ComboBox x:Name="EdgeBox" Width="220">
+              <ComboBoxItem Tag="Top" Content="Сверху"/>
+              <ComboBoxItem Tag="Bottom" Content="Снизу"/>
+              <ComboBoxItem Tag="Left" Content="Слева"/>
+              <ComboBoxItem Tag="Right" Content="Справа"/>
+            </ComboBox>
+
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" Margin="0,8,0,0">
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="Смещение X (px)" Foreground="#C8C8CC"/>
+              <TextBlock Grid.Row="0" Grid.Column="1" Text="Смещение Y (px)" Foreground="#C8C8CC" Margin="12,0,0,0"/>
+              <NumericUpDown x:Name="OffsetXBox" Grid.Row="1" Grid.Column="0"
+                             Minimum="-4000" Maximum="4000" Increment="1" FormatString="0"
+                             Width="160" HorizontalAlignment="Left" Margin="0,4,0,0"/>
+              <NumericUpDown x:Name="OffsetYBox" Grid.Row="1" Grid.Column="1"
+                             Minimum="-4000" Maximum="4000" Increment="1" FormatString="0"
+                             Width="160" HorizontalAlignment="Left" Margin="12,4,0,0"/>
+            </Grid>
+
+            <TextBlock Classes="fieldLabel" Text="Ориентация"/>
+            <ComboBox x:Name="OrientationBox" Width="260">
+              <ComboBoxItem Tag="Auto" Content="Авто (по краю)"/>
+              <ComboBoxItem Tag="Horizontal" Content="Горизонтальная"/>
+              <ComboBoxItem Tag="Vertical" Content="Вертикальная"/>
+            </ComboBox>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- 4. Вид -->
+      <TabItem Header="Вид">
+        <ScrollViewer Classes="tabBody">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="sectionTitle" Text="Вид"/>
+            <TextBlock Classes="fieldLabel" Text="Слой (z-order)" Margin="0,0,0,4"/>
+            <ComboBox x:Name="ZOrderBox" Width="340" MaxWidth="400" HorizontalAlignment="Left">
+              <ComboBoxItem Tag="Topmost" Content="Поверх всех окон"/>
+              <ComboBoxItem Tag="Desktop" Content="Над иконками рабочего стола"/>
+              <ComboBoxItem Tag="BehindApps" Content="Под окнами приложений"/>
+            </ComboBox>
+            <TextBlock Classes="mutedNote"
+                       Text="На Win11 режимы «рабочий стол» и «под окнами» — best-effort (DWM/Widgets могут переставлять). Надёжный режим — поверх всех. Прозрачность капсулы на z-order не влияет."/>
+
+            <TextBlock Classes="fieldLabel" Text="Прозрачность фона"/>
+            <DockPanel>
+              <TextBlock x:Name="OpacityLabel" DockPanel.Dock="Right" Width="48" Text="100%"
+                         Foreground="#FFFFFF" VerticalAlignment="Center"/>
+              <Slider x:Name="OpacitySlider" Minimum="35" Maximum="100" Value="100" TickFrequency="5"/>
+            </DockPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- 5. Звуки -->
+      <TabItem Header="Звуки">
+        <ScrollViewer Classes="tabBody">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="sectionTitle" Text="Звуки"/>
+            <CheckBox x:Name="SoundEnabledBox" Content="Звуки островка"/>
+            <TextBlock Classes="fieldLabel" Text="Пакет звуков"/>
+            <ComboBox x:Name="SoundPackBox" Width="300">
+              <ComboBoxItem Tag="Nothing" Content="Nothing (мягкие клики)"/>
+              <ComboBoxItem Tag="Ios" Content="iOS (мягкие тапы)"/>
+              <ComboBoxItem Tag="System" Content="Системные (Windows)"/>
+              <ComboBoxItem Tag="Off" Content="Выкл"/>
+            </ComboBox>
+
+            <TextBlock Classes="fieldLabel" Text="Общая громкость"/>
+            <DockPanel>
+              <TextBlock x:Name="VolumeLabel" DockPanel.Dock="Right" Width="48" Text="35%"
+                         Foreground="#FFFFFF" VerticalAlignment="Center"/>
+              <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="35" TickFrequency="5"/>
+            </DockPanel>
+
+            <TextBlock Classes="fieldLabel" Text="Громкость по событиям"/>
+            <Grid ColumnDefinitions="120,*,48" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,2,0,0">
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="Уведомление" Foreground="#C8C8CC" VerticalAlignment="Center"/>
+              <Slider x:Name="VolNotifySlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="100" Value="100" Margin="8,0"/>
+              <TextBlock x:Name="VolNotifyLabel" Grid.Row="0" Grid.Column="2" Text="100%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="Раскрытие" Foreground="#C8C8CC" VerticalAlignment="Center"/>
+              <Slider x:Name="VolExpandSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="100" Value="85" Margin="8,0"/>
+              <TextBlock x:Name="VolExpandLabel" Grid.Row="1" Grid.Column="2" Text="85%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="Сворачивание" Foreground="#C8C8CC" VerticalAlignment="Center"/>
+              <Slider x:Name="VolCollapseSlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="100" Value="75" Margin="8,0"/>
+              <TextBlock x:Name="VolCollapseLabel" Grid.Row="2" Grid.Column="2" Text="75%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+              <TextBlock Grid.Row="3" Grid.Column="0" Text="Свайп" Foreground="#C8C8CC" VerticalAlignment="Center"/>
+              <Slider x:Name="VolSwipeSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="100" Value="70" Margin="8,0"/>
+              <TextBlock x:Name="VolSwipeLabel" Grid.Row="3" Grid.Column="2" Text="70%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+              <TextBlock Grid.Row="4" Grid.Column="0" Text="Ошибка" Foreground="#C8C8CC" VerticalAlignment="Center"/>
+              <Slider x:Name="VolErrorSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="100" Value="100" Margin="8,0"/>
+              <TextBlock x:Name="VolErrorLabel" Grid.Row="4" Grid.Column="2" Text="100%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+              <TextBlock Grid.Row="5" Grid.Column="0" Text="Hover" Foreground="#C8C8CC" VerticalAlignment="Center"/>
+              <Slider x:Name="VolHoverSlider" Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="100" Value="35" Margin="8,0"/>
+              <TextBlock x:Name="VolHoverLabel" Grid.Row="5" Grid.Column="2" Text="35%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+            </Grid>
+            <TextBlock Classes="mutedNote"
+                       Text="Оригинальные короткие WAV (inspired by Glyph/iOS feel, не официальные системные звуки). Пакет System — SystemSounds. Hover с debounce. Не на тик часов."/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- 6. Иконки -->
+      <TabItem Header="Иконки">
+        <ScrollViewer Classes="tabBody">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="sectionTitle" Text="Иконки"/>
+            <TextBlock TextWrapping="Wrap" Foreground="#C8C8CC" FontSize="12" LineHeight="18"
+                       Text="Используется встроенный outline-набор IslandIcons (часы, погода, медиа, трей). Отдельный выбор пакета пока не нужен."/>
+            <TextBlock Classes="mutedNote"
+                       Text="Стиль: outline, stroke 1.75, 24×24 design space. Палитра secondary #C8C8CC на тёмной капсуле."/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
   </DockPanel>
 </Window>

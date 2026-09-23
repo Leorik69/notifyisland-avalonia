@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.4 — tabbed Settings window
+
+### Changed
+- Settings UI redesigned: Avalonia `TabControl` with categories instead of one long scroll pile.
+- Tabs (RU): **Островок**, **Погода**, **Расположение**, **Вид**, **Звуки**, **Иконки**.
+- Default Settings window size ~520×640; geometry still persisted.
+- Bottom bar unchanged: Отмена / Применить / OK.
+
+### Docs
+- `ISLAND_GUIDELINES.md` §7 settings tabs; `ISLAND_PREVIEW.md` settings item.
+
 ## 1.5.3 — WinForms tray (visible on Sandbox)
 
 ### Fixed

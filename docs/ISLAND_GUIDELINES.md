@@ -154,7 +154,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 - Weather toggle (tray / ПКМ / Settings), Windows-primary source (§10)
 - Unified outline icon pack + weather crossfade + tray icons
 - **Tray** quick menu + unread icon/tooltip
-- **Settings window** (отдельный Window, single-instance): placement, z-order, opacity, sounds, orientation, drag/XY
+- **Settings window** (отдельный Window, single-instance, **TabControl** по категориям): placement, z-order, opacity, sounds, orientation, drag/XY
 - Z-order Topmost / Desktop / BehindApps (Win32 SetWindowPos)
 - Drag hold&gt;200 мс + Edge + OffsetX/Y
 - Opacity 0.35–1.0 на fill; SoundPack (Nothing|Ios|System|Off) + SoundEnabled + master/per-event volumes
@@ -217,16 +217,16 @@ Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, O
 - Открытие: трей «Настройки…» **и** ПКМ по островку «Настройки…».
 - **Не** popup / не flyout / не dump в ContextMenu.
 - Single-instance: повторное открытие → `Activate()` существующего.
-- Геометрия окна Settings persist: `SettingsWindowX/Y/Width/Height` (отдельно от OffsetX/Y островка).
-- Содержимое (RU):
-  1. Показать островок / перетаскивание / погода
-  2. Погода слева|справа от часов (`WeatherSide`)
-  3. Край: Top/Bottom/Left/Right + OffsetX/Y px
-  4. Ориентация: Auto | Horizontal | Vertical
-  5. Z-order: Topmost / Desktop / BehindApps (Win11: Desktop/BehindApps best-effort)
-  6. Прозрачность фона капсулы (`Opacity` 0.35–1.0) — только fill alpha; border/text читаемые; z-order не меняет
-  7. Звуки: pack `Nothing`|`Ios`|`System`|`Off`, `SoundEnabled`, master `SoundVolume` 0–1, per-event `SoundVol*` (WAV из `Assets/Sounds/{pack}/`; System → SystemSounds; hover с debounce; не на clock)
-  8. Заметка про outline IslandIcons
+- Геометрия окна Settings persist: `SettingsWindowX/Y/Width/Height` (отдельно от OffsetX/Y островка); default ~**520×640**.
+- UI: Avalonia **`TabControl`** по категориям (тёмная тема `#1C1C1E`), не один длинный scroll-pile. Низ окна — DockPanel: Отмена / Применить / OK.
+- Вкладки (RU):
+  1. **Островок** — `IslandVisible`, `AllowDrag`
+  2. **Погода** — `WeatherEnabled`, `WeatherSide` (+ краткая заметка: Windows-only, без third-party HTTP)
+  3. **Расположение** — `Edge` (Top/Bottom/Left/Right), `OffsetX`/`OffsetY`, `Orientation` (Auto|Horizontal|Vertical)
+  4. **Вид** — `ZOrderMode` (Topmost / Desktop / BehindApps; Win11 Desktop/BehindApps best-effort) + `Opacity` 0.35–1.0 (только fill alpha)
+  5. **Звуки** — `SoundEnabled`, pack `Nothing`|`Ios`|`System`|`Off`, master `SoundVolume`, per-event `SoundVol*` + legal note (оригинальные WAV, не proprietary)
+  6. **Иконки** — заметка про встроенный outline `IslandIcons` (выбор пакета пока не нужен)
+- Все `x:Name` контролов сохранены — `LoadUi` / `ReadUi` / `WireVolumeLabels` без ломки.
 
 ### Drag
 - `AllowDrag` default true; удержание ЛКМ **&gt;200 мс** (`IslandLayout.DragHoldMs`) → reposition; быстрый flick (&lt;200 мс / swipe thresholds) → свайп.
