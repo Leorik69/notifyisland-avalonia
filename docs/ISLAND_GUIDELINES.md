@@ -32,6 +32,9 @@
 | Appear / Dismiss styles | Inflate/SlideDown/FadeScale/Bounce/Pop + Collapse/SlideUp/FadeScaleOut/Ragged/Glitch |
 | Icon size ↔ FontSize | IconDip = FontSize × k |
 | Nothing-inspired fonts | Space Grotesk / JB Mono (OFL), не NType82 |
+| Date chip (no clock icon) | `DateFormat` рядом с HH:mm |
+| Weather location mode | Windows / Manual + label |
+| Theme presets | NothingDark / AppleQuiet / Ocean / Custom |
 
 ### Desktop differentiators (backlog — не реализовывать сейчас)
 - File shelf (полка файлов у островка)
@@ -265,13 +268,26 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 - Геометрия окна Settings persist: `SettingsWindowX/Y/Width/Height` (отдельно от OffsetX/Y островка); default ~**520×640**.
 - UI: Avalonia **`TabControl`** по категориям (тёмная тема `#1C1C1E`), не один длинный scroll-pile. Низ окна — DockPanel: Отмена / Применить / OK.
 - Вкладки (RU):
-  1. **Островок** — `IslandVisible` (drag убран)
-  2. **Погода** — `WeatherEnabled`, `WeatherSide` (+ краткая заметка: Windows-only, без third-party HTTP)
+  1. **Островок** — `IslandVisible` + **`DateFormat`** (Off|DayMonth|WeekdayShort|WeekdayDay|Numeric|FullShort; default DayMonth). Иконка часов убрана.
+  2. **Погода** — `WeatherEnabled`, `WeatherSide`, **`WeatherLocationMode`** (Windows|Manual), `WeatherLocationName`, lat/lon + пресеты городов. Заметка: температура из Windows; при Manual — выбранное имя на expanded/tooltip. Без third-party HTTP.
   3. **Расположение** — `Edge` (Top/Bottom/Left/Right), `OffsetX`/`OffsetY`, `Orientation` (Auto|Horizontal|Vertical)
-  4. **Вид** — `ZOrderMode` + `Opacity` + `AnimationSpeed` + **палитра** (`ColorCapsuleFill` / `ColorAccent` / `ColorTextPrimary` / `ColorTextSecondary`)
-  5. **Звуки** — `SoundEnabled`, pack `Nothing`|`Ios`|`System`|`Off`, master `SoundVolume`, per-event `SoundVol*` + legal note (оригинальные WAV, не proprietary)
-  6. **Иконки** — `IconPack` stub (IslandIcons + план Tabler/Lucide/Phosphor); см. `docs/ICON_PACKS.md`
+  4. **Тема** — `ThemePreset`: NothingDark | AppleQuiet | Ocean | Custom. Сток Apply перезаписывает палитру/шрифт/анимации/иконки/дату/звук; расхождение → Custom; кнопка «Перейти в кастом».
+  5. **Вид** — `ZOrderMode` + `Opacity` + **палитра** + FontSize/FontFamily (редактируемо при Custom)
+  6. **Анимации** — master + per-action + Appear/Dismiss
+  7. **Звуки** — `SoundEnabled`, pack `Nothing`|`Ios`|`System`|`Off`, master `SoundVolume`, per-event `SoundVol*`
+  8. **Иконки** — `IconPack` (IslandIcons / Tabler / Lucide / Meteocons*); см. `docs/ICON_PACKS.md`
 - Все `x:Name` контролов сохранены — `LoadUi` / `ReadUi` / `WireVolumeLabels` без ломки.
+
+### Theme presets (1.6.0)
+
+| Preset | Fill | Accent | Font | Icons | Anim lean | Date | Sound |
+|---|---|---|---|---|---|---|---|
+| **NothingDark** | `#080808` | `#3D9CF0` | SpaceGrotesk | MeteoconsFill | Slow + Bounce/Ragged | DayMonth | Nothing |
+| **AppleQuiet** | `#1C1C1E` | `#0A84FF` | System | MeteoconsLine | Slow + FadeScale | WeekdayShort | Ios |
+| **Ocean** | `#0A1628` | `#00C2A8` | JetBrainsMono | MeteoconsFlat | Normal/Fast + Slide | Numeric | Nothing |
+| **Custom** | — | — | — | — | user | user | user |
+
+Код: `ThemePresets.Apply` / `Matches` / `AutodetectCustom`.
 
 ### Позиция (без drag)
 - Мышиное перетаскивание островка **удалено**. `AllowDrag` всегда `false` (Normalize мигрирует старые settings).
@@ -326,7 +342,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 3. **Sandbox / non-Windows / нет кэша:** `LocalStubWeather` → `WeatherCodes.MockMoscow()` (ясно · 18° · 0%). **Никакого HTTP.**
 
 UI:
-- **Minimal** (Idle/Collapsed + `WeatherEnabled`): outline weather icon + `18°` рядом с часами; ширина `CollapsedWeatherW`.
+- **Minimal** (Idle/Collapsed + `WeatherEnabled`): outline weather icon + `18°` рядом с **временем и датой** (без clock icon); ширина `CollapsedWeatherW` (**240**). Date: `DateFormat`.
 - **Expanded** (`OverlayKind.Weather`): icon + `Ясно · 18° · 0%` (precip если есть).
 - Refresh: startup + каждые **15 мин** (`WeatherRefreshMs`).
 - Payload: `TemperatureC`, `WeatherCode`, `PrecipProb` (+ Title/Subtitle/Body согласованы через `WeatherCodes.ToPayload`).

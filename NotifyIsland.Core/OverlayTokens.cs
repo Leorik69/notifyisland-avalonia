@@ -8,10 +8,10 @@ public static class OverlayTokens
     public const string TextSecondaryHex = "#C8C8CC";
     public const string AccentHex = "#3D9CF0";
     public const string ErrorHex = "#E8A0A0";
-    /// <summary>Collapsed capsule width (clock + optional unread dot).</summary>
-    public const double CollapsedW = 140;
-    /// <summary>Collapsed width when WeatherEnabled shows compact temp next to clock.</summary>
-    public const double CollapsedWeatherW = 210;
+    /// <summary>Collapsed capsule width (time + optional date; clock icon removed in 1.6.0).</summary>
+    public const double CollapsedW = 170;
+    /// <summary>Collapsed width when WeatherEnabled shows compact temp next to clock/date.</summary>
+    public const double CollapsedWeatherW = 240;
     /// <summary>Fixed capsule height for every kind — width-only morph.</summary>
     public const double CollapsedH = 30;
     public const double ExpandedMinW = 280;

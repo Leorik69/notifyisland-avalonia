@@ -96,8 +96,17 @@
           <StackPanel Spacing="4">
             <TextBlock Classes="sectionTitle" Text="Островок"/>
             <CheckBox x:Name="IslandVisibleBox" Content="Показывать островок"/>
+            <TextBlock Classes="fieldLabel" Text="Формат даты рядом с часами"/>
+            <ComboBox x:Name="DateFormatBox" Width="280">
+              <ComboBoxItem Tag="Off" Content="Выкл"/>
+              <ComboBoxItem Tag="DayMonth" Content="24 сен"/>
+              <ComboBoxItem Tag="WeekdayShort" Content="ср"/>
+              <ComboBoxItem Tag="WeekdayDay" Content="ср 24"/>
+              <ComboBoxItem Tag="Numeric" Content="24.09"/>
+              <ComboBoxItem Tag="FullShort" Content="ср, 24 сен"/>
+            </ComboBox>
             <TextBlock Classes="mutedNote"
-                       Text="Островок можно также показать или скрыть из трея. Позиция только через вкладку «Расположение» (край + смещение X/Y). Перетаскивание мышью отключено — указатель на островке остаётся для свайпов."/>
+                       Text="Иконка часов убрана — вместо неё дата (обновляется с таймером часов). Позиция только через «Расположение» (край + смещение X/Y)."/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
@@ -112,8 +121,39 @@
               <ComboBoxItem Tag="Left" Content="Слева"/>
               <ComboBoxItem Tag="Right" Content="Справа"/>
             </ComboBox>
+            <TextBlock Classes="fieldLabel" Text="Локация"/>
+            <ComboBox x:Name="WeatherLocationModeBox" Width="280" SelectionChanged="OnWeatherLocationModeChanged">
+              <ComboBoxItem Tag="Windows" Content="Системная (Windows)"/>
+              <ComboBoxItem Tag="Manual" Content="Вручную (город)"/>
+            </ComboBox>
+            <StackPanel x:Name="ManualLocationPanel" Spacing="4" IsVisible="False">
+              <TextBlock Classes="fieldLabel" Text="Город (пресет или своё имя)"/>
+              <ComboBox x:Name="WeatherCityPresetBox" Width="280" SelectionChanged="OnWeatherCityPresetChanged">
+                <ComboBoxItem Tag="Москва" Content="Москва"/>
+                <ComboBoxItem Tag="Санкт-Петербург" Content="Санкт-Петербург"/>
+                <ComboBoxItem Tag="Новосибирск" Content="Новосибирск"/>
+                <ComboBoxItem Tag="Екатеринбург" Content="Екатеринбург"/>
+                <ComboBoxItem Tag="Казань" Content="Казань"/>
+                <ComboBoxItem Tag="Нижний Новгород" Content="Нижний Новгород"/>
+                <ComboBoxItem Tag="Владивосток" Content="Владивосток"/>
+                <ComboBoxItem Tag="__custom" Content="Своё имя…"/>
+              </ComboBox>
+              <TextBox x:Name="WeatherLocationNameBox" Width="280" Watermark="Название локации"/>
+              <Grid ColumnDefinitions="*,*" Margin="0,4,0,0">
+                <StackPanel Grid.Column="0" Spacing="2">
+                  <TextBlock Classes="fieldLabel" Text="Широта"/>
+                  <NumericUpDown x:Name="LatitudeBox" Minimum="-90" Maximum="90" Increment="0.01"
+                                 FormatString="0.##" Width="140" HorizontalAlignment="Left"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="2" Margin="12,0,0,0">
+                  <TextBlock Classes="fieldLabel" Text="Долгота"/>
+                  <NumericUpDown x:Name="LongitudeBox" Minimum="-180" Maximum="180" Increment="0.01"
+                                 FormatString="0.##" Width="140" HorizontalAlignment="Left"/>
+                </StackPanel>
+              </Grid>
+            </StackPanel>
             <TextBlock Classes="mutedNote"
-                       Text="Данные берутся из Windows (системный кэш / геолокация). Сторонние HTTP-сервисы погоды не используются."/>
+                       Text="Температура — из Windows (кэш / геолокация); при ручной локации на островке показывается выбранное название. Сторонние HTTP (Open-Meteo и т.п.) не используются."/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
@@ -145,6 +185,25 @@
               <ComboBoxItem Tag="Horizontal" Content="Горизонтальная"/>
               <ComboBoxItem Tag="Vertical" Content="Вертикальная"/>
             </ComboBox>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Тема">
+        <ScrollViewer Classes="tabBody">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="sectionTitle" Text="Тема"/>
+            <TextBlock Classes="fieldLabel" Text="Предустановка"/>
+            <ComboBox x:Name="ThemePresetBox" Width="340" SelectionChanged="OnThemePresetChanged">
+              <ComboBoxItem Tag="NothingDark" Content="Nothing Dark — тёмный, синий акцент"/>
+              <ComboBoxItem Tag="AppleQuiet" Content="Apple Quiet — спокойный серый"/>
+              <ComboBoxItem Tag="Ocean" Content="Ocean — глубокий navy / teal"/>
+              <ComboBoxItem Tag="Custom" Content="Кастом"/>
+            </ComboBox>
+            <Button x:Name="GoCustomThemeBtn" Content="Перейти в кастом" Width="180" HorizontalAlignment="Left"
+                    Margin="0,8,0,0" Click="OnGoCustomTheme"/>
+            <TextBlock Classes="mutedNote" Margin="0,8,0,0"
+                       Text="Сток-темы сразу применяют палитру, шрифт, скорость анимаций, пак иконок, формат даты и звуковой пак. Любое расхождение при «Применить» переводит пресет в «Кастом». В режиме Кастом вкладки Вид / Анимации / Иконки редактируются свободно."/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>

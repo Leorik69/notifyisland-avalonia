@@ -17,6 +17,7 @@ public partial class SettingsWindow : Window
     private readonly AppSettings _draft;
     private readonly Action<AppSettings> _onApply;
     private bool _paletteWired;
+    private bool _loadingUi;
 
     public SettingsWindow() : this(new AppSettings(), _ => { }) { }
 
@@ -148,6 +149,9 @@ public partial class SettingsWindow : Window
 
     private void LoadUi()
     {
+        _loadingUi = true;
+        try
+        {
         IslandVisibleBox.IsChecked = _draft.IslandVisible;
         WeatherEnabledBox.IsChecked = _draft.WeatherEnabled;
         SoundEnabledBox.IsChecked = _draft.SoundEnabled;
@@ -189,11 +193,102 @@ public partial class SettingsWindow : Window
         AnimBreathEnabledBox.IsChecked = _draft.AnimBreathEnabled;
         SelectByTag(IconPackBox, _draft.IconPack);
         SelectByTag(FontFamilyBox, _draft.FontFamily);
+        SelectByTag(DateFormatBox, _draft.DateFormat.ToString());
+        SelectByTag(ThemePresetBox, _draft.ThemePreset.ToString());
+        SelectByTag(WeatherLocationModeBox, _draft.WeatherLocationMode.ToString());
+        WeatherLocationNameBox.Text = _draft.WeatherLocationName;
+        LatitudeBox.Value = (decimal)_draft.Latitude;
+        LongitudeBox.Value = (decimal)_draft.Longitude;
+        SelectCityPreset(_draft.WeatherLocationName);
+        UpdateManualLocationVisibility();
         SetPicker(ColorFillPicker, _draft.ColorCapsuleFill, "#080808");
         SetPicker(ColorAccentPicker, _draft.ColorAccent, "#3D9CF0");
         SetPicker(ColorTextPrimaryPicker, _draft.ColorTextPrimary, "#FFFFFF");
         SetPicker(ColorTextSecondaryPicker, _draft.ColorTextSecondary, "#C8C8CC");
         FontFamilyBox.SelectionChanged += (_, _) => UpdatePreview();
+        UpdatePreview();
+        }
+        finally { _loadingUi = false; }
+    }
+
+    private void SelectCityPreset(string? name)
+    {
+        var n = (name ?? "").Trim();
+        var found = false;
+        for (var i = 0; i < WeatherCityPresetBox.ItemCount; i++)
+        {
+            if (WeatherCityPresetBox.Items[i] is ComboBoxItem item &&
+                string.Equals(item.Tag?.ToString(), n, StringComparison.OrdinalIgnoreCase))
+            {
+                WeatherCityPresetBox.SelectedIndex = i;
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            SelectByTag(WeatherCityPresetBox, "__custom");
+    }
+
+    private void UpdateManualLocationVisibility()
+    {
+        var manual = string.Equals(SelectedTag(WeatherLocationModeBox), "Manual", StringComparison.OrdinalIgnoreCase);
+        ManualLocationPanel.IsVisible = manual;
+    }
+
+    private void OnWeatherLocationModeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingUi) return;
+        UpdateManualLocationVisibility();
+    }
+
+    private void OnWeatherCityPresetChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingUi) return;
+        var tag = SelectedTag(WeatherCityPresetBox);
+        if (string.IsNullOrEmpty(tag) || tag == "__custom") return;
+        WeatherLocationNameBox.Text = tag;
+        var city = WeatherLocationPresets.FindByName(tag);
+        if (city is not null)
+        {
+            LatitudeBox.Value = (decimal)city.Lat;
+            LongitudeBox.Value = (decimal)city.Lon;
+        }
+    }
+
+    private void OnThemePresetChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingUi) return;
+        if (!Enum.TryParse<ThemePreset>(SelectedTag(ThemePresetBox), true, out var preset)) return;
+        if (preset == ThemePreset.Custom) return;
+        // Apply stock bundle into draft UI controls immediately
+        var tmp = new AppSettings();
+        _draft.CopyTo(tmp);
+        ThemePresets.Apply(preset, tmp);
+        PushThemedFieldsToUi(tmp);
+    }
+
+    private void OnGoCustomTheme(object? sender, RoutedEventArgs e)
+    {
+        SelectByTag(ThemePresetBox, nameof(ThemePreset.Custom));
+    }
+
+    private void PushThemedFieldsToUi(AppSettings s)
+    {
+        SetPicker(ColorFillPicker, s.ColorCapsuleFill, "#080808");
+        SetPicker(ColorAccentPicker, s.ColorAccent, "#3D9CF0");
+        SetPicker(ColorTextPrimaryPicker, s.ColorTextPrimary, "#FFFFFF");
+        SetPicker(ColorTextSecondaryPicker, s.ColorTextSecondary, "#C8C8CC");
+        SelectByTag(FontFamilyBox, s.FontFamily);
+        FontSizeSlider.Value = Math.Clamp(s.FontSize, 10, 18);
+        FontSizeLabel.Text = $"{(int)FontSizeSlider.Value}";
+        SelectByTag(IconPackBox, s.IconPack);
+        SelectByTag(AnimSpeedBox, s.AnimationSpeed.ToString());
+        SelectByTag(AnimMorphInflateBox, s.AnimMorphInflate.ToString());
+        SelectByTag(AnimMorphCollapseBox, s.AnimMorphCollapse.ToString());
+        SelectByTag(AppearStyleBox, s.AppearStyle.ToString());
+        SelectByTag(DismissStyleBox, s.DismissStyle.ToString());
+        SelectByTag(DateFormatBox, s.DateFormat.ToString());
+        SelectByTag(SoundPackBox, s.SoundPack.ToString());
         UpdatePreview();
     }
 
@@ -272,12 +367,30 @@ public partial class SettingsWindow : Window
         _draft.AnimPulseEnabled = AnimPulseEnabledBox.IsChecked == true;
         _draft.AnimBreathEnabled = AnimBreathEnabledBox.IsChecked == true;
 
+        if (Enum.TryParse<DateFormat>(SelectedTag(DateFormatBox), true, out var df))
+            _draft.DateFormat = df;
+        if (Enum.TryParse<ThemePreset>(SelectedTag(ThemePresetBox), true, out var tp))
+            _draft.ThemePreset = tp;
+        if (Enum.TryParse<WeatherLocationMode>(SelectedTag(WeatherLocationModeBox), true, out var wlm))
+            _draft.WeatherLocationMode = wlm;
+        _draft.WeatherLocationName = string.IsNullOrWhiteSpace(WeatherLocationNameBox.Text)
+            ? "Москва"
+            : WeatherLocationNameBox.Text.Trim();
+        _draft.Latitude = (double)(LatitudeBox.Value ?? 55.75m);
+        _draft.Longitude = (double)(LongitudeBox.Value ?? 37.62m);
+
         _draft.ColorCapsuleFill = AppSettings.NormalizeHex(ColorToHex(ColorFillPicker.Color), "#080808");
         _draft.ColorAccent = AppSettings.NormalizeHex(ColorToHex(ColorAccentPicker.Color), "#3D9CF0");
         _draft.ColorTextPrimary = AppSettings.NormalizeHex(ColorToHex(ColorTextPrimaryPicker.Color), "#FFFFFF");
         _draft.ColorTextSecondary = AppSettings.NormalizeHex(ColorToHex(ColorTextSecondaryPicker.Color), "#C8C8CC");
         _draft.IconPack = IconPackService.NormalizePack(SelectedTag(IconPackBox));
         _draft.FontFamily = AppSettings.NormalizeFontFamily(SelectedTag(FontFamilyBox));
+
+        // Stock theme selected but UI diverged → Custom; else keep stock
+        ThemePresets.AutodetectCustom(_draft);
+        // If still stock, re-apply bundle so Apply is deterministic
+        if (_draft.ThemePreset != ThemePreset.Custom)
+            ThemePresets.Apply(_draft.ThemePreset, _draft);
     }
 
     private void OnApply(object? sender, RoutedEventArgs e)

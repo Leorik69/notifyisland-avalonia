@@ -57,6 +57,21 @@ public sealed class AppSettings
     public double Latitude { get; set; } = 55.75;
     public double Longitude { get; set; } = 37.62;
 
+    /// <summary>Windows system weather vs manual city label/coords.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public WeatherLocationMode WeatherLocationMode { get; set; } = WeatherLocationMode.Windows;
+
+    /// <summary>Display name when Manual (e.g. «Москва»). Shown next to temp / expanded weather.</summary>
+    public string WeatherLocationName { get; set; } = "Москва";
+
+    /// <summary>Collapsed-row date chip format. Default DayMonth («24 сен»).</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public DateFormat DateFormat { get; set; } = DateFormat.DayMonth;
+
+    /// <summary>Stock theme or Custom. Stock Apply overwrites palette/font/anim/icons/date.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public ThemePreset ThemePreset { get; set; } = ThemePreset.Custom;
+
     /// <summary>Weather chip relative to clock in collapsed layout.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public WeatherSide WeatherSide { get; set; } = WeatherSide.Right;
@@ -228,6 +243,10 @@ public sealed class AppSettings
         target.WeatherEnabled = WeatherEnabled;
         target.Latitude = Latitude;
         target.Longitude = Longitude;
+        target.WeatherLocationMode = WeatherLocationMode;
+        target.WeatherLocationName = string.IsNullOrWhiteSpace(WeatherLocationName) ? "Москва" : WeatherLocationName.Trim();
+        target.DateFormat = DateFormat;
+        target.ThemePreset = ThemePreset;
         target.WeatherSide = WeatherSide;
         target.ZOrderMode = ZOrderMode;
         target.Edge = Edge;
@@ -275,6 +294,8 @@ public sealed class AppSettings
     {
         // Drag-to-reposition removed: never engage regardless of persisted JSON.
         AllowDrag = false;
+        if (string.IsNullOrWhiteSpace(WeatherLocationName)) WeatherLocationName = "Москва";
+        else WeatherLocationName = WeatherLocationName.Trim();
         ColorCapsuleFill = NormalizeHex(ColorCapsuleFill, "#080808");
         ColorAccent = NormalizeHex(ColorAccent, "#3D9CF0");
         ColorTextPrimary = NormalizeHex(ColorTextPrimary, "#FFFFFF");

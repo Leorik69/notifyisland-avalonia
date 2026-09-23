@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="NotifyIsland.OverlayWindow"
         Title="NotifyIsland"
-        Width="140" Height="30"
+        Width="170" Height="30"
         CanResize="False"
         ShowInTaskbar="False"
         Topmost="True"
@@ -13,7 +13,7 @@
         Background="Transparent"
         WindowStartupLocation="Manual">
   <Border x:Name="Pill"
-          Width="140" Height="30"
+          Width="170" Height="30"
           CornerRadius="15"
           Background="#080808"
           BorderBrush="#28FFFFFF"
@@ -23,13 +23,12 @@
           ClipToBounds="False"
           RenderTransformOrigin="50%,50%">
     <Grid>
-      <!-- Collapsed: clock icon + time + optional weather + unread dot -->
+      <!-- Collapsed: time + optional date + optional weather + unread dot (no clock icon) -->
       <StackPanel x:Name="CollapsedRow"
                   Orientation="Horizontal"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   Spacing="6">
-        <Viewbox x:Name="ClockIconHost" Width="12" Height="12" VerticalAlignment="Center" />
         <TextBlock x:Name="ClockText"
                    VerticalAlignment="Center"
                    FontFamily="Segoe UI Variable, Inter, Segoe UI"
@@ -37,6 +36,13 @@
                    FontWeight="SemiBold"
                    Foreground="#FFFFFF"
                    Text="00:00" />
+        <TextBlock x:Name="DateText"
+                   VerticalAlignment="Center"
+                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                   FontSize="11"
+                   FontWeight="Medium"
+                   Foreground="#C8C8CC"
+                   Text="24 сен" />
         <StackPanel x:Name="MinimalWeather"
                     Orientation="Horizontal"
                     Spacing="4"

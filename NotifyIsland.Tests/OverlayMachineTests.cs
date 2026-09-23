@@ -208,7 +208,7 @@ public class OverlayMachineTests
         Assert.True(OverlayTokens.MorphMs > 0);
         Assert.Equal("#080808", OverlayTokens.FillHex);
         Assert.Equal("#3D9CF0", OverlayTokens.AccentHex);
-        Assert.True(OverlayTokens.CollapsedW <= 160);
+        Assert.True(OverlayTokens.CollapsedW <= 200);
         Assert.True(OverlayTokens.CollapsedH <= 30);
         Assert.Equal(48, OverlayTokens.SwipeFirePx);
         Assert.Equal(12, OverlayTokens.SwipeClickMaxPx);

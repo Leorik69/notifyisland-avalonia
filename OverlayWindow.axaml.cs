@@ -18,7 +18,7 @@ public partial class OverlayWindow : Window
 {
     private readonly OverlayMachine _machine = new();
     private readonly AppSettings _settings;
-    private readonly WindowsWeatherSource _weather;
+    private WindowsWeatherSource _weather;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(1.8) };
@@ -184,8 +184,6 @@ public partial class OverlayWindow : Window
 
     private void SeedIcons()
     {
-        ClockIconHost.Child = IconPackService.Create(_settings.IconPack, "clock", CurrentIconCollapsed(),
-            new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex)));
         SetKindIcon(OverlayKind.Idle);
         SetWeatherIcons(WeatherCodes.IconKey(_machine.LastWeather.WeatherCode ?? 0), animate: false);
         ApplyTypography();
@@ -198,6 +196,8 @@ public partial class OverlayWindow : Window
         var family = IslandFonts.Resolve(_settings.FontFamily);
         ClockText.FontSize = fs;
         ClockText.FontFamily = family;
+        DateText.FontSize = Math.Max(10, fs - 1);
+        DateText.FontFamily = family;
         WeatherTempText.FontSize = fs;
         WeatherTempText.FontFamily = family;
         OverlayTitle.FontSize = fs;
@@ -213,8 +213,6 @@ public partial class OverlayWindow : Window
     {
         var collapsed = OverlayTokens.IconDip(fontSize, OverlayTokens.IconFontFactorCollapsed);
         var kind = OverlayTokens.IconDip(fontSize, OverlayTokens.IconFontFactorKind);
-        ClockIconHost.Width = collapsed;
-        ClockIconHost.Height = collapsed;
         WeatherIconA.Width = collapsed;
         WeatherIconA.Height = collapsed;
         WeatherIconB.Width = collapsed;
@@ -428,6 +426,7 @@ public partial class OverlayWindow : Window
             (byte)Math.Min(255, accent.B + 20));
 
         ClockText.Foreground = new SolidColorBrush(text);
+        DateText.Foreground = new SolidColorBrush(textSec);
         WeatherTempText.Foreground = new SolidColorBrush(textSec);
         OverlayTitle.Foreground = new SolidColorBrush(text);
         BadgeText.Foreground = new SolidColorBrush(Colors.White);
@@ -440,8 +439,6 @@ public partial class OverlayWindow : Window
         AppIcon.Background = new SolidColorBrush(accent);
         OverlayProgress.Foreground = new SolidColorBrush(accent);
         MediaPlayGlyph.Foreground = new SolidColorBrush(accent);
-        ClockIconHost.Child = IconPackService.Create(_settings.IconPack, "clock", CurrentIconCollapsed(),
-            new SolidColorBrush(textSec));
         // Soft “dot matrix” unread: slightly squarer corners + tighter glow
         UnreadDot.CornerRadius = new CornerRadius(2);
         UnreadDot.Width = 6;
@@ -458,24 +455,24 @@ public partial class OverlayWindow : Window
 
     private void ApplyWeatherSide()
     {
-        // Reorder: clock block vs weather — Left = weather before clock
+        // Reorder: clock+date vs weather — Left = weather before clock
         var row = CollapsedRow;
-        var clockIcon = ClockIconHost;
         var clockText = ClockText;
+        var dateText = DateText;
         var weather = MinimalWeather;
         var dot = UnreadDot;
         row.Children.Clear();
         if (_settings.WeatherSide == WeatherSide.Left)
         {
             row.Children.Add(weather);
-            row.Children.Add(clockIcon);
             row.Children.Add(clockText);
+            row.Children.Add(dateText);
             row.Children.Add(dot);
         }
         else
         {
-            row.Children.Add(clockIcon);
             row.Children.Add(clockText);
+            row.Children.Add(dateText);
             row.Children.Add(weather);
             row.Children.Add(dot);
         }
@@ -628,10 +625,13 @@ public partial class OverlayWindow : Window
     {
         draft.CopyTo(_settings);
         _settings.Normalize();
+        ThemePresets.AutodetectCustom(_settings);
         _settings.Save();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
+        _weather = new WindowsWeatherSource(_settings.Latitude, _settings.Longitude);
         if (!_settings.WeatherEnabled && _machine.Snapshot().Kind == OverlayKind.Weather)
             _machine.Dispatch(OverlayCommand.Collapse);
+        TickClock();
         ApplyWeatherSide();
         ApplyOrientationLayout();
         ApplyPalette();
@@ -785,7 +785,19 @@ public partial class OverlayWindow : Window
 
     private void TickClock()
     {
-        ClockText.Text = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
+        var now = DateTime.Now;
+        ClockText.Text = now.ToString("HH:mm", CultureInfo.InvariantCulture);
+        var dateFmt = _settings.DateFormat;
+        if (dateFmt == DateFormat.Off)
+        {
+            DateText.IsVisible = false;
+            DateText.Text = "";
+        }
+        else
+        {
+            DateText.Text = DateFormatHelper.Format(now, dateFmt);
+            DateText.IsVisible = true;
+        }
         var kind = _machine.Snapshot().Kind;
         if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
             CollapsedRow.IsVisible = true;
@@ -1125,6 +1137,14 @@ public partial class OverlayWindow : Window
             var wx = snap.LastWeather;
             WeatherTempText.Text = WeatherCodes.FormatMinimalTemp(wx.TemperatureC ?? 18);
             SetWeatherIcons(WeatherCodes.IconKey(wx.WeatherCode ?? 0), animate: true);
+            if (_settings.WeatherLocationMode == WeatherLocationMode.Manual
+                && !string.IsNullOrWhiteSpace(_settings.WeatherLocationName))
+            {
+                ToolTip.SetTip(MinimalWeather,
+                    $"{_settings.WeatherLocationName.Trim()} · температура — из Windows; название локации — выбранное");
+            }
+            else
+                ToolTip.SetTip(MinimalWeather, "Погода Windows");
         }
 
         var title = string.IsNullOrWhiteSpace(p.Title) ? Fallback(kind) : p.Title;
@@ -1135,7 +1155,13 @@ public partial class OverlayWindow : Window
                 ? WeatherCodes.FormatExpanded(p.TemperatureC ?? snap.LastWeather.TemperatureC ?? 18,
                     p.WeatherCode ?? snap.LastWeather.WeatherCode ?? 0, p.PrecipProb ?? snap.LastWeather.PrecipProb)
                 : p.Body;
-            sub = "";
+            if (_settings.WeatherLocationMode == WeatherLocationMode.Manual
+                && !string.IsNullOrWhiteSpace(_settings.WeatherLocationName))
+            {
+                sub = _settings.WeatherLocationName.Trim();
+            }
+            else
+                sub = "";
         }
         else if (kind == OverlayKind.Timer)
         {

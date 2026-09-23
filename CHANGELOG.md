@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.0 — date chip, weather location, stock themes
+
+### Added
+- **Date next to time** in collapsed row (`DateFormat`: Off / DayMonth / WeekdayShort / WeekdayDay / Numeric / FullShort). Default **DayMonth** («24 сен», ru-RU). Settings → **Островок**.
+- **Weather location**: `WeatherLocationMode` Windows | Manual + `WeatherLocationName` + lat/lon; city presets (Москва, СПб, …). Settings → **Погода**. Manual shows chosen label on expanded weather / tooltip; temperature remains Windows-primary (honest note in UI). **No Open-Meteo.**
+- **Theme presets** (`ThemePreset`): **NothingDark**, **AppleQuiet**, **Ocean**, **Custom**. Settings → **Тема**. Stock Apply overwrites palette, font, anim speeds/styles, icon pack, date format, sound pack. Divergent save → auto **Custom**; button «Перейти в кастом».
+
+### Changed
+- Removed clipped **clock icon** (`ClockIconHost`) from collapsed island — frees space for date.
+- Collapsed widths: `CollapsedW` **170**, `CollapsedWeatherW` **240** (icon gone + date chip).
+- Version **1.6.0**. Docs: `ISLAND_GUIDELINES` themes + date + location.
+
+### Note
+- Weather stays Windows-primary. No proprietary asset rips.
+
+
 ## 1.5.9 — Meteocons weather icon packs (4 styles)
 
 ### Added

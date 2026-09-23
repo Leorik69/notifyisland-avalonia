@@ -38,6 +38,10 @@ public class AppSettingsTests
         Assert.Equal(NotifyDismissStyle.Ragged, s.DismissStyle);
         Assert.True(s.AnimPulseEnabled);
         Assert.True(s.AnimBreathEnabled);
+        Assert.Equal(DateFormat.DayMonth, s.DateFormat);
+        Assert.Equal(ThemePreset.Custom, s.ThemePreset);
+        Assert.Equal(WeatherLocationMode.Windows, s.WeatherLocationMode);
+        Assert.Equal("Москва", s.WeatherLocationName);
     }
 
     [Fact]
@@ -82,6 +86,10 @@ public class AppSettingsTests
             AnimBreathEnabled = true,
             AppearStyle = NotifyAppearStyle.Pop,
             DismissStyle = NotifyDismissStyle.Glitch,
+            DateFormat = DateFormat.Numeric,
+            ThemePreset = ThemePreset.Ocean,
+            WeatherLocationMode = WeatherLocationMode.Manual,
+            WeatherLocationName = "Санкт-Петербург",
             SettingsWindowX = 100,
             SettingsWindowY = 200,
             SettingsWindowWidth = 500,
@@ -127,6 +135,10 @@ public class AppSettingsTests
         Assert.True(back.AnimBreathEnabled);
         Assert.Equal(NotifyAppearStyle.Pop, back.AppearStyle);
         Assert.Equal(NotifyDismissStyle.Glitch, back.DismissStyle);
+        Assert.Equal(DateFormat.Numeric, back.DateFormat);
+        Assert.Equal(ThemePreset.Ocean, back.ThemePreset);
+        Assert.Equal(WeatherLocationMode.Manual, back.WeatherLocationMode);
+        Assert.Equal("Санкт-Петербург", back.WeatherLocationName);
         Assert.False(back.AllowDrag);
         Assert.Equal(100, back.SettingsWindowX);
         Assert.Equal(200, back.SettingsWindowY);
@@ -183,6 +195,10 @@ public class AppSettingsTests
             AnimPulseEnabled = false,
             AppearStyle = NotifyAppearStyle.SlideDown,
             DismissStyle = NotifyDismissStyle.SlideUp,
+            DateFormat = DateFormat.FullShort,
+            ThemePreset = ThemePreset.NothingDark,
+            WeatherLocationMode = WeatherLocationMode.Manual,
+            WeatherLocationName = "Казань",
             AllowDrag = true
         };
         var b = new AppSettings();
@@ -201,6 +217,10 @@ public class AppSettingsTests
         Assert.False(b.AnimPulseEnabled);
         Assert.Equal(NotifyAppearStyle.SlideDown, b.AppearStyle);
         Assert.Equal(NotifyDismissStyle.SlideUp, b.DismissStyle);
+        Assert.Equal(DateFormat.FullShort, b.DateFormat);
+        Assert.Equal(ThemePreset.NothingDark, b.ThemePreset);
+        Assert.Equal(WeatherLocationMode.Manual, b.WeatherLocationMode);
+        Assert.Equal("Казань", b.WeatherLocationName);
         Assert.False(b.AllowDrag);
     }
 
