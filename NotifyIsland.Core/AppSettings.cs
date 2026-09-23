@@ -37,6 +37,19 @@ public enum IslandOrientation
     Vertical
 }
 
+public enum SoundPack
+{
+    /// <summary>Original soft Glyph-like click pack under Assets/Sounds/nothing/.</summary>
+    Nothing,
+    /// <summary>Original soft iOS-like tap pack under Assets/Sounds/ios/.</summary>
+    Ios,
+    /// <summary>SystemSounds / MessageBeep (optional system/ WAV fallback).</summary>
+    System,
+    /// <summary>No UI sounds.</summary>
+    Off
+}
+
+
 /// <summary>JSON settings under %LOCALAPPDATA%/NotifyIsland/settings.json.</summary>
 public sealed class AppSettings
 {
@@ -72,14 +85,26 @@ public sealed class AppSettings
 
     public bool SoundEnabled { get; set; } = true;
 
+    /// <summary>WAV pack or System/Off. Default Nothing (original inspired tones).</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public SoundPack SoundPack { get; set; } = SoundPack.Nothing;
+
     /// <summary>0.0–1.0 master volume for island UI sounds.</summary>
     public double SoundVolume { get; set; } = 0.35;
+
+    /// <summary>Per-event multipliers 0–1 (applied on top of SoundVolume).</summary>
+    public double SoundVolNotify { get; set; } = 1.0;
+    public double SoundVolExpand { get; set; } = 0.85;
+    public double SoundVolCollapse { get; set; } = 0.75;
+    public double SoundVolSwipe { get; set; } = 0.7;
+    public double SoundVolError { get; set; } = 1.0;
+    public double SoundVolHover { get; set; } = 0.35;
 
     /// <summary>Persisted Settings window geometry (separate from island OffsetX/Y).</summary>
     public int? SettingsWindowX { get; set; }
     public int? SettingsWindowY { get; set; }
     public double SettingsWindowWidth { get; set; } = 460;
-    public double SettingsWindowHeight { get; set; } = 640;
+    public double SettingsWindowHeight { get; set; } = 720;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -152,7 +177,14 @@ public sealed class AppSettings
         target.IslandVisible = IslandVisible;
         target.Opacity = Math.Clamp(Opacity, 0.35, 1.0);
         target.SoundEnabled = SoundEnabled;
+        target.SoundPack = SoundPack;
         target.SoundVolume = Math.Clamp(SoundVolume, 0.0, 1.0);
+        target.SoundVolNotify = Math.Clamp(SoundVolNotify, 0.0, 1.0);
+        target.SoundVolExpand = Math.Clamp(SoundVolExpand, 0.0, 1.0);
+        target.SoundVolCollapse = Math.Clamp(SoundVolCollapse, 0.0, 1.0);
+        target.SoundVolSwipe = Math.Clamp(SoundVolSwipe, 0.0, 1.0);
+        target.SoundVolError = Math.Clamp(SoundVolError, 0.0, 1.0);
+        target.SoundVolHover = Math.Clamp(SoundVolHover, 0.0, 1.0);
         target.SettingsWindowX = SettingsWindowX;
         target.SettingsWindowY = SettingsWindowY;
         target.SettingsWindowWidth = SettingsWindowWidth;
@@ -164,7 +196,13 @@ public sealed class AppSettings
     {
         Opacity = Math.Clamp(Opacity <= 0 ? 1.0 : Opacity, 0.35, 1.0);
         SoundVolume = Math.Clamp(SoundVolume < 0 ? 0.35 : SoundVolume, 0.0, 1.0);
+        SoundVolNotify = Math.Clamp(SoundVolNotify < 0 ? 1.0 : SoundVolNotify, 0.0, 1.0);
+        SoundVolExpand = Math.Clamp(SoundVolExpand < 0 ? 0.85 : SoundVolExpand, 0.0, 1.0);
+        SoundVolCollapse = Math.Clamp(SoundVolCollapse < 0 ? 0.75 : SoundVolCollapse, 0.0, 1.0);
+        SoundVolSwipe = Math.Clamp(SoundVolSwipe < 0 ? 0.7 : SoundVolSwipe, 0.0, 1.0);
+        SoundVolError = Math.Clamp(SoundVolError < 0 ? 1.0 : SoundVolError, 0.0, 1.0);
+        SoundVolHover = Math.Clamp(SoundVolHover < 0 ? 0.35 : SoundVolHover, 0.0, 1.0);
         if (SettingsWindowWidth < 360) SettingsWindowWidth = 460;
-        if (SettingsWindowHeight < 400) SettingsWindowHeight = 640;
+        if (SettingsWindowHeight < 400) SettingsWindowHeight = 720;
     }
 }

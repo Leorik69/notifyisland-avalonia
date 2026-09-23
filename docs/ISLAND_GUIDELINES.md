@@ -157,7 +157,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 - **Settings window** (отдельный Window, single-instance): placement, z-order, opacity, sounds, orientation, drag/XY
 - Z-order Topmost / Desktop / BehindApps (Win32 SetWindowPos)
 - Drag hold&gt;200 мс + Edge + OffsetX/Y
-- Opacity 0.35–1.0 на fill; SoundEnabled + SoundVolume
+- Opacity 0.35–1.0 на fill; SoundPack (Nothing|Ios|System|Off) + SoundEnabled + master/per-event volumes
 - Demo cycle (`--demo` / F9); Click → Action Center
 - Unit-тесты FSM + AppSettings + IslandLayout + python FSM script
 
@@ -179,7 +179,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | Swipe cycle | Xiaomi multi-island |
 
 ### Добавлено в этом workstream
-Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, Opacity, Sounds.
+Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, Opacity, Sound packs (Nothing/iOS/System/Off).
 
 ### Добавить позже
 | Что | Обоснование |
@@ -226,7 +226,7 @@ Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, O
   4. Ориентация: Auto | Horizontal | Vertical
   5. Z-order: Topmost / Desktop / BehindApps (Win11: Desktop/BehindApps best-effort)
   6. Прозрачность фона капсулы (`Opacity` 0.35–1.0) — только fill alpha; border/text читаемые; z-order не меняет
-  7. Звуки: `SoundEnabled` + `SoundVolume` 0–1 (SystemSounds/MessageBeep; не на clock/hover)
+  7. Звуки: pack `Nothing`|`Ios`|`System`|`Off`, `SoundEnabled`, master `SoundVolume` 0–1, per-event `SoundVol*` (WAV из `Assets/Sounds/{pack}/`; System → SystemSounds; hover с debounce; не на clock)
   8. Заметка про outline IslandIcons
 
 ### Drag
@@ -235,6 +235,13 @@ Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, O
 
 ### Persist
 `%LOCALAPPDATA%/NotifyIsland/settings.json` — все поля `AppSettings` (Weather*, Edge, Offsets, Orientation, ZOrder, Opacity, Sound*, IslandVisible, SettingsWindow*).
+
+### Sound packs
+- Folders: `Assets/Sounds/nothing/`, `ios/`, optional `system/` — each has `notify|expand|collapse|swipe|error|hover.wav` (&lt;300 ms).
+- **Legal:** original synthesized tones *inspired by* soft Glyph-like clicks / soft iOS-like taps — **not** official Nothing OS or Apple iOS system sounds. See `Assets/Sounds/README.md`.
+- Runtime: `IslandSounds` loads from `AppContext.BaseDirectory/Assets/Sounds/{pack}/` via SoundPlayer / winmm; `System` uses SystemSounds; `Off` silent.
+- Settings: pack combo + master volume + per-event volumes. Triggers: notify appear, morph expand/collapse, swipe commit, error, optional hover (debounced).
+
 
 
 ---
@@ -259,7 +266,7 @@ Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, O
 - [ ] CONTEXT.md не дублирует числа — ссылается сюда.
 - [ ] Settings — отдельный Window; tray меню только quick actions.
 - [ ] Opacity только fill alpha; z-order не ломается.
-- [ ] Звуки не на clock/hover; mute через SoundEnabled/Volume.
+- [ ] Звуки: pack WAV original (не proprietary Nothing/Apple); mute через Off / SoundEnabled / Volume; hover только debounce.
 
 ---
 

@@ -150,6 +150,7 @@ public partial class OverlayWindow : Window
         {
             Pill.BorderBrush = new SolidColorBrush(Color.Parse("#55FFFFFF"));
             Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, Math.Min(1.0, _idleFillA + 0.08)));
+            IslandSounds.Play(IslandSoundKind.Hover, _settings);
         };
         Pill.PointerExited += (_, _) =>
         {
@@ -446,10 +447,10 @@ public partial class OverlayWindow : Window
             IslandSounds.Play(IslandSoundKind.Notify, _settings);
         else if (after == OverlayKind.Error)
             IslandSounds.Play(IslandSoundKind.Error, _settings);
-        else if (wasCollapsed != nowCollapsed ||
-                 (wasCollapsed && !nowCollapsed) ||
-                 (!wasCollapsed && nowCollapsed))
-            IslandSounds.Play(IslandSoundKind.Morph, _settings);
+        else if (wasCollapsed && !nowCollapsed)
+            IslandSounds.Play(IslandSoundKind.Expand, _settings);
+        else if (!wasCollapsed && nowCollapsed)
+            IslandSounds.Play(IslandSoundKind.Collapse, _settings);
         _lastKind = after;
     }
 

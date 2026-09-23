@@ -26,23 +26,36 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         RestoreGeometry();
         LoadUi();
-        OpacitySlider.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == Slider.ValueProperty) OpacityLabel.Text = $"{(int)OpacitySlider.Value}%";
-        };
-        VolumeSlider.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == Slider.ValueProperty) VolumeLabel.Text = $"{(int)VolumeSlider.Value}%";
-        };
+        WireVolumeLabels();
         Closing += OnClosing;
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
+    private void WireVolumeLabels()
+    {
+        BindPct(OpacitySlider, OpacityLabel, v => $"{(int)v}%");
+        BindPct(VolumeSlider, VolumeLabel, v => $"{(int)v}%");
+        BindPct(VolNotifySlider, VolNotifyLabel, v => $"{(int)v}%");
+        BindPct(VolExpandSlider, VolExpandLabel, v => $"{(int)v}%");
+        BindPct(VolCollapseSlider, VolCollapseLabel, v => $"{(int)v}%");
+        BindPct(VolSwipeSlider, VolSwipeLabel, v => $"{(int)v}%");
+        BindPct(VolErrorSlider, VolErrorLabel, v => $"{(int)v}%");
+        BindPct(VolHoverSlider, VolHoverLabel, v => $"{(int)v}%");
+    }
+
+    private static void BindPct(Slider slider, TextBlock label, Func<double, string> fmt)
+    {
+        slider.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == Slider.ValueProperty) label.Text = fmt(slider.Value);
+        };
+    }
+
     private void RestoreGeometry()
     {
         Width = Math.Clamp(_draft.SettingsWindowWidth, 400, 1200);
-        Height = Math.Clamp(_draft.SettingsWindowHeight, 480, 1200);
+        Height = Math.Clamp(_draft.SettingsWindowHeight, 520, 1200);
         if (_draft.SettingsWindowX is int x && _draft.SettingsWindowY is int y)
             Position = new PixelPoint(x, y);
         else
@@ -55,7 +68,6 @@ public partial class SettingsWindow : Window
         _live.SettingsWindowHeight = Height;
         _live.SettingsWindowX = Position.X;
         _live.SettingsWindowY = Position.Y;
-        // also keep draft in sync for CopyTo paths
         _draft.SettingsWindowWidth = Width;
         _draft.SettingsWindowHeight = Height;
         _draft.SettingsWindowX = Position.X;
@@ -65,7 +77,6 @@ public partial class SettingsWindow : Window
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
         PersistGeometry();
-        // Save geometry even on Cancel so window place is sticky
         _live.Save();
     }
 
@@ -79,12 +90,25 @@ public partial class SettingsWindow : Window
         OffsetYBox.Value = _draft.OffsetY;
         OpacitySlider.Value = Math.Round(_draft.Opacity * 100);
         VolumeSlider.Value = Math.Round(_draft.SoundVolume * 100);
+        VolNotifySlider.Value = Math.Round(_draft.SoundVolNotify * 100);
+        VolExpandSlider.Value = Math.Round(_draft.SoundVolExpand * 100);
+        VolCollapseSlider.Value = Math.Round(_draft.SoundVolCollapse * 100);
+        VolSwipeSlider.Value = Math.Round(_draft.SoundVolSwipe * 100);
+        VolErrorSlider.Value = Math.Round(_draft.SoundVolError * 100);
+        VolHoverSlider.Value = Math.Round(_draft.SoundVolHover * 100);
         OpacityLabel.Text = $"{(int)OpacitySlider.Value}%";
         VolumeLabel.Text = $"{(int)VolumeSlider.Value}%";
+        VolNotifyLabel.Text = $"{(int)VolNotifySlider.Value}%";
+        VolExpandLabel.Text = $"{(int)VolExpandSlider.Value}%";
+        VolCollapseLabel.Text = $"{(int)VolCollapseSlider.Value}%";
+        VolSwipeLabel.Text = $"{(int)VolSwipeSlider.Value}%";
+        VolErrorLabel.Text = $"{(int)VolErrorSlider.Value}%";
+        VolHoverLabel.Text = $"{(int)VolHoverSlider.Value}%";
         SelectByTag(WeatherSideBox, _draft.WeatherSide.ToString());
         SelectByTag(EdgeBox, _draft.Edge.ToString());
         SelectByTag(OrientationBox, _draft.Orientation.ToString());
         SelectByTag(ZOrderBox, _draft.ZOrderMode.ToString());
+        SelectByTag(SoundPackBox, _draft.SoundPack.ToString());
     }
 
     private static void SelectByTag(ComboBox box, string tag)
@@ -114,6 +138,12 @@ public partial class SettingsWindow : Window
         _draft.OffsetY = (int)(OffsetYBox.Value ?? 0);
         _draft.Opacity = Math.Clamp(OpacitySlider.Value / 100.0, 0.35, 1.0);
         _draft.SoundVolume = Math.Clamp(VolumeSlider.Value / 100.0, 0.0, 1.0);
+        _draft.SoundVolNotify = Math.Clamp(VolNotifySlider.Value / 100.0, 0.0, 1.0);
+        _draft.SoundVolExpand = Math.Clamp(VolExpandSlider.Value / 100.0, 0.0, 1.0);
+        _draft.SoundVolCollapse = Math.Clamp(VolCollapseSlider.Value / 100.0, 0.0, 1.0);
+        _draft.SoundVolSwipe = Math.Clamp(VolSwipeSlider.Value / 100.0, 0.0, 1.0);
+        _draft.SoundVolError = Math.Clamp(VolErrorSlider.Value / 100.0, 0.0, 1.0);
+        _draft.SoundVolHover = Math.Clamp(VolHoverSlider.Value / 100.0, 0.0, 1.0);
         PersistGeometry();
 
         if (Enum.TryParse<WeatherSide>(SelectedTag(WeatherSideBox), true, out var ws))
@@ -124,6 +154,8 @@ public partial class SettingsWindow : Window
             _draft.Orientation = ori;
         if (Enum.TryParse<ZOrderMode>(SelectedTag(ZOrderBox), true, out var z))
             _draft.ZOrderMode = z;
+        if (Enum.TryParse<SoundPack>(SelectedTag(SoundPackBox), true, out var pack))
+            _draft.SoundPack = pack;
     }
 
     private void OnApply(object? sender, RoutedEventArgs e)

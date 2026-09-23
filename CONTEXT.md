@@ -25,7 +25,7 @@
 | Settings UI | `SettingsWindow.axaml(.cs)` — отдельный Window |
 | Tray | `TrayService.cs` + `Assets/tray*.png` |
 | Z-order | `Win32Overlay.ApplyZOrder` |
-| Sounds | `IslandSounds.cs` (SystemSounds / MessageBeep) |
+| Sounds | `IslandSounds.cs` + `Assets/Sounds/{nothing,ios,system}/` (packs; SystemSounds fallback) |
 | Как собирать | этот файл + `README.md` |
 
 **Не дублировать** тайминги и правила в README/комментах — править только GUIDELINES + OverlayTokens.
@@ -46,7 +46,7 @@ NotifyIsland.Core/AppSettings.cs / IslandLayout.cs
 SettingsWindow.axaml(.cs)       # полное окно настроек
 TrayService.cs / IslandSounds.cs
 IslandIcons.cs + Assets/tray*.png
-Assets/Icons/README.md
+Assets/Icons/README.md + Assets/Sounds/**
 NotifyIsland.Core/              # OverlayMachine, OverlayTokens, WeatherCodes
 NotifyIsland.Tests/             # unit tests FSM
 docs/ISLAND_GUIDELINES.md       # правила островка

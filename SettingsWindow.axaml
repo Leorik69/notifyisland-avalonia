@@ -2,8 +2,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="NotifyIsland.SettingsWindow"
         Title="Настройки NotifyIsland"
-        Width="460" Height="640"
-        MinWidth="400" MinHeight="480"
+        Width="460" Height="720"
+        MinWidth="400" MinHeight="520"
         CanResize="True"
         WindowStartupLocation="Manual"
         ShowInTaskbar="True"
@@ -70,13 +70,41 @@
 
         <TextBlock Text="Звуки" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,10,0,0"/>
         <CheckBox x:Name="SoundEnabledBox" Content="Звуки островка" Foreground="#FFFFFF"/>
-        <TextBlock Text="Громкость" Foreground="#C8C8CC"/>
+        <TextBlock Text="Пакет звуков" Foreground="#C8C8CC" Margin="0,4,0,0"/>
+        <ComboBox x:Name="SoundPackBox" Width="300">
+          <ComboBoxItem Tag="Nothing" Content="Nothing (мягкие клики)"/>
+          <ComboBoxItem Tag="Ios" Content="iOS (мягкие тапы)"/>
+          <ComboBoxItem Tag="System" Content="Системные (Windows)"/>
+          <ComboBoxItem Tag="Off" Content="Выкл"/>
+        </ComboBox>
+        <TextBlock Text="Общая громкость" Foreground="#C8C8CC" Margin="0,6,0,0"/>
         <DockPanel>
           <TextBlock x:Name="VolumeLabel" DockPanel.Dock="Right" Width="48" Text="35%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
           <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="35" TickFrequency="5"/>
         </DockPanel>
+        <TextBlock Text="Громкость по событиям" Foreground="#C8C8CC" Margin="0,6,0,0"/>
+        <Grid ColumnDefinitions="120,* ,48" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,2,0,0">
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="Уведомление" Foreground="#C8C8CC" VerticalAlignment="Center"/>
+          <Slider x:Name="VolNotifySlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="100" Value="100" Margin="8,0"/>
+          <TextBlock x:Name="VolNotifyLabel" Grid.Row="0" Grid.Column="2" Text="100%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="Раскрытие" Foreground="#C8C8CC" VerticalAlignment="Center"/>
+          <Slider x:Name="VolExpandSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="100" Value="85" Margin="8,0"/>
+          <TextBlock x:Name="VolExpandLabel" Grid.Row="1" Grid.Column="2" Text="85%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+          <TextBlock Grid.Row="2" Grid.Column="0" Text="Сворачивание" Foreground="#C8C8CC" VerticalAlignment="Center"/>
+          <Slider x:Name="VolCollapseSlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="100" Value="75" Margin="8,0"/>
+          <TextBlock x:Name="VolCollapseLabel" Grid.Row="2" Grid.Column="2" Text="75%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+          <TextBlock Grid.Row="3" Grid.Column="0" Text="Свайп" Foreground="#C8C8CC" VerticalAlignment="Center"/>
+          <Slider x:Name="VolSwipeSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="100" Value="70" Margin="8,0"/>
+          <TextBlock x:Name="VolSwipeLabel" Grid.Row="3" Grid.Column="2" Text="70%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+          <TextBlock Grid.Row="4" Grid.Column="0" Text="Ошибка" Foreground="#C8C8CC" VerticalAlignment="Center"/>
+          <Slider x:Name="VolErrorSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="100" Value="100" Margin="8,0"/>
+          <TextBlock x:Name="VolErrorLabel" Grid.Row="4" Grid.Column="2" Text="100%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+          <TextBlock Grid.Row="5" Grid.Column="0" Text="Hover" Foreground="#C8C8CC" VerticalAlignment="Center"/>
+          <Slider x:Name="VolHoverSlider" Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="100" Value="35" Margin="8,0"/>
+          <TextBlock x:Name="VolHoverLabel" Grid.Row="5" Grid.Column="2" Text="35%" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+        </Grid>
         <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#888890"
-                   Text="Короткие системные сигналы: уведомление, морф, свайп, ошибка. Не на тик часов и не на hover."/>
+                   Text="Оригинальные короткие WAV (inspired by Glyph/iOS feel, не официальные системные звуки). Пакет System — SystemSounds. Hover с debounce. Не на тик часов."/>
 
         <TextBlock Text="Иконки" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,10,0,0"/>
         <TextBlock TextWrapping="Wrap" Foreground="#C8C8CC" FontSize="12"
