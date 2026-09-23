@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.5.5 — situation-aware island animations
+
+### Added
+- `AnimationSpeed` setting: **Off** | **Slow** (~1.6×) | **Normal** (1×) | **Fast** (~0.55×); default Normal; persisted in `settings.json`.
+- Settings **Вид** tab: ComboBox «Скорость анимаций» (`AnimSpeedBox`).
+- Unread-dot gentle opacity pulse when unread > 0 (Idle/Collapsed).
+- Idle/Collapsed subtle “breathing” scale (±1.2%) on the pill.
+- `AnimationTiming` helper in Core (multipliers + `ScaleMs`); unit tests for Off / Slow / Normal / Fast.
+
+### Changed
+- Morph / icon crossfade / swipe rubber / hover brush durations scale with `AnimationSpeed` via `ApplyAnimationSettings()` (ctor + settings Apply).
+- Off → ~1 ms transitions; pulse and breath disabled.
+- Hover response kept subtle (+0.06 fill alpha).
+
+### Docs
+- `ISLAND_GUIDELINES.md` animation table + settings tab; `ISLAND_PREVIEW.md` animation items.
+
+
 ## 1.5.4 — tabbed Settings window
 
 ### Changed

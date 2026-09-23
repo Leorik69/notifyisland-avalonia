@@ -109,6 +109,7 @@ public partial class SettingsWindow : Window
         SelectByTag(OrientationBox, _draft.Orientation.ToString());
         SelectByTag(ZOrderBox, _draft.ZOrderMode.ToString());
         SelectByTag(SoundPackBox, _draft.SoundPack.ToString());
+        SelectByTag(AnimSpeedBox, _draft.AnimationSpeed.ToString());
     }
 
     private static void SelectByTag(ComboBox box, string tag)
@@ -156,6 +157,8 @@ public partial class SettingsWindow : Window
             _draft.ZOrderMode = z;
         if (Enum.TryParse<SoundPack>(SelectedTag(SoundPackBox), true, out var pack))
             _draft.SoundPack = pack;
+        if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimSpeedBox), true, out var anim))
+            _draft.AnimationSpeed = anim;
     }
 
     private void OnApply(object? sender, RoutedEventArgs e)

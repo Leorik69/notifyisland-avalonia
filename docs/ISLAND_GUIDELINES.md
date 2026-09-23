@@ -54,13 +54,17 @@
 
 ## 2. Правила анимаций NotifyIsland (actionable)
 
-Код: `OverlayTokens.MorphMs`, Avalonia `Transitions` на `Width` / `Pill.Width` / opacity точки / hover brushes / swipe rubber-band / icon crossfade.
+Код: `OverlayTokens.MorphMs`, `AnimationTiming` + `AppSettings.AnimationSpeed`, Avalonia `Transitions` на `Width` / `Pill.Width` / opacity точки / hover brushes / swipe rubber-band / icon crossfade; `ApplyAnimationSettings()` в `OverlayWindow`.
 
-| Переход | Длительность | Easing | Примечание |
+Базовые длительности (**Normal**). Множители: **Slow≈1.6×**, **Normal=1×**, **Fast≈0.55×**, **Off→1 мс** (без pulse/breath).
+
+| Переход | Длительность (Normal) | Easing | Примечание |
 |---|---:|---|---|
-| Width morph (idle ↔ notify/media/weather/…) | **280 мс** | `CubicEaseOut` | только ширина; высота **всегда** `CollapsedH` |
-| Hover border/background | **160 мс** | `CubicEaseInOut` | без scale-прыжков |
-| Unread-dot opacity | **280 мс** | `CubicEaseOut` | 0 ↔ 1 |
+| Width morph (idle ↔ notify/media/weather/…) | **280 мс** | `CubicEaseOut` | только ширина; высота **всегда** `CollapsedH`; soft inflate/collapse |
+| Hover border/background | **160 мс** | `CubicEaseInOut` | лёгкий +0.06 fill alpha; без scale-прыжков |
+| Unread-dot show/hide | **280 мс** | `CubicEaseOut` | 0 ↔ 1 |
+| Unread-dot pulse (unread &gt; 0) | **1600 мс**/цикл | sine | opacity 0.55↔1.0; только Idle/Collapsed; Off выкл |
+| Idle breathing (Idle/Collapsed) | **3200 мс**/цикл | sine | scale ±1.2% на Pill; выкл при active overlay / Anim Off |
 | Notify auto-dismiss | **4000 мс** | — | затем возврат в previous/idle |
 | Demo scene cycle (после первого notify) | **1800 мс** | — | только `--demo` / F9 |
 | Контент-апдейты внутри expanded | ≤ **450 мс** | soft-out | не дольше Apple max 2 с |
@@ -69,8 +73,8 @@
 
 Запрещено:
 - менять высоту капсулы при notify (не «расти вверх»);
-- резкий snap без transition на Width;
-- анимации > 450 мс на обычные UI-переходы (кроме morph 280 и notify hold 4 с);
+- резкий snap без transition на Width (кроме AnimationSpeed=Off);
+- анимации > 450 мс на обычные UI-переходы (кроме morph 280, pulse/breath циклов и notify hold 4 с);
 - сторонние HTTP weather API (Open-Meteo / MSN / etc.) — см. §10.
 
 ---
@@ -157,7 +161,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 - **Settings window** (отдельный Window, single-instance, **TabControl** по категориям): placement, z-order, opacity, sounds, orientation, drag/XY
 - Z-order Topmost / Desktop / BehindApps (Win32 SetWindowPos)
 - Drag hold&gt;200 мс + Edge + OffsetX/Y
-- Opacity 0.35–1.0 на fill; SoundPack (Nothing|Ios|System|Off) + SoundEnabled + master/per-event volumes
+- Opacity 0.35–1.0 на fill; AnimationSpeed (Slow|Normal|Fast|Off) с pulse/breath; SoundPack (Nothing|Ios|System|Off) + SoundEnabled + master/per-event volumes
 - Demo cycle (`--demo` / F9); Click → Action Center
 - Unit-тесты FSM + AppSettings + IslandLayout + python FSM script
 
@@ -179,7 +183,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | Swipe cycle | Xiaomi multi-island |
 
 ### Добавлено в этом workstream
-Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, Opacity, Sound packs (Nothing/iOS/System/Off).
+Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, Opacity, AnimationSpeed (+ pulse/breath), Sound packs (Nothing/iOS/System/Off).
 
 ### Добавить позже
 | Что | Обоснование |
@@ -223,7 +227,7 @@ Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, O
   1. **Островок** — `IslandVisible`, `AllowDrag`
   2. **Погода** — `WeatherEnabled`, `WeatherSide` (+ краткая заметка: Windows-only, без third-party HTTP)
   3. **Расположение** — `Edge` (Top/Bottom/Left/Right), `OffsetX`/`OffsetY`, `Orientation` (Auto|Horizontal|Vertical)
-  4. **Вид** — `ZOrderMode` (Topmost / Desktop / BehindApps; Win11 Desktop/BehindApps best-effort) + `Opacity` 0.35–1.0 (только fill alpha)
+  4. **Вид** — `ZOrderMode` (Topmost / Desktop / BehindApps; Win11 Desktop/BehindApps best-effort) + `Opacity` 0.35–1.0 (только fill alpha) + `AnimationSpeed` (Slow|Normal|Fast|Off)
   5. **Звуки** — `SoundEnabled`, pack `Nothing`|`Ios`|`System`|`Off`, master `SoundVolume`, per-event `SoundVol*` + legal note (оригинальные WAV, не proprietary)
   6. **Иконки** — заметка про встроенный outline `IslandIcons` (выбор пакета пока не нужен)
 - Все `x:Name` контролов сохранены — `LoadUi` / `ReadUi` / `WireVolumeLabels` без ломки.
@@ -233,7 +237,7 @@ Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, O
 - После drag пересчитываются OffsetX/Y и Save.
 
 ### Persist
-`%LOCALAPPDATA%/NotifyIsland/settings.json` — все поля `AppSettings` (Weather*, Edge, Offsets, Orientation, ZOrder, Opacity, Sound*, IslandVisible, SettingsWindow*).
+`%LOCALAPPDATA%/NotifyIsland/settings.json` — все поля `AppSettings` (Weather*, Edge, Offsets, Orientation, ZOrder, Opacity, AnimationSpeed, Sound*, IslandVisible, SettingsWindow*).
 
 ### Sound packs
 - Folders: `Assets/Sounds/nothing/`, `ios/`, optional `system/` — each has `notify|expand|collapse|swipe|error|hover.wav` (&lt;300 ms).
@@ -257,7 +261,7 @@ Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, O
 ## 9. Чеклист перед PR
 
 - [ ] Высота капсулы не изменилась (осталась 30).
-- [ ] Morph только Width, 280 мс CubicEaseOut.
+- [ ] Morph только Width, 280 мс CubicEaseOut (× AnimationSpeed).
 - [ ] Unread: Notify++, Clear=0, Collapse сохраняет; cycle seed не ++.
 - [ ] Нет Open-Meteo / third-party weather HTTP.
 - [ ] Swipe thresholds 12 / 48 / 180 задокументированы и в токенах.

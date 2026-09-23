@@ -157,6 +157,16 @@
                          Foreground="#FFFFFF" VerticalAlignment="Center"/>
               <Slider x:Name="OpacitySlider" Minimum="35" Maximum="100" Value="100" TickFrequency="5"/>
             </DockPanel>
+
+            <TextBlock Classes="fieldLabel" Text="Скорость анимаций"/>
+            <ComboBox x:Name="AnimSpeedBox" Width="260">
+              <ComboBoxItem Tag="Slow" Content="Медленнее"/>
+              <ComboBoxItem Tag="Normal" Content="Обычная"/>
+              <ComboBoxItem Tag="Fast" Content="Быстрее"/>
+              <ComboBoxItem Tag="Off" Content="Выкл"/>
+            </ComboBox>
+            <TextBlock Classes="mutedNote"
+                       Text="Морф ширины, pulse точки непрочитанных и лёгкое «дыхание» в простое. Выкл — мгновенные переходы без pulse/breath."/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>

@@ -13,6 +13,7 @@ public class AppSettingsTests
         Assert.True(s.IslandVisible);
         Assert.True(s.SoundEnabled);
         Assert.Equal(SoundPack.Nothing, s.SoundPack);
+        Assert.Equal(AnimationSpeed.Normal, s.AnimationSpeed);
         Assert.Equal(WeatherSide.Right, s.WeatherSide);
         Assert.Equal(ZOrderMode.Topmost, s.ZOrderMode);
         Assert.Equal(IslandEdge.Top, s.Edge);
@@ -50,6 +51,7 @@ public class AppSettingsTests
             SoundVolSwipe = 0.4,
             SoundVolError = 0.95,
             SoundVolHover = 0.2,
+            AnimationSpeed = AnimationSpeed.Slow,
             SettingsWindowX = 100,
             SettingsWindowY = 200,
             SettingsWindowWidth = 500,
@@ -77,6 +79,7 @@ public class AppSettingsTests
         Assert.Equal(0.4, back.SoundVolSwipe);
         Assert.Equal(0.95, back.SoundVolError);
         Assert.Equal(0.2, back.SoundVolHover);
+        Assert.Equal(AnimationSpeed.Slow, back.AnimationSpeed);
         Assert.Equal(100, back.SettingsWindowX);
         Assert.Equal(200, back.SettingsWindowY);
         Assert.Equal(500, back.SettingsWindowWidth);
@@ -102,7 +105,8 @@ public class AppSettingsTests
             Opacity = 0.7,
             SoundVolume = 0.2,
             SoundPack = SoundPack.System,
-            SoundVolSwipe = 0.33
+            SoundVolSwipe = 0.33,
+            AnimationSpeed = AnimationSpeed.Fast
         };
         var b = new AppSettings();
         a.CopyTo(b);
@@ -111,5 +115,7 @@ public class AppSettingsTests
         Assert.Equal(0.2, b.SoundVolume);
         Assert.Equal(SoundPack.System, b.SoundPack);
         Assert.Equal(0.33, b.SoundVolSwipe);
+        Assert.Equal(AnimationSpeed.Fast, b.AnimationSpeed);
     }
 }
+

@@ -41,13 +41,24 @@ public partial class OverlayWindow : Window
     private int _lastTrayUnread = -1;
     private Color _pillFill = Color.Parse("#080808");
     private double _idleFillA = 1.0;
+    private readonly ScaleTransform _pillScale = new(1, 1);
+    private readonly TransformGroup _pillTransforms = new();
+    private readonly DispatcherTimer _pulseTimer = new() { Interval = TimeSpan.FromMilliseconds(33) };
+    private readonly DispatcherTimer _breathTimer = new() { Interval = TimeSpan.FromMilliseconds(33) };
+    private double _pulsePhase;
+    private double _breathPhase;
+    private bool _pulseActive;
+    private bool _breathActive;
+    private bool _hoverWired;
 
     public AppSettings Settings => _settings;
 
     public OverlayWindow()
     {
         InitializeComponent();
-        Pill.RenderTransform = _pillTranslate;
+        _pillTransforms.Children.Add(_pillScale);
+        _pillTransforms.Children.Add(_pillTranslate);
+        Pill.RenderTransform = _pillTransforms;
         _settings = AppSettings.Load();
         _settings.Normalize();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
@@ -152,26 +163,51 @@ public partial class OverlayWindow : Window
 
     private void EnableMorphTransitions()
     {
-        var duration = TimeSpan.FromMilliseconds(OverlayTokens.MorphMs);
+        ApplyAnimationSettings();
+        if (_hoverWired) return;
+        _hoverWired = true;
+        Pill.PointerEntered += (_, _) =>
+        {
+            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#55FFFFFF"));
+            Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, Math.Min(1.0, _idleFillA + 0.06)));
+            IslandSounds.Play(IslandSoundKind.Hover, _settings);
+        };
+        Pill.PointerExited += (_, _) =>
+        {
+            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#28FFFFFF"));
+            ApplyOpacity();
+        };
+    }
+
+    /// <summary>
+    /// Re-apply morph / fade / rubber durations from <see cref="AppSettings.AnimationSpeed"/>.
+    /// Off → ~1 ms transitions and no pulse/breath. Called from ctor and settings Apply.
+    /// </summary>
+    private void ApplyAnimationSettings()
+    {
+        var speed = _settings.AnimationSpeed;
+        var morph = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(OverlayTokens.MorphMs, speed));
+        var fade = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(OverlayTokens.IconCrossfadeMs, speed));
+        var rubber = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(OverlayTokens.SwipeRubberMs, speed));
+        var hover = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(160, speed));
         var softOut = new CubicEaseOut();
         var softInOut = new CubicEaseInOut();
-        var fade = TimeSpan.FromMilliseconds(OverlayTokens.IconCrossfadeMs);
 
         Transitions = new Transitions
         {
-            new DoubleTransition { Property = WidthProperty, Duration = duration, Easing = softOut },
-            new DoubleTransition { Property = HeightProperty, Duration = duration, Easing = softOut },
+            new DoubleTransition { Property = WidthProperty, Duration = morph, Easing = softOut },
+            new DoubleTransition { Property = HeightProperty, Duration = morph, Easing = softOut },
         };
         Pill.Transitions = new Transitions
         {
-            new DoubleTransition { Property = Border.WidthProperty, Duration = duration, Easing = softOut },
-            new DoubleTransition { Property = Border.HeightProperty, Duration = duration, Easing = softOut },
-            new BrushTransition { Property = Border.BorderBrushProperty, Duration = TimeSpan.FromMilliseconds(160), Easing = softInOut },
-            new BrushTransition { Property = Border.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(160), Easing = softInOut },
+            new DoubleTransition { Property = Border.WidthProperty, Duration = morph, Easing = softOut },
+            new DoubleTransition { Property = Border.HeightProperty, Duration = morph, Easing = softOut },
+            new BrushTransition { Property = Border.BorderBrushProperty, Duration = hover, Easing = softInOut },
+            new BrushTransition { Property = Border.BackgroundProperty, Duration = hover, Easing = softInOut },
         };
         UnreadDot.Transitions = new Transitions
         {
-            new DoubleTransition { Property = OpacityProperty, Duration = duration, Easing = softOut },
+            new DoubleTransition { Property = OpacityProperty, Duration = morph, Easing = softOut },
         };
         WeatherIconA.Transitions = new Transitions
         {
@@ -183,21 +219,116 @@ public partial class OverlayWindow : Window
         };
         _pillTranslate.Transitions = new Transitions
         {
-            new DoubleTransition { Property = TranslateTransform.XProperty, Duration = TimeSpan.FromMilliseconds(OverlayTokens.SwipeRubberMs), Easing = softOut },
-            new DoubleTransition { Property = TranslateTransform.YProperty, Duration = TimeSpan.FromMilliseconds(OverlayTokens.SwipeRubberMs), Easing = softOut },
+            new DoubleTransition { Property = TranslateTransform.XProperty, Duration = rubber, Easing = softOut },
+            new DoubleTransition { Property = TranslateTransform.YProperty, Duration = rubber, Easing = softOut },
+        };
+        _pillScale.Transitions = new Transitions
+        {
+            new DoubleTransition { Property = ScaleTransform.ScaleXProperty, Duration = morph, Easing = softInOut },
+            new DoubleTransition { Property = ScaleTransform.ScaleYProperty, Duration = morph, Easing = softInOut },
         };
 
-        Pill.PointerEntered += (_, _) =>
+        if (!AnimationTiming.IsEnabled(speed))
         {
-            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#55FFFFFF"));
-            Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, Math.Min(1.0, _idleFillA + 0.08)));
-            IslandSounds.Play(IslandSoundKind.Hover, _settings);
-        };
-        Pill.PointerExited += (_, _) =>
+            StopUnreadPulse(resetOpacity: false);
+            StopBreathing();
+        }
+        else
         {
-            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#28FFFFFF"));
-            ApplyOpacity();
-        };
+            // Re-sync situational loops against current paint state
+            var snap = _machine.Snapshot();
+            var overlayOn = IsOverlayKind(snap.Kind);
+            SyncUnreadPulse(!overlayOn && snap.UnreadCount > 0);
+            SyncBreathing(!overlayOn);
+        }
+    }
+
+    private static bool IsOverlayKind(OverlayKind kind) =>
+        kind is OverlayKind.Notification or OverlayKind.Progress or OverlayKind.Media
+            or OverlayKind.Timer or OverlayKind.Error or OverlayKind.Expanded or OverlayKind.Weather;
+
+    private void SyncUnreadPulse(bool shouldPulse)
+    {
+        if (!shouldPulse || !AnimationTiming.IsEnabled(_settings.AnimationSpeed))
+        {
+            StopUnreadPulse(resetOpacity: false);
+            return;
+        }
+        if (_pulseActive) return;
+        _pulseActive = true;
+        _pulsePhase = 0;
+        _pulseTimer.Tick -= OnPulseTick;
+        _pulseTimer.Tick += OnPulseTick;
+        _pulseTimer.Start();
+    }
+
+    private void StopUnreadPulse(bool resetOpacity)
+    {
+        if (_pulseActive)
+        {
+            _pulseTimer.Stop();
+            _pulseTimer.Tick -= OnPulseTick;
+            _pulseActive = false;
+        }
+        if (resetOpacity)
+            UnreadDot.Opacity = 0;
+    }
+
+    private void OnPulseTick(object? sender, EventArgs e)
+    {
+        if (!AnimationTiming.IsEnabled(_settings.AnimationSpeed))
+        {
+            StopUnreadPulse(resetOpacity: false);
+            return;
+        }
+        var period = AnimationTiming.ScaleMs(AnimationTiming.PulsePeriodMs, _settings.AnimationSpeed);
+        _pulsePhase += (Math.PI * 2.0) * (33.0 / Math.Max(1, period));
+        if (_pulsePhase > Math.PI * 2.0) _pulsePhase -= Math.PI * 2.0;
+        // Gentle 0.55 ↔ 1.0 opacity pulse
+        UnreadDot.Opacity = 0.775 + 0.225 * Math.Sin(_pulsePhase);
+    }
+
+    private void SyncBreathing(bool shouldBreath)
+    {
+        if (!shouldBreath || !AnimationTiming.IsEnabled(_settings.AnimationSpeed))
+        {
+            StopBreathing();
+            return;
+        }
+        if (_breathActive) return;
+        _breathActive = true;
+        _breathPhase = 0;
+        _breathTimer.Tick -= OnBreathTick;
+        _breathTimer.Tick += OnBreathTick;
+        _breathTimer.Start();
+    }
+
+    private void StopBreathing()
+    {
+        if (_breathActive)
+        {
+            _breathTimer.Stop();
+            _breathTimer.Tick -= OnBreathTick;
+            _breathActive = false;
+        }
+        _pillScale.ScaleX = 1.0;
+        _pillScale.ScaleY = 1.0;
+    }
+
+    private void OnBreathTick(object? sender, EventArgs e)
+    {
+        if (!AnimationTiming.IsEnabled(_settings.AnimationSpeed))
+        {
+            StopBreathing();
+            return;
+        }
+        var period = AnimationTiming.ScaleMs(AnimationTiming.BreathPeriodMs, _settings.AnimationSpeed);
+        _breathPhase += (Math.PI * 2.0) * (33.0 / Math.Max(1, period));
+        if (_breathPhase > Math.PI * 2.0) _breathPhase -= Math.PI * 2.0;
+        // Very subtle ±1.2% scale "breath"
+        var s = 1.0 + 0.012 * Math.Sin(_breathPhase);
+        _pillScale.ScaleX = s;
+        _pillScale.ScaleY = s;
     }
 
     private static Color WithAlpha(Color c, double a) =>
@@ -433,6 +564,7 @@ public partial class OverlayWindow : Window
         ApplyWeatherSide();
         ApplyOrientationLayout();
         ApplyOpacity();
+        ApplyAnimationSettings();
         ApplyIslandVisibility();
         Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
         ApplySize();
@@ -673,7 +805,21 @@ public partial class OverlayWindow : Window
         BadgeText.Text = unread > 99 ? "99+" : unread.ToString(CultureInfo.InvariantCulture);
 
         var showDot = !overlayOn && unread > 0;
-        UnreadDot.Opacity = showDot ? 1.0 : 0.0;
+        if (!showDot)
+        {
+            StopUnreadPulse(resetOpacity: true);
+        }
+        else if (!_pulseActive)
+        {
+            UnreadDot.Opacity = 1.0;
+            SyncUnreadPulse(true);
+        }
+        else
+        {
+            SyncUnreadPulse(true);
+        }
+
+        SyncBreathing(!overlayOn);
 
         ToolTip.SetTip(this, kind == OverlayKind.Idle ? "NotifyIsland" : OverlayTitle.Text);
     }

@@ -100,6 +100,10 @@ public sealed class AppSettings
     public double SoundVolError { get; set; } = 1.0;
     public double SoundVolHover { get; set; } = 0.35;
 
+    /// <summary>Island morph / pulse / breath speed. Default Normal.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AnimationSpeed AnimationSpeed { get; set; } = AnimationSpeed.Normal;
+
     /// <summary>Persisted Settings window geometry (separate from island OffsetX/Y).</summary>
     public int? SettingsWindowX { get; set; }
     public int? SettingsWindowY { get; set; }
@@ -185,6 +189,7 @@ public sealed class AppSettings
         target.SoundVolSwipe = Math.Clamp(SoundVolSwipe, 0.0, 1.0);
         target.SoundVolError = Math.Clamp(SoundVolError, 0.0, 1.0);
         target.SoundVolHover = Math.Clamp(SoundVolHover, 0.0, 1.0);
+        target.AnimationSpeed = AnimationSpeed;
         target.SettingsWindowX = SettingsWindowX;
         target.SettingsWindowY = SettingsWindowY;
         target.SettingsWindowWidth = SettingsWindowWidth;
