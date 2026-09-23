@@ -29,6 +29,8 @@
 | Icon packs | IslandIcons + Tabler/Lucide vendored |
 | Font size / family | есть (Вид) |
 | Per-action animations | есть (вкладка Анимации) |
+| Appear / Dismiss styles | Inflate/SlideDown/FadeScale/Bounce/Pop + Collapse/SlideUp/FadeScaleOut/Ragged/Glitch |
+| Icon size ↔ FontSize | IconDip = FontSize × k |
 | Nothing-inspired fonts | Space Grotesk / JB Mono (OFL), не NType82 |
 
 ### Desktop differentiators (backlog — не реализовывать сейчас)
@@ -92,28 +94,29 @@
 
 ## 2. Правила анимаций NotifyIsland (actionable)
 
-Код: `OverlayTokens.MorphMs`, `AnimationTiming` + `AppSettings.AnimationSpeed` + per-action (`AnimMorphInflate`/`AnimMorphCollapse`/`AnimUnreadPulse`/`AnimIdleBreath`/`AnimHover`/`AnimSwipeRubber`, toggles `AnimPulseEnabled`/`AnimBreathEnabled`); **явный timer-morph** `StartMorph`/`OnMorphTick` на `Window`+`Pill` Width/Height (Avalonia `Transitions` на Window Width ненадёжны); hover brushes / swipe rubber-band / icon crossfade через `Transitions`; pulse/breath — timer без Opacity/Scale Transition (иначе гасятся); `ApplyAnimationSettings()` в ctor + Settings Apply.
+Код: `OverlayTokens.MorphMs` (**420**), `AnimationTiming` + `AppSettings.AnimationSpeed` (default **Slow**) + per-action + **`AppearStyle`/`DismissStyle`**; **явный timer-morph** `StartMorph`/`OnMorphTick` на Width/Height + aux (opacity/scale/translate/jitter); `AnimationEasing` (CubicOut / SpringOut / Pop / Glitch — без linear); pulse/breath — timer без Opacity/Scale Transition; `ApplyAnimationSettings()` в ctor + Settings Apply.
 
-Базовые длительности (**Normal**). Множители: **Slow≈1.6×**, **Normal=1×**, **Fast≈0.55×**, **Off→1 мс** (без pulse/breath).
+Базовые длительности (**Normal**). Множители: **Slow≈1.6×**, **Normal=1×**, **Fast≈0.55×**, **Off→1 мс**. Defaults lean Slow.
 
 | Переход | Длительность (Normal) | Easing | Примечание |
 |---|---:|---|---|
-| Width morph (idle ↔ notify/media/weather/…) | **280 мс** | `CubicEaseOut` | только ширина; высота **всегда** `CollapsedH`; soft inflate/collapse |
-| Hover border/background | **160 мс** | `CubicEaseInOut` | лёгкий +0.06 fill alpha; без scale-прыжков |
-| Unread-dot show/hide | **280 мс** | `CubicEaseOut` | 0 ↔ 1 |
-| Unread-dot pulse (unread &gt; 0) | **1600 мс**/цикл | sine | opacity 0.40↔1.0; только Idle/Collapsed; Off выкл |
-| Idle breathing (Idle/Collapsed) | **3200 мс**/цикл | sine | scale ±2.5% на Pill; выкл при active overlay / Anim Off |
-| Notify auto-dismiss | **4000 мс** | — | затем возврат в previous/idle |
-| Demo scene cycle (после первого notify) | **1800 мс** | — | только `--demo` / F9 |
-| Контент-апдейты внутри expanded | ≤ **450 мс** | soft-out | не дольше Apple max 2 с |
-| Swipe rubber-band snap-back | **180 мс** | `CubicEaseOut` | если жест &lt; fire threshold |
-| Weather / icon glyph crossfade | **240 мс** | `CubicEaseOut` | `IconCrossfadeMs` |
+| Width morph (idle ↔ notify/media/…) | **420 мс** | Soft CubicOut / Spring | высота **всегда** `CollapsedH`; Bounce/Pop/Ragged/Glitch могут ≥460–480 base |
+| Appear styles | × morph | см. enum | Inflate, SlideDown (−20→0 Y + fade), FadeScale (0.85→1), Bounce (spring), Pop (punch) |
+| Dismiss styles | × morph | см. enum | Collapse, SlideUp, FadeScaleOut, Ragged (X jitter), Glitch (stutter) |
+| Hover border/background | **160 мс** | `CubicEaseInOut` | лёгкий +0.06 fill alpha |
+| Unread-dot pulse (unread &gt; 0) | **1600 мс**/цикл | sine | opacity 0.40↔1.0; Idle/Collapsed |
+| Idle breathing | **3200 мс**/цикл | sine | scale ±2.5%; пауза во время morph |
+| Notify auto-dismiss | **4000 мс** | — | затем dismiss-style → idle |
+| Demo scene cycle | **1800 мс** | — | циклирует Appear/Dismiss styles |
+| Swipe rubber-band | **180 мс** | CubicOut | |
+| Icon crossfade | **240 мс** | CubicOut | |
+| Icon DIP | — | — | `FontSize × 1.0` (clock/weather), `FontSize × 0.92` (kind) |
 
 Запрещено:
 - менять высоту капсулы при notify (не «расти вверх»);
 - резкий snap без transition на Width (кроме AnimationSpeed=Off);
-- анимации > 450 мс на обычные UI-переходы (кроме morph 280, pulse/breath циклов и notify hold 4 с);
-- сторонние HTTP weather API (Open-Meteo / MSN / etc.) — см. §10.
+- linear easing на morph;
+- сторонние HTTP weather API — см. §10.
 
 ---
 
@@ -300,7 +303,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 ## 9. Чеклист перед PR
 
 - [ ] Высота капсулы не изменилась (осталась 30).
-- [ ] Morph только Width, 280 мс CubicEaseOut (× AnimationSpeed).
+- [ ] Morph Width base 420 мс Soft easing (× AnimationSpeed); Appear/Dismiss styles на Notification.
 - [ ] Unread: Notify++, Clear=0, Collapse сохраняет; cycle seed не ++.
 - [ ] Нет Open-Meteo / third-party weather HTTP.
 - [ ] Swipe thresholds 12 / 48 / 180 задокументированы и в токенах.

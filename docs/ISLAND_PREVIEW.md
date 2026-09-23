@@ -6,7 +6,7 @@
 1. Плавающая капсула на Windows 11 — всегда на виду поверх рабочего стола (с настройкой слоя).
 2. Три уровня показа: минимальный (часы), компактный с виджетом, расширенный с деталями.
 3. Высота капсулы фиксированная — при уведомлении островок тянется только в длину, не вверх.
-4. Плавный морф раскрытия и сворачивания за 280 мс (с easing; скорость настраивается).
+4. Плавный морф раскрытия и сворачивания за ~420 мс Soft easing (скорость настраивается; default Slow).
 5. Мягкая подсветка при наведении курсора.
 6. В свёрнутом виде: иконка часов и текущее время.
 7. Светящаяся точка, если есть непрочитанные уведомления — мягко пульсирует, пока unread &gt; 0.
@@ -67,6 +67,13 @@
 Must: Now Playing, timer/progress alerts, compact↔expanded morph, top-center, fullscreen-safe, weather, tray, settings tabs, swipes, animation speed, palette, icon packs.  
 Backlog differentiators: file shelf / clipboard / launcher. Не копируем Apple TM naming; без fake Live Activities без Win API.
 
+
+## 1.5.8 Анимации
+
+- Стили появления: Inflate / SlideDown / FadeScale / Bounce / Pop
+- Стили ухода: Collapse / SlideUp / FadeScaleOut / Ragged / Glitch
+- Иконки масштабируются с FontSize (×1.0 / ×0.92)
+- Demo циклирует стили; defaults: Bounce + Ragged, Slow
 
 ## 1.5.7 UX
 

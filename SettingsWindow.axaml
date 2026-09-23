@@ -251,6 +251,25 @@
             <TextBlock Classes="mutedNote"
                        Text="«Выкл» отключает все анимации. Иначе применяются скорости по действиям ниже."/>
 
+            <TextBlock Classes="fieldLabel" Text="Стиль появления уведомления" Margin="0,12,0,0"/>
+            <ComboBox x:Name="AppearStyleBox" Width="300">
+              <ComboBoxItem Tag="Inflate" Content="Inflate — мягкий морф ширины"/>
+              <ComboBoxItem Tag="SlideDown" Content="SlideDown — сверху + fade"/>
+              <ComboBoxItem Tag="FadeScale" Content="FadeScale — fade + scale"/>
+              <ComboBoxItem Tag="Bounce" Content="Bounce — пружинный overshoot"/>
+              <ComboBoxItem Tag="Pop" Content="Pop — быстрый punch"/>
+            </ComboBox>
+            <TextBlock Classes="fieldLabel" Text="Стиль ухода / сворачивания"/>
+            <ComboBox x:Name="DismissStyleBox" Width="300">
+              <ComboBoxItem Tag="Collapse" Content="Collapse — мягкое сжатие"/>
+              <ComboBoxItem Tag="SlideUp" Content="SlideUp — вверх + fade"/>
+              <ComboBoxItem Tag="FadeScaleOut" Content="FadeScaleOut — fade + scale out"/>
+              <ComboBoxItem Tag="Ragged" Content="Ragged — рваный jitter"/>
+              <ComboBoxItem Tag="Glitch" Content="Glitch — ступенчатый stutter"/>
+            </ComboBox>
+            <TextBlock Classes="mutedNote"
+                       Text="Стили применяются при входе/выходе Notification. Demo (F9) циклически показывает разные appear/dismiss."/>
+
             <CheckBox x:Name="AnimPulseEnabledBox" Content="Pulse непрочитанных" Margin="0,12,0,2"/>
             <CheckBox x:Name="AnimBreathEnabledBox" Content="Дыхание в простое"/>
 

@@ -105,7 +105,7 @@ public sealed class AppSettings
 
     /// <summary>Island morph / pulse / breath speed. Default Normal.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
-    public AnimationSpeed AnimationSpeed { get; set; } = AnimationSpeed.Normal;
+    public AnimationSpeed AnimationSpeed { get; set; } = AnimationSpeed.Slow;
 
     /// <summary>Capsule fill (#RRGGBB). Default dark island.</summary>
     public string ColorCapsuleFill { get; set; } = "#080808";
@@ -130,10 +130,10 @@ public sealed class AppSettings
 
     /// <summary>Per-action speeds (global AnimationSpeed=Off disables all).</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
-    public AnimationSpeed AnimMorphInflate { get; set; } = AnimationSpeed.Normal;
+    public AnimationSpeed AnimMorphInflate { get; set; } = AnimationSpeed.Slow;
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
-    public AnimationSpeed AnimMorphCollapse { get; set; } = AnimationSpeed.Normal;
+    public AnimationSpeed AnimMorphCollapse { get; set; } = AnimationSpeed.Slow;
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AnimationSpeed AnimUnreadPulse { get; set; } = AnimationSpeed.Normal;
@@ -152,6 +152,14 @@ public sealed class AppSettings
 
     /// <summary>Enable idle breathing scale on collapsed pill.</summary>
     public bool AnimBreathEnabled { get; set; } = true;
+
+    /// <summary>Notification appear style (Settings → Анимации).</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public NotifyAppearStyle AppearStyle { get; set; } = NotifyAppearStyle.Bounce;
+
+    /// <summary>Notification dismiss / collapse style.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public NotifyDismissStyle DismissStyle { get; set; } = NotifyDismissStyle.Ragged;
 
     /// <summary>Persisted Settings window geometry (separate from island OffsetX/Y).</summary>
     public int? SettingsWindowX { get; set; }
@@ -254,6 +262,8 @@ public sealed class AppSettings
         target.AnimSwipeRubber = AnimSwipeRubber;
         target.AnimPulseEnabled = AnimPulseEnabled;
         target.AnimBreathEnabled = AnimBreathEnabled;
+        target.AppearStyle = AppearStyle;
+        target.DismissStyle = DismissStyle;
         target.SettingsWindowX = SettingsWindowX;
         target.SettingsWindowY = SettingsWindowY;
         target.SettingsWindowWidth = SettingsWindowWidth;

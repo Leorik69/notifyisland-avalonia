@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.5.8 — animation styles, slower soft morph, icon↔FontSize
+
+### Added
+- **Appear styles** (`NotifyAppearStyle`): Inflate, SlideDown, FadeScale, Bounce, Pop — Settings → Анимации.
+- **Dismiss styles** (`NotifyDismissStyle`): Collapse, SlideUp, FadeScaleOut, Ragged («рваный» jitter), Glitch (stutter).
+- Styles wired into morph path on Notification enter/leave; Demo (F9) cycles appear/dismiss so all are visible.
+- `AnimationEasing` (CubicOut / SpringOut / PopScale / GlitchStep) — no linear morph.
+- Icon DIP scales with FontSize: `IconDip = FontSize × k` (collapsed k≈1.0, kind k≈0.92); Viewbox hosts update on FontSize/IconPack change.
+
+### Changed
+- Base `MorphMs` **280 → 420**; defaults lean Slow (`AnimationSpeed`, `AnimMorphInflate`, `AnimMorphCollapse`).
+- Default Appear=**Bounce**, Dismiss=**Ragged**.
+- Version **1.5.8**.
+
+### Note
+- Per-action speed multipliers retained. No proprietary font/sound rips.
+
+
 ## 1.5.7 — UX: font size, palette swatches, icon packs, per-action anim, Nothing-inspired fonts
 
 ### Added

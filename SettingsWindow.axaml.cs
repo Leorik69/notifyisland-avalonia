@@ -177,6 +177,8 @@ public partial class SettingsWindow : Window
         SelectByTag(ZOrderBox, _draft.ZOrderMode.ToString());
         SelectByTag(SoundPackBox, _draft.SoundPack.ToString());
         SelectByTag(AnimSpeedBox, _draft.AnimationSpeed.ToString());
+        SelectByTag(AppearStyleBox, _draft.AppearStyle.ToString());
+        SelectByTag(DismissStyleBox, _draft.DismissStyle.ToString());
         SelectByTag(AnimMorphInflateBox, _draft.AnimMorphInflate.ToString());
         SelectByTag(AnimMorphCollapseBox, _draft.AnimMorphCollapse.ToString());
         SelectByTag(AnimUnreadPulseBox, _draft.AnimUnreadPulse.ToString());
@@ -251,6 +253,10 @@ public partial class SettingsWindow : Window
             _draft.SoundPack = pack;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimSpeedBox), true, out var anim))
             _draft.AnimationSpeed = anim;
+        if (Enum.TryParse<NotifyAppearStyle>(SelectedTag(AppearStyleBox), true, out var ap))
+            _draft.AppearStyle = ap;
+        if (Enum.TryParse<NotifyDismissStyle>(SelectedTag(DismissStyleBox), true, out var ds))
+            _draft.DismissStyle = ds;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimMorphInflateBox), true, out var mi))
             _draft.AnimMorphInflate = mi;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimMorphCollapseBox), true, out var mc))

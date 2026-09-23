@@ -204,7 +204,7 @@ public class OverlayMachineTests
     [Fact]
     public void Tokens_MorphMsIsPositive()
     {
-        Assert.InRange(OverlayTokens.MorphMs, 260, 320);
+        Assert.InRange(OverlayTokens.MorphMs, 400, 500);
         Assert.True(OverlayTokens.MorphMs > 0);
         Assert.Equal("#080808", OverlayTokens.FillHex);
         Assert.Equal("#3D9CF0", OverlayTokens.AccentHex);

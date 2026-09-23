@@ -55,6 +55,29 @@ public partial class OverlayWindow : Window
     private bool _morphActive;
     private double _morphFromW, _morphFromH, _morphToW, _morphToH;
     private int _morphDurationMs = OverlayTokens.MorphMs;
+    private bool _morphInflate = true;
+    private NotifyAppearStyle _morphAppear = NotifyAppearStyle.Inflate;
+    private NotifyDismissStyle _morphDismiss = NotifyDismissStyle.Collapse;
+    private bool _morphUsesNotifyStyle;
+    private OverlayKind _prevKind = OverlayKind.Idle;
+    private int _demoAppearStep;
+    private static readonly NotifyAppearStyle[] DemoAppearCycle =
+    [
+        NotifyAppearStyle.Bounce,
+        NotifyAppearStyle.SlideDown,
+        NotifyAppearStyle.FadeScale,
+        NotifyAppearStyle.Pop,
+        NotifyAppearStyle.Inflate
+    ];
+    private static readonly NotifyDismissStyle[] DemoDismissCycle =
+    [
+        NotifyDismissStyle.Ragged,
+        NotifyDismissStyle.Glitch,
+        NotifyDismissStyle.SlideUp,
+        NotifyDismissStyle.FadeScaleOut,
+        NotifyDismissStyle.Collapse
+    ];
+    private readonly Random _morphRng = new();
 
     public AppSettings Settings => _settings;
 
@@ -161,14 +184,14 @@ public partial class OverlayWindow : Window
 
     private void SeedIcons()
     {
-        ClockIconHost.Child = IconPackService.Create(_settings.IconPack, "clock", OverlayTokens.IconSizeCollapsed,
+        ClockIconHost.Child = IconPackService.Create(_settings.IconPack, "clock", CurrentIconCollapsed(),
             new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex)));
         SetKindIcon(OverlayKind.Idle);
         SetWeatherIcons(WeatherCodes.IconKey(_machine.LastWeather.WeatherCode ?? 0), animate: false);
         ApplyTypography();
     }
 
-    /// <summary>Apply FontSize + FontFamily to clock / titles / weather / badge.</summary>
+    /// <summary>Apply FontSize + FontFamily to clock / titles / weather / badge; scale icons to FontSize.</summary>
     private void ApplyTypography()
     {
         var fs = Math.Clamp(_settings.FontSize <= 0 ? 12 : _settings.FontSize, 10, 18);
@@ -182,7 +205,37 @@ public partial class OverlayWindow : Window
         BadgeText.FontSize = Math.Max(9, fs - 2);
         BadgeText.FontFamily = family;
         MediaPlayGlyph.FontSize = Math.Max(10, fs - 1);
+        ApplyIconSizes(fs);
     }
+
+    /// <summary>Icon DIP = FontSize × k (collapsed ≈1.0, kind ≈0.92). Updates Viewbox hosts.</summary>
+    private void ApplyIconSizes(double fontSize)
+    {
+        var collapsed = OverlayTokens.IconDip(fontSize, OverlayTokens.IconFontFactorCollapsed);
+        var kind = OverlayTokens.IconDip(fontSize, OverlayTokens.IconFontFactorKind);
+        ClockIconHost.Width = collapsed;
+        ClockIconHost.Height = collapsed;
+        WeatherIconA.Width = collapsed;
+        WeatherIconA.Height = collapsed;
+        WeatherIconB.Width = collapsed;
+        WeatherIconB.Height = collapsed;
+        if (WeatherIconA.Parent is Grid wxGrid)
+        {
+            wxGrid.Width = collapsed;
+            wxGrid.Height = collapsed;
+        }
+        AppIconHost.Width = kind;
+        AppIconHost.Height = kind;
+        var badge = Math.Max(16, Math.Round(kind + 6));
+        AppIcon.Width = badge;
+        AppIcon.Height = badge;
+    }
+
+    private double CurrentIconCollapsed() =>
+        OverlayTokens.IconDip(_settings.FontSize, OverlayTokens.IconFontFactorCollapsed);
+
+    private double CurrentIconKind() =>
+        OverlayTokens.IconDip(_settings.FontSize, OverlayTokens.IconFontFactorKind);
 
     private void EnableMorphTransitions()
     {
@@ -387,7 +440,7 @@ public partial class OverlayWindow : Window
         AppIcon.Background = new SolidColorBrush(accent);
         OverlayProgress.Foreground = new SolidColorBrush(accent);
         MediaPlayGlyph.Foreground = new SolidColorBrush(accent);
-        ClockIconHost.Child = IconPackService.Create(_settings.IconPack, "clock", OverlayTokens.IconSizeCollapsed,
+        ClockIconHost.Child = IconPackService.Create(_settings.IconPack, "clock", CurrentIconCollapsed(),
             new SolidColorBrush(textSec));
         // Soft “dot matrix” unread: slightly squarer corners + tighter glow
         UnreadDot.CornerRadius = new CornerRadius(2);
@@ -658,6 +711,7 @@ public partial class OverlayWindow : Window
 
     private void OnKindChanged(OverlayKind before, OverlayKind after)
     {
+        _prevKind = before;
         var wasCollapsed = before is OverlayKind.Idle or OverlayKind.Collapsed;
         var nowCollapsed = after is OverlayKind.Idle or OverlayKind.Collapsed;
         if (after == OverlayKind.Notification)
@@ -756,11 +810,14 @@ public partial class OverlayWindow : Window
         if (same || !AnimationTiming.IsEnabled(morphSpeed) || !IsVisible)
         {
             StopMorph(snapToTarget: false);
+            ResetMorphVisuals();
             SetSizeImmediate(w, h);
             return;
         }
 
-        StartMorph(fromW, fromH, w, h, morphSpeed);
+        var enteringNotify = inflate && snap.Kind == OverlayKind.Notification;
+        var leavingNotify = !inflate && _prevKind == OverlayKind.Notification;
+        StartMorph(fromW, fromH, w, h, morphSpeed, inflate, enteringNotify, leavingNotify);
     }
 
     private void SetSizeImmediate(double w, double h)
@@ -773,18 +830,36 @@ public partial class OverlayWindow : Window
         PlaceIsland();
     }
 
-    private void StartMorph(double fromW, double fromH, double toW, double toH, AnimationSpeed morphSpeed)
+    private void StartMorph(
+        double fromW, double fromH, double toW, double toH,
+        AnimationSpeed morphSpeed, bool inflate, bool enteringNotify, bool leavingNotify)
     {
+        StopBreathing();
         _morphFromW = fromW;
         _morphFromH = fromH;
         _morphToW = toW;
         _morphToH = toH;
+        _morphInflate = inflate;
+        _morphUsesNotifyStyle = enteringNotify || leavingNotify;
+        _morphAppear = ResolveAppearStyle(enteringNotify);
+        _morphDismiss = ResolveDismissStyle(leavingNotify);
         _morphDurationMs = AnimationTiming.ScaleMs(OverlayTokens.MorphMs, morphSpeed);
-        AppLog.Info($"Morph {_morphFromW:0}×{_morphFromH:0} → {_morphToW:0}×{_morphToH:0} ({_morphDurationMs} ms, {morphSpeed})");
+        // Bounce / Pop / Ragged / Glitch lean a bit longer for readability
+        if (_morphUsesNotifyStyle)
+        {
+            if (inflate && _morphAppear is NotifyAppearStyle.Bounce or NotifyAppearStyle.Pop)
+                _morphDurationMs = Math.Max(_morphDurationMs, AnimationTiming.ScaleMs(480, morphSpeed));
+            if (!inflate && _morphDismiss is NotifyDismissStyle.Ragged or NotifyDismissStyle.Glitch)
+                _morphDurationMs = Math.Max(_morphDurationMs, AnimationTiming.ScaleMs(460, morphSpeed));
+        }
+
+        AppLog.Info(
+            $"Morph {_morphFromW:0}×{_morphFromH:0} → {_morphToW:0}×{_morphToH:0} " +
+            $"({_morphDurationMs} ms, {morphSpeed}, " +
+            $"{(inflate ? $"appear={_morphAppear}" : $"dismiss={_morphDismiss}")})");
 
         if (_morphActive)
         {
-            // Retarget mid-flight from current visual size
             _morphFromW = Pill.Width > 0 ? Pill.Width : fromW;
             _morphFromH = Pill.Height > 0 ? Pill.Height : fromH;
         }
@@ -795,8 +870,77 @@ public partial class OverlayWindow : Window
             _morphActive = true;
         }
 
+        PrepareMorphVisualStart();
         _morphWatch.Restart();
         _morphTimer.Start();
+    }
+
+    private NotifyAppearStyle ResolveAppearStyle(bool enteringNotify)
+    {
+        if (!enteringNotify) return NotifyAppearStyle.Inflate;
+        if (_demoOn)
+            return DemoAppearCycle[_demoAppearStep++ % DemoAppearCycle.Length];
+        return _settings.AppearStyle;
+    }
+
+    private NotifyDismissStyle ResolveDismissStyle(bool leavingNotify)
+    {
+        if (!leavingNotify) return NotifyDismissStyle.Collapse;
+        if (_demoOn)
+            return DemoDismissCycle[(_demoAppearStep + 2) % DemoDismissCycle.Length];
+        return _settings.DismissStyle;
+    }
+
+    private void PrepareMorphVisualStart()
+    {
+        ResetMorphVisuals();
+        if (!_morphUsesNotifyStyle) return;
+        if (_morphInflate)
+        {
+            switch (_morphAppear)
+            {
+                case NotifyAppearStyle.SlideDown:
+                    _pillTranslate.Y = -20;
+                    Pill.Opacity = 0;
+                    break;
+                case NotifyAppearStyle.FadeScale:
+                    Pill.Opacity = 0;
+                    _pillScale.ScaleX = 0.85;
+                    _pillScale.ScaleY = 0.85;
+                    break;
+                case NotifyAppearStyle.Bounce:
+                    _pillScale.ScaleX = 0.92;
+                    _pillScale.ScaleY = 0.92;
+                    break;
+                case NotifyAppearStyle.Pop:
+                    _pillScale.ScaleX = 0.88;
+                    _pillScale.ScaleY = 0.88;
+                    Pill.Opacity = 0.85;
+                    break;
+            }
+        }
+        else
+        {
+            // dismiss starts from settled visuals
+            Pill.Opacity = 1;
+            _pillScale.ScaleX = 1;
+            _pillScale.ScaleY = 1;
+        }
+    }
+
+    private void ResetMorphVisuals()
+    {
+        Pill.Opacity = 1;
+        if (!_breathActive)
+        {
+            _pillScale.ScaleX = 1;
+            _pillScale.ScaleY = 1;
+        }
+        if (!_pressing)
+        {
+            _pillTranslate.X = 0;
+            _pillTranslate.Y = 0;
+        }
     }
 
     private void StopMorph(bool snapToTarget)
@@ -810,27 +954,141 @@ public partial class OverlayWindow : Window
         _morphWatch.Reset();
         if (snapToTarget && _morphToW > 0 && _morphToH > 0)
             SetSizeImmediate(_morphToW, _morphToH);
+        ResetMorphVisuals();
     }
 
     private void OnMorphTick(object? sender, EventArgs e)
     {
         var dur = Math.Max(1, _morphDurationMs);
         var t = Math.Clamp(_morphWatch.ElapsedMilliseconds / (double)dur, 0.0, 1.0);
-        // CubicEaseOut
-        var eased = 1.0 - Math.Pow(1.0 - t, 3.0);
-        var cw = _morphFromW + (_morphToW - _morphFromW) * eased;
-        var ch = _morphFromH + (_morphToH - _morphFromH) * eased;
+
+        double widthT;
+        double auxT;
+        if (_morphUsesNotifyStyle && _morphInflate)
+        {
+            (widthT, auxT) = AppearProgress(t, _morphAppear);
+        }
+        else if (_morphUsesNotifyStyle && !_morphInflate)
+        {
+            (widthT, auxT) = DismissProgress(t, _morphDismiss);
+        }
+        else
+        {
+            widthT = AnimationEasing.CubicOut(t);
+            auxT = widthT;
+        }
+
+        var cw = Math.Max(20, _morphFromW + (_morphToW - _morphFromW) * widthT);
+        var ch = Math.Max(8, _morphFromH + (_morphToH - _morphFromH) * widthT);
         Width = cw;
         Height = ch;
         Pill.Width = cw;
         Pill.Height = ch;
         Pill.CornerRadius = new CornerRadius(Math.Min(cw, ch) / 2);
+        ApplyMorphAux(auxT, t);
         PlaceIsland();
 
         if (t >= 1.0)
         {
             StopMorph(snapToTarget: false);
+            ResetMorphVisuals();
             SetSizeImmediate(_morphToW, _morphToH);
+            var snap = _machine.Snapshot();
+            SyncBreathing(!IsOverlayKind(snap.Kind));
+        }
+    }
+
+    private static (double widthT, double auxT) AppearProgress(double t, NotifyAppearStyle style) => style switch
+    {
+        NotifyAppearStyle.Bounce => (AnimationEasing.SpringOut(t), AnimationEasing.SpringOut(t)),
+        NotifyAppearStyle.Pop => (AnimationEasing.CubicOut(t), AnimationEasing.PopScale(t)),
+        NotifyAppearStyle.SlideDown => (AnimationEasing.CubicOut(t), AnimationEasing.CubicOut(t)),
+        NotifyAppearStyle.FadeScale => (AnimationEasing.CubicOut(t), AnimationEasing.CubicOut(t)),
+        _ => (AnimationEasing.CubicOut(t), AnimationEasing.CubicOut(t))
+    };
+
+    private static (double widthT, double auxT) DismissProgress(double t, NotifyDismissStyle style) => style switch
+    {
+        NotifyDismissStyle.Glitch => (AnimationEasing.GlitchStep(t), AnimationEasing.GlitchStep(t)),
+        NotifyDismissStyle.Ragged => (AnimationEasing.CubicOut(t), t),
+        NotifyDismissStyle.SlideUp => (AnimationEasing.CubicOut(t), AnimationEasing.CubicOut(t)),
+        NotifyDismissStyle.FadeScaleOut => (AnimationEasing.CubicOut(t), AnimationEasing.CubicOut(t)),
+        _ => (AnimationEasing.CubicOut(t), AnimationEasing.CubicOut(t))
+    };
+
+    private void ApplyMorphAux(double auxT, double rawT)
+    {
+        if (!_morphUsesNotifyStyle)
+        {
+            Pill.Opacity = 1;
+            return;
+        }
+
+        if (_morphInflate)
+        {
+            switch (_morphAppear)
+            {
+                case NotifyAppearStyle.SlideDown:
+                    _pillTranslate.Y = -20 * (1.0 - auxT);
+                    Pill.Opacity = auxT;
+                    break;
+                case NotifyAppearStyle.FadeScale:
+                    Pill.Opacity = auxT;
+                    var s = 0.85 + 0.15 * auxT;
+                    _pillScale.ScaleX = s;
+                    _pillScale.ScaleY = s;
+                    break;
+                case NotifyAppearStyle.Bounce:
+                    // Spring width already overshoots; gentle scale breathe with spring
+                    var springScale = 0.92 + 0.08 * AnimationEasing.SpringOut(rawT);
+                    _pillScale.ScaleX = springScale;
+                    _pillScale.ScaleY = springScale;
+                    Pill.Opacity = Math.Min(1.0, 0.7 + 0.3 * auxT);
+                    break;
+                case NotifyAppearStyle.Pop:
+                    _pillScale.ScaleX = auxT;
+                    _pillScale.ScaleY = auxT;
+                    Pill.Opacity = Math.Min(1.0, 0.85 + 0.15 * AnimationEasing.CubicOut(rawT));
+                    break;
+                default:
+                    Pill.Opacity = 1;
+                    break;
+            }
+        }
+        else
+        {
+            switch (_morphDismiss)
+            {
+                case NotifyDismissStyle.SlideUp:
+                    _pillTranslate.Y = -18 * auxT;
+                    Pill.Opacity = 1.0 - auxT;
+                    break;
+                case NotifyDismissStyle.FadeScaleOut:
+                    Pill.Opacity = 1.0 - auxT;
+                    var so = 1.0 - 0.15 * auxT;
+                    _pillScale.ScaleX = so;
+                    _pillScale.ScaleY = so;
+                    break;
+                case NotifyDismissStyle.Ragged:
+                    {
+                        var amp = 3.5 * (1.0 - rawT);
+                        _pillTranslate.X = (_morphRng.NextDouble() * 2 - 1) * amp;
+                        _pillTranslate.Y = (_morphRng.NextDouble() * 2 - 1) * amp * 0.35;
+                        Pill.Opacity = 1.0 - AnimationEasing.CubicOut(rawT) * 0.85;
+                        break;
+                    }
+                case NotifyDismissStyle.Glitch:
+                    {
+                        var stutter = (int)(rawT * 12) % 2 == 0;
+                        _pillTranslate.X = stutter ? 2.5 : -1.5;
+                        _pillTranslate.Y = stutter ? -1.0 : 0.5;
+                        Pill.Opacity = stutter ? Math.Max(0.15, 1.0 - auxT) : Math.Max(0.05, 0.7 - auxT);
+                        break;
+                    }
+                default:
+                    Pill.Opacity = 1;
+                    break;
+            }
         }
     }
 
@@ -936,14 +1194,14 @@ public partial class OverlayWindow : Window
     {
         var key = IslandIcons.KindKey(kind);
         var brush = new SolidColorBrush(Colors.White);
-        AppIconHost.Child = IconPackService.Create(_settings.IconPack, key, OverlayTokens.IconSizeKind, brush, 1.5);
+        AppIconHost.Child = IconPackService.Create(_settings.IconPack, key, CurrentIconKind(), brush, 1.5);
     }
 
     private void SetKindIconWeather(int code)
     {
         var key = WeatherCodes.IconKey(code);
         var brush = new SolidColorBrush(Colors.White);
-        AppIconHost.Child = IconPackService.Create(_settings.IconPack, key, OverlayTokens.IconSizeKind, brush, 1.5);
+        AppIconHost.Child = IconPackService.Create(_settings.IconPack, key, CurrentIconKind(), brush, 1.5);
     }
 
     private void SetWeatherIcons(string key, bool animate)
@@ -952,7 +1210,7 @@ public partial class OverlayWindow : Window
             return;
 
         var brush = new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex));
-        var path = IconPackService.Create(_settings.IconPack, key, OverlayTokens.IconSizeCollapsed, brush);
+        var path = IconPackService.Create(_settings.IconPack, key, CurrentIconCollapsed(), brush);
 
         if (!animate || WeatherIconA.Child is null)
         {

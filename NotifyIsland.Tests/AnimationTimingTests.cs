@@ -54,9 +54,61 @@ public class AnimationTimingTests
     }
 
     [Fact]
-    public void AppSettings_DefaultAnimationSpeed_IsNormal()
+    public void AppSettings_DefaultAnimationSpeed_IsSlow()
     {
-        Assert.Equal(AnimationSpeed.Normal, new AppSettings().AnimationSpeed);
+        Assert.Equal(AnimationSpeed.Slow, new AppSettings().AnimationSpeed);
+    }
+
+    [Fact]
+    public void MorphMs_IsRaisedForSofterFeel()
+    {
+        Assert.Equal(420, OverlayTokens.MorphMs);
+    }
+
+    [Theory]
+    [InlineData(NotifyAppearStyle.Inflate)]
+    [InlineData(NotifyAppearStyle.SlideDown)]
+    [InlineData(NotifyAppearStyle.FadeScale)]
+    [InlineData(NotifyAppearStyle.Bounce)]
+    [InlineData(NotifyAppearStyle.Pop)]
+    public void AppearStyle_RoundTrip(NotifyAppearStyle style)
+    {
+        var s = new AppSettings { AppearStyle = style };
+        var back = AppSettings.FromJson(s.ToJson());
+        Assert.NotNull(back);
+        Assert.Equal(style, back!.AppearStyle);
+    }
+
+    [Theory]
+    [InlineData(NotifyDismissStyle.Collapse)]
+    [InlineData(NotifyDismissStyle.SlideUp)]
+    [InlineData(NotifyDismissStyle.FadeScaleOut)]
+    [InlineData(NotifyDismissStyle.Ragged)]
+    [InlineData(NotifyDismissStyle.Glitch)]
+    public void DismissStyle_RoundTrip(NotifyDismissStyle style)
+    {
+        var s = new AppSettings { DismissStyle = style };
+        var back = AppSettings.FromJson(s.ToJson());
+        Assert.NotNull(back);
+        Assert.Equal(style, back!.DismissStyle);
+    }
+
+    [Fact]
+    public void IconDip_ScalesWithFontSize()
+    {
+        Assert.Equal(12.0, OverlayTokens.IconDip(12));
+        Assert.Equal(14.0, OverlayTokens.IconDip(14));
+        Assert.Equal(12.9, OverlayTokens.IconDip(14, OverlayTokens.IconFontFactorKind)); // 14*0.92
+        Assert.True(OverlayTokens.IconDip(18) >= OverlayTokens.IconDip(10));
+    }
+
+    [Fact]
+    public void Easing_SoftNotLinear()
+    {
+        Assert.True(AnimationEasing.CubicOut(0.5) > 0.5);
+        Assert.True(AnimationEasing.SpringOut(0.5) > 0.8);
+        Assert.InRange(AnimationEasing.PopScale(0.2), 0.9, 1.25);
+        Assert.True(AnimationEasing.GlitchStep(0.2) >= 0);
     }
 
     [Fact]

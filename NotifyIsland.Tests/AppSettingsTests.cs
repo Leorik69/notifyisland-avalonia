@@ -13,7 +13,7 @@ public class AppSettingsTests
         Assert.True(s.IslandVisible);
         Assert.True(s.SoundEnabled);
         Assert.Equal(SoundPack.Nothing, s.SoundPack);
-        Assert.Equal(AnimationSpeed.Normal, s.AnimationSpeed);
+        Assert.Equal(AnimationSpeed.Slow, s.AnimationSpeed);
         Assert.Equal(WeatherSide.Right, s.WeatherSide);
         Assert.Equal(ZOrderMode.Topmost, s.ZOrderMode);
         Assert.Equal(IslandEdge.Top, s.Edge);
@@ -32,8 +32,10 @@ public class AppSettingsTests
         Assert.Equal("IslandIcons", s.IconPack);
         Assert.Equal(12, s.FontSize);
         Assert.Equal("System", s.FontFamily);
-        Assert.Equal(AnimationSpeed.Normal, s.AnimMorphInflate);
-        Assert.Equal(AnimationSpeed.Normal, s.AnimMorphCollapse);
+        Assert.Equal(AnimationSpeed.Slow, s.AnimMorphInflate);
+        Assert.Equal(AnimationSpeed.Slow, s.AnimMorphCollapse);
+        Assert.Equal(NotifyAppearStyle.Bounce, s.AppearStyle);
+        Assert.Equal(NotifyDismissStyle.Ragged, s.DismissStyle);
         Assert.True(s.AnimPulseEnabled);
         Assert.True(s.AnimBreathEnabled);
     }
@@ -78,6 +80,8 @@ public class AppSettingsTests
             AnimSwipeRubber = AnimationSpeed.Slow,
             AnimPulseEnabled = false,
             AnimBreathEnabled = true,
+            AppearStyle = NotifyAppearStyle.Pop,
+            DismissStyle = NotifyDismissStyle.Glitch,
             SettingsWindowX = 100,
             SettingsWindowY = 200,
             SettingsWindowWidth = 500,
@@ -121,6 +125,8 @@ public class AppSettingsTests
         Assert.Equal(AnimationSpeed.Slow, back.AnimSwipeRubber);
         Assert.False(back.AnimPulseEnabled);
         Assert.True(back.AnimBreathEnabled);
+        Assert.Equal(NotifyAppearStyle.Pop, back.AppearStyle);
+        Assert.Equal(NotifyDismissStyle.Glitch, back.DismissStyle);
         Assert.False(back.AllowDrag);
         Assert.Equal(100, back.SettingsWindowX);
         Assert.Equal(200, back.SettingsWindowY);
@@ -175,6 +181,8 @@ public class AppSettingsTests
             FontFamily = "JetBrainsMono",
             AnimHover = AnimationSpeed.Slow,
             AnimPulseEnabled = false,
+            AppearStyle = NotifyAppearStyle.SlideDown,
+            DismissStyle = NotifyDismissStyle.SlideUp,
             AllowDrag = true
         };
         var b = new AppSettings();
@@ -191,6 +199,8 @@ public class AppSettingsTests
         Assert.Equal("JetBrainsMono", b.FontFamily);
         Assert.Equal(AnimationSpeed.Slow, b.AnimHover);
         Assert.False(b.AnimPulseEnabled);
+        Assert.Equal(NotifyAppearStyle.SlideDown, b.AppearStyle);
+        Assert.Equal(NotifyDismissStyle.SlideUp, b.DismissStyle);
         Assert.False(b.AllowDrag);
     }
 }
