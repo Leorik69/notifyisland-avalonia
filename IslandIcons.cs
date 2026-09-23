@@ -29,6 +29,10 @@ public static class IslandIcons
             "M12 4 L12 12 M8 8 L12 4 L16 8 M6 18 L18 18",
         ["error"] =
             "M12 4 L20 18 L4 18 Z M12 10 L12 13.5 M12 16 L12 16.5",
+        ["battery"] =
+            "M6 8 L16 8 L16 16 L6 16 Z M16 10.5 L18 10.5 L18 13.5 L16 13.5 M8 10.5 L8 13.5 L12 13.5 L12 10.5 Z",
+        ["bolt"] =
+            "M13 3 L6 14 L11 14 L10 21 L18 10 L13 10 Z",
         ["weather-clear"] =
             "M12 7 A5 5 0 1 1 11.99 7 M12 2.5 L12 4 M12 20 L12 21.5 M3.5 12 L5 12 M19 12 L20.5 12 M5.5 5.5 L6.6 6.6 M17.4 17.4 L18.5 18.5 M18.5 5.5 L17.4 6.6 M6.6 17.4 L5.5 18.5",
         ["weather-partly"] =
@@ -83,6 +87,7 @@ public static class IslandIcons
         OverlayKind.Error => "error",
         OverlayKind.Notification => "notify",
         OverlayKind.Weather => "weather-clear",
+        OverlayKind.Battery => "bolt",
         _ => "notify"
     };
 

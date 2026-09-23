@@ -23,6 +23,9 @@ public partial class OverlayWindow : Window
     private WindowsWeatherSource _weather;
     private WindowsMediaSessionSource? _mediaSource;
     private bool _mediaFromSmtc;
+    private WindowsPowerSource? _powerSource;
+    private PowerStatusSnapshot? _lastPower;
+    private int? _prevPowerPercent;
     private byte[]? _lastArtworkBytes;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
@@ -135,6 +138,7 @@ public partial class OverlayWindow : Window
             PlaceIsland();
             _ = RefreshWeatherAsync();
             EnsureMediaSource();
+            EnsurePowerSource();
             if (_winTray is null && _tray is null)
             {
                 try
@@ -321,7 +325,8 @@ public partial class OverlayWindow : Window
 
     private static bool IsOverlayKind(OverlayKind kind) =>
         kind is OverlayKind.Notification or OverlayKind.Progress or OverlayKind.Media
-            or OverlayKind.Timer or OverlayKind.Error or OverlayKind.Expanded or OverlayKind.Weather;
+            or OverlayKind.Timer or OverlayKind.Error or OverlayKind.Expanded or OverlayKind.Weather
+            or OverlayKind.Battery;
 
     private void SyncUnreadPulse(bool shouldPulse)
     {
@@ -593,6 +598,8 @@ public partial class OverlayWindow : Window
     {
         var menu = new ContextMenu();
         menu.Items.Add(Menu("Demo F9", () => { if (_demoOn) StopDemo(); else StartDemo(); }));
+        menu.Items.Add(Menu("Демо зарядки F10", DemoChargePill));
+        menu.Items.Add(Menu("Демо низкий заряд F11", DemoLowBattery));
         var weatherLabel = _settings.WeatherEnabled ? "Погода выкл" : "Погода вкл";
         menu.Items.Add(Menu(weatherLabel, ToggleWeather));
         menu.Items.Add(Menu("Свернуть", () =>
@@ -620,7 +627,7 @@ public partial class OverlayWindow : Window
                 return;
             }
 
-            _settingsWindow = new SettingsWindow(_settings, ApplySettingsFromUi);
+            _settingsWindow = new SettingsWindow(_settings, ApplySettingsFromUi, DemoChargePill);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Show();
         }
@@ -653,6 +660,15 @@ public partial class OverlayWindow : Window
         }
         else
             EnsureMediaSource();
+        if (_settings.ShowBatteryAlerts || _settings.ShowBatteryInCollapsed)
+            EnsurePowerSource();
+        else
+        {
+            _powerSource?.Stop();
+            _powerSource?.Dispose();
+            _powerSource = null;
+        }
+        _powerSource?.ResetLowLatch();
         TickClock();
         ApplyWeatherSide();
         ApplyOrientationLayout();
@@ -736,7 +752,7 @@ public partial class OverlayWindow : Window
         _prevKind = before;
         var wasCollapsed = before is OverlayKind.Idle or OverlayKind.Collapsed;
         var nowCollapsed = after is OverlayKind.Idle or OverlayKind.Collapsed;
-        if (after == OverlayKind.Notification)
+        if (after is OverlayKind.Notification or OverlayKind.Battery)
             IslandSounds.Play(IslandSoundKind.Notify, _settings);
         else if (after == OverlayKind.Error)
             IslandSounds.Play(IslandSoundKind.Error, _settings);
@@ -772,6 +788,8 @@ public partial class OverlayWindow : Window
     private void OnKey(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.F9) { if (_demoOn) StopDemo(); else StartDemo(); e.Handled = true; }
+        else if (e.Key == Key.F10) { DemoChargePill(); e.Handled = true; }
+        else if (e.Key == Key.F11) { DemoLowBattery(); e.Handled = true; }
         else if (e.Key == Key.Escape)
         {
             var before = _machine.Snapshot().Kind;
@@ -829,7 +847,10 @@ public partial class OverlayWindow : Window
     {
         var snap = _machine.Snapshot();
         ApplyOrientationLayout();
-        var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge);
+        var batteryChip = _settings.ShowBatteryInCollapsed
+            && _lastPower is { HasBattery: true }
+            && snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed;
+        var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge, batteryChip);
 
         var fromW = Pill.Width > 0 ? Pill.Width : Width;
         var fromH = Pill.Height > 0 ? Pill.Height : Height;
@@ -1169,6 +1190,20 @@ public partial class OverlayWindow : Window
                 ToolTip.SetTip(MinimalWeather, "Погода Windows");
         }
 
+        var showBat = !overlayOn && _settings.ShowBatteryInCollapsed
+            && _lastPower is { HasBattery: true };
+        MinimalBattery.IsVisible = showBat;
+        if (showBat)
+        {
+            var pct = _lastPower!.Percent;
+            BatteryPercentText.Text = $"{pct}%";
+            var batKey = _lastPower.IsCharging || _lastPower.OnAc ? "bolt" : "battery";
+            var batBrush = new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex));
+            BatteryIconHost.Child = IconPackService.Create(_settings.IconPack, batKey, CurrentIconCollapsed(), batBrush);
+            ToolTip.SetTip(MinimalBattery,
+                _lastPower.IsCharging || _lastPower.OnAc ? $"Зарядка · {pct}%" : $"Батарея · {pct}%");
+        }
+
         var title = string.IsNullOrWhiteSpace(p.Title) ? Fallback(kind) : p.Title;
         var sub = string.IsNullOrWhiteSpace(p.Subtitle) ? p.Body : p.Subtitle;
         if (kind == OverlayKind.Weather)
@@ -1192,12 +1227,14 @@ public partial class OverlayWindow : Window
         }
         else if (kind == OverlayKind.Progress && string.IsNullOrWhiteSpace(sub))
             sub = $"{(int)Math.Round(p.Progress * 100)}%";
+        else if (kind == OverlayKind.Battery && string.IsNullOrWhiteSpace(sub))
+            sub = $"{(int)Math.Round(p.Progress * 100)}%";
 
         OverlayTitle.Text = string.IsNullOrWhiteSpace(sub) ? title : $"{title} · {sub}";
         OverlaySubtitle.Text = "";
 
         OverlayProgress.Value = p.Progress * 100;
-        OverlayProgress.IsVisible = kind is OverlayKind.Progress or OverlayKind.Media;
+        OverlayProgress.IsVisible = kind is OverlayKind.Progress or OverlayKind.Media or OverlayKind.Battery;
 
         var textPrimary = ParseColor(_settings.ColorTextPrimary, OverlayTokens.TextHex);
         var accent = ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex);
@@ -1298,6 +1335,7 @@ public partial class OverlayWindow : Window
         OverlayKind.Error => "Ошибка",
         OverlayKind.Expanded => "Обзор",
         OverlayKind.Weather => "Погода",
+        OverlayKind.Battery => "Зарядка",
         _ => ""
     };
 
@@ -1426,4 +1464,98 @@ public partial class OverlayWindow : Window
             _lastArtworkBytes = null;
         }
     }
+
+    private void EnsurePowerSource()
+    {
+        if (!_settings.ShowBatteryAlerts && !_settings.ShowBatteryInCollapsed) return;
+        if (_powerSource is not null) return;
+        try
+        {
+            _powerSource = new WindowsPowerSource();
+            _powerSource.Changed += OnPowerChanged;
+            _powerSource.Start();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("EnsurePowerSource failed", ex);
+            _powerSource = null;
+        }
+    }
+
+    private void OnPowerChanged(PowerStatusSnapshot snap) =>
+        Dispatcher.UIThread.Post(() => ApplyPowerSnapshot(snap), DispatcherPriority.Background);
+
+    private void ApplyPowerSnapshot(PowerStatusSnapshot snap)
+    {
+        var prev = _lastPower;
+        var prevPct = _prevPowerPercent;
+        _lastPower = snap;
+        _prevPowerPercent = snap.Percent;
+
+        if (_settings.ShowBatteryInCollapsed)
+            ApplySize();
+
+        if (!_settings.ShowBatteryAlerts)
+        {
+            Paint();
+            return;
+        }
+
+        var kind = _machine.Snapshot().Kind;
+        // Don't interrupt an active notification/battery toast.
+        if (kind is OverlayKind.Notification or OverlayKind.Battery)
+        {
+            Paint();
+            return;
+        }
+
+        var showCharge = _powerSource is not null && (
+            _powerSource.ConsumeChargeConnect(snap, prev) ||
+            _powerSource.ConsumeChargeBump(snap, prevPct));
+
+        if (showCharge && snap.HasBattery)
+        {
+            ShowChargePill(snap.Percent);
+            return;
+        }
+
+        var threshold = BatteryAlertLogic.ClampLowPercent(_settings.LowBatteryPercent);
+        if (_powerSource is not null && _powerSource.TakeLowAlert(threshold))
+        {
+            ShowLowBattery(snap.Percent);
+            return;
+        }
+
+        Paint();
+    }
+
+    private void ShowChargePill(int percent)
+    {
+        var before = _machine.Snapshot().Kind;
+        _machine.Dispatch(OverlayCommand.SetBattery, BatteryAlertLogic.ChargePayload(percent));
+        var after = _machine.Snapshot().Kind;
+        if (before != after) OnKindChanged(before, after);
+        ApplySize();
+        Paint();
+    }
+
+    private void ShowLowBattery(int percent)
+    {
+        var before = _machine.Snapshot().Kind;
+        _machine.Dispatch(OverlayCommand.Notify, BatteryAlertLogic.LowBatteryPayload(percent));
+        var after = _machine.Snapshot().Kind;
+        if (before != after) OnKindChanged(before, after);
+        ApplySize();
+        Paint();
+    }
+
+    public void DemoChargePill() => ShowChargePill(_lastPower?.Percent ?? 67);
+
+    public void DemoLowBattery()
+    {
+        _powerSource?.ResetLowLatch();
+        var pct = Math.Min(_settings.LowBatteryPercent, 15);
+        ShowLowBattery(pct);
+    }
+
 }

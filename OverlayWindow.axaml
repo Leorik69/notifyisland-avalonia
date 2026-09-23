@@ -60,6 +60,20 @@
                      Foreground="#C8C8CC"
                      Text="18°" />
         </StackPanel>
+        <StackPanel x:Name="MinimalBattery"
+                    Orientation="Horizontal"
+                    Spacing="3"
+                    VerticalAlignment="Center"
+                    IsVisible="False">
+          <Viewbox x:Name="BatteryIconHost" Width="11" Height="11" VerticalAlignment="Center" />
+          <TextBlock x:Name="BatteryPercentText"
+                     VerticalAlignment="Center"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     Foreground="#C8C8CC"
+                     Text="100%" />
+        </StackPanel>
         <Border x:Name="UnreadDot"
                 Width="7" Height="7"
                 CornerRadius="3.5"

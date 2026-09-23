@@ -5,7 +5,7 @@ from pathlib import Path
 ISLAND = Path(__file__).resolve().parents[1]
 CS = (ISLAND / "NotifyIsland.Core" / "OverlayMachine.cs").read_text(encoding="utf-8")
 TOKENS = (ISLAND / "NotifyIsland.Core" / "OverlayTokens.cs").read_text(encoding="utf-8")
-KINDS = ("Idle","Collapsed","Expanded","Notification","Progress","Media","Timer","Error","Weather")
+KINDS = ("Idle","Collapsed","Expanded","Notification","Progress","Media","Timer","Error","Weather","Battery")
 
 class Payload:
     def __init__(self, title="", subtitle="", body="", progress=0.0, playing=False, remaining=0.0,
@@ -85,12 +85,12 @@ def _token_float(name: str) -> float:
 def test_source_has_kinds() -> None:
     for k in KINDS:
         assert f"    {k}" in CS or f"{k}," in CS, k
-    assert "Sanitize" in CS and "DemoNext" in CS
+    assert ("Sanitize" in CS or "Sanitize" in CS) and ("DemoNext" in CS or "DemoNext" in CS)
     assert "UnreadCount" in CS
     assert "SetWeather" in CS and "CycleNext" in CS
     assert 'FillHex = "#080808"' in TOKENS and 'AccentHex = "#3D9CF0"' in TOKENS
     morph = _token_int("MorphMs")
-    assert 260 <= morph <= 320, morph
+    assert 260 <= morph <= 500, morph  # 1.5.8+ slower soft morph
     assert _token_int("SwipeFirePx") == 48
     assert _token_int("SwipeClickMaxPx") == 12
     assert _token_int("SwipeRubberMs") == 180
@@ -138,7 +138,7 @@ def test_fixed_height_tokens() -> None:
     h = _token_float("CollapsedH")
     w = _token_float("CollapsedW")
     assert h <= 30, h
-    assert w <= 160, w
+    assert w <= 200, w  # 1.6.0+ date chip widened collapsed
     assert "ExpandedMinH" not in TOKENS
     assert "ExpandedMaxH" not in TOKENS
     assert _token_float("CollapsedWeatherW") >= w

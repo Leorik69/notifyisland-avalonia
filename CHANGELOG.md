@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.8.0 — Charging / battery pill + low-battery alert
+
+### Added
+- **Charge pill** (`OverlayKind.Battery`): transient morph on AC connect (and meaningful % bumps while charging) — title «Зарядка», subtitle percent, progress bar, auto-dismiss ~3.5s back to prior kind.
+- **Low-battery alert** via `Notify` once per discharge cycle below threshold (default 20%, hysteresis +5% / AC reset).
+- `WindowsPowerSource` — WinForms `SystemInformation.PowerStatus` poll (fail-soft); Core stays WinRT-free via `BatteryAlertLogic`.
+- Settings → **Вид / Питание**: «Оповещения зарядки и низкого заряда» (`ShowBatteryAlerts`, default ON), «% в свёрнутом» (`ShowBatteryInCollapsed`, default OFF), порог (`LowBatteryPercent` 5–50), кнопка демо.
+- Collapsed battery chip when enabled; icons `battery` / `bolt` in `IslandIcons`.
+- Demo: **F10** charge pill, **F11** low-battery (Sandbox-friendly when AC state is fixed).
+
+### Changed
+- Version **1.8.0**. `OverlayMachine` WidthFor/Tick/DemoNext updated for Battery. CONTEXT + tests.
+
+### Note
+- Does not interrupt SMTC Now Playing except as brief overlay (returns to Media). No Open-Meteo. No island drag.
+
 ## 1.7.0 — Now Playing (Windows SMTC)
 
 ### Added

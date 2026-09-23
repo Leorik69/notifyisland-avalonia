@@ -215,6 +215,20 @@
             <CheckBox x:Name="ShowNowPlayingBox" Content="Показывать Now Playing"/>
             <TextBlock Classes="mutedNote"
                        Text="Системный SMTC (Spotify, Edge, …). Выкл — только демо Media (свайп / F9)."/>
+
+            <TextBlock Classes="sectionTitle" Text="Питание" Margin="0,18,0,10"/>
+            <CheckBox x:Name="ShowBatteryAlertsBox" Content="Оповещения зарядки и низкого заряда"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Пилюля «Зарядка» при подключении AC и уведомление при низком заряде. В Sandbox: F10 / F11."/>
+            <CheckBox x:Name="ShowBatteryInCollapsedBox" Content="Показывать % батареи в свёрнутом островке"/>
+            <TextBlock Classes="fieldLabel" Text="Порог низкого заряда (%)"/>
+            <DockPanel>
+              <TextBlock x:Name="LowBatteryLabel" DockPanel.Dock="Right" Width="40" Text="20"
+                         Foreground="#FFFFFF" VerticalAlignment="Center"/>
+              <Slider x:Name="LowBatterySlider" Minimum="5" Maximum="50" Value="20" TickFrequency="1" IsSnapToTickEnabled="True"/>
+            </DockPanel>
+            <Button x:Name="DemoBatteryBtn" Content="Демо зарядки (F10)" Width="200" HorizontalAlignment="Left"
+                    Margin="0,8,0,0" Click="OnDemoBattery"/>
             <TextBlock Classes="fieldLabel" Text="Слой (z-order)" Margin="0,0,0,4"/>
             <ComboBox x:Name="ZOrderBox" Width="340" MaxWidth="400" HorizontalAlignment="Left">
               <ComboBoxItem Tag="Topmost" Content="Поверх всех окон"/>

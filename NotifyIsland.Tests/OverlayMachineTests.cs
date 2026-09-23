@@ -282,5 +282,42 @@ public class OverlayMachineTests
         Assert.NotNull(snap.Payload.ArtworkBytes);
         Assert.Equal(9, snap.Payload.ArtworkBytes![0]);
     }
-}
 
+    [Fact]
+    public void SetBattery_AutoDismisses_WithoutUnreadBump()
+    {
+        var m = new OverlayMachine { NotifyDurationMs = 1000 };
+        m.Dispatch(OverlayCommand.SetMedia, new OverlayPayload { Title = "Song" });
+        Assert.Equal(0, m.UnreadCount);
+
+        m.Dispatch(OverlayCommand.SetBattery, BatteryAlertLogic.ChargePayload(55));
+        Assert.Equal(OverlayKind.Battery, m.Snapshot().Kind);
+        Assert.Equal(0, m.UnreadCount);
+        Assert.Equal(320, OverlayMachine.WidthFor(OverlayKind.Battery));
+
+        m.Tick(1000);
+        Assert.Equal(OverlayKind.Media, m.Snapshot().Kind);
+    }
+
+    [Fact]
+    public void WidthFor_BatteryChip_AddsExtra()
+    {
+        var baseW = OverlayMachine.WidthFor(OverlayKind.Idle, weatherEnabled: false, batteryChip: false);
+        var chipW = OverlayMachine.WidthFor(OverlayKind.Idle, weatherEnabled: false, batteryChip: true);
+        Assert.Equal(baseW + OverlayTokens.CollapsedBatteryExtraW, chipW);
+    }
+
+    [Fact]
+    public void DemoNext_IncludesSetBattery()
+    {
+        var m = new OverlayMachine();
+        OverlayKind? saw = null;
+        for (var i = 0; i < 20; i++)
+        {
+            m.Dispatch(OverlayCommand.DemoNext);
+            if (m.Snapshot().Kind == OverlayKind.Battery)
+                saw = OverlayKind.Battery;
+        }
+        Assert.Equal(OverlayKind.Battery, saw);
+    }
+}

@@ -14,7 +14,8 @@ public enum OverlayKind
     Media,
     Timer,
     Error,
-    Weather
+    Weather,
+    Battery
 }
 
 public enum OverlayCommand
@@ -31,7 +32,8 @@ public enum OverlayCommand
     SetWeather,
     CycleNext,
     CyclePrev,
-    ExpandWidget
+    ExpandWidget,
+    SetBattery
 }
 
 /// <summary>Swipe L/R cycle slots (Idle included).</summary>
@@ -182,6 +184,18 @@ public sealed class OverlayMachine
                 _unreadCount = 0;
                 Apply(new OverlayPayload());
                 break;
+            case OverlayCommand.SetBattery:
+                if (_kind != OverlayKind.Battery)
+                    _returnTo = _kind == OverlayKind.Collapsed ? OverlayKind.Idle : _kind;
+                _kind = OverlayKind.Battery;
+                Apply(data);
+                if (string.IsNullOrWhiteSpace(_payload.Title))
+                    _payload.Title = "Зарядка";
+                if (string.IsNullOrWhiteSpace(_payload.Subtitle) && _payload.Progress > 0)
+                    _payload.Subtitle = $"{(int)Math.Round(_payload.Progress * 100)}%";
+                _notifyMs = NotifyDurationMs > 0 ? Math.Min(NotifyDurationMs, BatteryAlertLogic.ChargePillMs) : BatteryAlertLogic.ChargePillMs;
+                // Charge pill is transient — do not bump unread.
+                break;
             case OverlayCommand.DemoNext:
                 RunDemoStep();
                 break;
@@ -206,13 +220,15 @@ public sealed class OverlayMachine
     public OverlaySnapshot Tick(int deltaMs)
     {
         var dt = Math.Max(0, deltaMs);
-        if (_kind == OverlayKind.Notification)
+        if (_kind is OverlayKind.Notification or OverlayKind.Battery)
         {
             _notifyMs -= dt;
             if (_notifyMs <= 0)
             {
                 _notifyMs = 0;
-                _kind = _returnTo == OverlayKind.Notification ? OverlayKind.Idle : _returnTo;
+                _kind = _returnTo == OverlayKind.Notification || _returnTo == OverlayKind.Battery
+                    ? OverlayKind.Idle
+                    : _returnTo;
             }
         }
         if (_kind == OverlayKind.Timer && _payload.RemainingSeconds > 0)
@@ -334,6 +350,7 @@ public sealed class OverlayMachine
             OverlayCommand.SetWeather, OverlayCommand.Collapse,
             OverlayCommand.SetMedia, OverlayCommand.Collapse,
             OverlayCommand.SetProgress, OverlayCommand.Collapse,
+            OverlayCommand.SetBattery, OverlayCommand.Collapse,
             OverlayCommand.SetTimer, OverlayCommand.Collapse,
             OverlayCommand.SetError, OverlayCommand.Collapse
         };
@@ -345,6 +362,7 @@ public sealed class OverlayMachine
             OverlayCommand.Notify => new OverlayPayload { Title = "Сообщение", Body = "Демо уведомление" },
             OverlayCommand.SetProgress => new OverlayPayload { Title = "Копирование", Progress = 0.42 },
             OverlayCommand.SetMedia => new OverlayPayload { Title = "Night Drive", Subtitle = "Local Radio", Progress = 0.33, Playing = true },
+            OverlayCommand.SetBattery => BatteryAlertLogic.ChargePayload(67),
             OverlayCommand.SetTimer => new OverlayPayload { Title = "Фокус", RemainingSeconds = 90 },
             OverlayCommand.SetError => new OverlayPayload { Title = "Сеть", Body = "Нет ответа сервера" },
             _ => new OverlayPayload()
@@ -406,7 +424,7 @@ public sealed class OverlayMachine
         ArtworkBytes = p.ArtworkBytes is null ? null : (byte[])p.ArtworkBytes.Clone()
     };
 
-    public static double WidthFor(OverlayKind kind, bool weatherEnabled = false)
+    public static double WidthFor(OverlayKind kind, bool weatherEnabled = false, bool batteryChip = false)
     {
         var w = kind switch
         {
@@ -417,12 +435,17 @@ public sealed class OverlayMachine
             OverlayKind.Timer => 320,
             OverlayKind.Error => 360,
             OverlayKind.Weather => 360,
+            OverlayKind.Battery => 320,
             OverlayKind.Idle or OverlayKind.Collapsed =>
                 weatherEnabled ? OverlayTokens.CollapsedWeatherW : OverlayTokens.CollapsedW,
             _ => OverlayTokens.CollapsedW
         };
         if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
+        {
+            if (batteryChip)
+                w += OverlayTokens.CollapsedBatteryExtraW;
             return w;
+        }
         return Math.Clamp(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
     }
 

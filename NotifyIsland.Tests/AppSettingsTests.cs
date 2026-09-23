@@ -10,6 +10,9 @@ public class AppSettingsTests
         var s = new AppSettings();
         Assert.True(s.WeatherEnabled);
         Assert.True(s.ShowNowPlaying);
+        Assert.True(s.ShowBatteryAlerts);
+        Assert.False(s.ShowBatteryInCollapsed);
+        Assert.Equal(BatteryAlertLogic.DefaultLowPercent, s.LowBatteryPercent);
         Assert.False(s.AllowDrag);
         Assert.True(s.IslandVisible);
         Assert.True(s.SoundEnabled);
@@ -52,6 +55,9 @@ public class AppSettingsTests
         {
             WeatherEnabled = false,
             ShowNowPlaying = false,
+            ShowBatteryAlerts = false,
+            ShowBatteryInCollapsed = true,
+            LowBatteryPercent = 12,
             WeatherSide = WeatherSide.Left,
             ZOrderMode = ZOrderMode.Desktop,
             Edge = IslandEdge.Right,
@@ -102,6 +108,9 @@ public class AppSettingsTests
         Assert.NotNull(back);
         Assert.False(back!.WeatherEnabled);
         Assert.False(back.ShowNowPlaying);
+        Assert.False(back.ShowBatteryAlerts);
+        Assert.True(back.ShowBatteryInCollapsed);
+        Assert.Equal(12, back.LowBatteryPercent);
         Assert.Equal(WeatherSide.Left, back.WeatherSide);
         Assert.Equal(ZOrderMode.Desktop, back.ZOrderMode);
         Assert.Equal(IslandEdge.Right, back.Edge);
@@ -152,12 +161,13 @@ public class AppSettingsTests
     [Fact]
     public void Normalize_ClampsOpacityAndVolume()
     {
-        var s = new AppSettings { Opacity = 0.1, SoundVolume = 2.0, SoundVolHover = 3.0, FontSize = 99 };
+        var s = new AppSettings { Opacity = 0.1, SoundVolume = 2.0, SoundVolHover = 3.0, FontSize = 99, LowBatteryPercent = 99 };
         s.Normalize();
         Assert.Equal(0.35, s.Opacity);
         Assert.Equal(1.0, s.SoundVolume);
         Assert.Equal(1.0, s.SoundVolHover);
         Assert.Equal(18, s.FontSize);
+        Assert.Equal(50, s.LowBatteryPercent);
     }
 
     [Fact]
@@ -203,6 +213,9 @@ public class AppSettingsTests
             WeatherLocationMode = WeatherLocationMode.Manual,
             WeatherLocationName = "Казань",
             ShowNowPlaying = false,
+            ShowBatteryAlerts = false,
+            ShowBatteryInCollapsed = true,
+            LowBatteryPercent = 12,
             AllowDrag = true
         };
         var b = new AppSettings();

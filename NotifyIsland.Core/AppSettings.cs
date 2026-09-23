@@ -57,6 +57,15 @@ public sealed class AppSettings
 
     /// <summary>Show live Now Playing from Windows SMTC when a session is active. Default ON.</summary>
     public bool ShowNowPlaying { get; set; } = true;
+
+    /// <summary>Charge-connect pill + low-battery alert. Default ON.</summary>
+    public bool ShowBatteryAlerts { get; set; } = true;
+
+    /// <summary>Show compact battery % in collapsed idle row. Default OFF.</summary>
+    public bool ShowBatteryInCollapsed { get; set; } = false;
+
+    /// <summary>Low-battery threshold percent (5–50). Default 20.</summary>
+    public int LowBatteryPercent { get; set; } = BatteryAlertLogic.DefaultLowPercent;
     public double Latitude { get; set; } = 55.75;
     public double Longitude { get; set; } = 37.62;
 
@@ -245,6 +254,9 @@ public sealed class AppSettings
     {
         target.WeatherEnabled = WeatherEnabled;
         target.ShowNowPlaying = ShowNowPlaying;
+        target.ShowBatteryAlerts = ShowBatteryAlerts;
+        target.ShowBatteryInCollapsed = ShowBatteryInCollapsed;
+        target.LowBatteryPercent = BatteryAlertLogic.ClampLowPercent(LowBatteryPercent);
         target.Latitude = Latitude;
         target.Longitude = Longitude;
         target.WeatherLocationMode = WeatherLocationMode;
@@ -318,6 +330,8 @@ public sealed class AppSettings
         SoundVolHover = Math.Clamp(SoundVolHover < 0 ? 0.35 : SoundVolHover, 0.0, 1.0);
         if (SettingsWindowWidth < 360) SettingsWindowWidth = 520;
         if (SettingsWindowHeight < 400) SettingsWindowHeight = 640;
+        LowBatteryPercent = BatteryAlertLogic.ClampLowPercent(
+            LowBatteryPercent <= 0 ? BatteryAlertLogic.DefaultLowPercent : LowBatteryPercent);
     }
 
     /// <summary>Accept #RGB / #RRGGBB / #AARRGGBB; fallback on parse failure.</summary>

@@ -12,6 +12,8 @@ public static class OverlayTokens
     public const double CollapsedW = 170;
     /// <summary>Collapsed width when WeatherEnabled shows compact temp next to clock/date.</summary>
     public const double CollapsedWeatherW = 240;
+    /// <summary>Extra collapsed width for optional battery % chip.</summary>
+    public const double CollapsedBatteryExtraW = 36;
     /// <summary>Fixed capsule height for every kind — width-only morph.</summary>
     public const double CollapsedH = 30;
     public const double ExpandedMinW = 280;

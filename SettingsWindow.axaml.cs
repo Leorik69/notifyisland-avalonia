@@ -16,17 +16,19 @@ public partial class SettingsWindow : Window
     private readonly AppSettings _live;
     private readonly AppSettings _draft;
     private readonly Action<AppSettings> _onApply;
+    private readonly Action? _onDemoBattery;
     private bool _paletteWired;
     private bool _loadingUi;
 
     public SettingsWindow() : this(new AppSettings(), _ => { }) { }
 
-    public SettingsWindow(AppSettings live, Action<AppSettings> onApply)
+    public SettingsWindow(AppSettings live, Action<AppSettings> onApply, Action? onDemoBattery = null)
     {
         _live = live;
         _draft = new AppSettings();
         live.CopyTo(_draft);
         _onApply = onApply;
+        _onDemoBattery = onDemoBattery;
         InitializeComponent();
         RestoreGeometry();
         LoadUi();
@@ -52,6 +54,11 @@ public partial class SettingsWindow : Window
                 FontSizeLabel.Text = $"{(int)FontSizeSlider.Value}";
                 UpdatePreview();
             }
+        };
+        LowBatterySlider.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == Slider.ValueProperty)
+                LowBatteryLabel.Text = $"{(int)LowBatterySlider.Value}";
         };
     }
 
@@ -155,6 +162,10 @@ public partial class SettingsWindow : Window
         IslandVisibleBox.IsChecked = _draft.IslandVisible;
         WeatherEnabledBox.IsChecked = _draft.WeatherEnabled;
         ShowNowPlayingBox.IsChecked = _draft.ShowNowPlaying;
+        ShowBatteryAlertsBox.IsChecked = _draft.ShowBatteryAlerts;
+        ShowBatteryInCollapsedBox.IsChecked = _draft.ShowBatteryInCollapsed;
+        LowBatterySlider.Value = BatteryAlertLogic.ClampLowPercent(_draft.LowBatteryPercent);
+        LowBatteryLabel.Text = $"{(int)LowBatterySlider.Value}";
         SoundEnabledBox.IsChecked = _draft.SoundEnabled;
         OffsetXBox.Value = _draft.OffsetX;
         OffsetYBox.Value = _draft.OffsetY;
@@ -324,6 +335,9 @@ public partial class SettingsWindow : Window
         _draft.AllowDrag = false;
         _draft.WeatherEnabled = WeatherEnabledBox.IsChecked == true;
         _draft.ShowNowPlaying = ShowNowPlayingBox.IsChecked == true;
+        _draft.ShowBatteryAlerts = ShowBatteryAlertsBox.IsChecked == true;
+        _draft.ShowBatteryInCollapsed = ShowBatteryInCollapsedBox.IsChecked == true;
+        _draft.LowBatteryPercent = BatteryAlertLogic.ClampLowPercent((int)LowBatterySlider.Value);
         _draft.SoundEnabled = SoundEnabledBox.IsChecked == true;
         _draft.OffsetX = (int)(OffsetXBox.Value ?? 0);
         _draft.OffsetY = (int)(OffsetYBox.Value ?? 0);
@@ -409,4 +423,15 @@ public partial class SettingsWindow : Window
     }
 
     private void OnCancel(object? sender, RoutedEventArgs e) => Close();
+    private void OnDemoBattery(object? sender, RoutedEventArgs e)
+    {
+        // Apply current draft first so thresholds match, then fire demo on live overlay.
+        ReadUi();
+        _draft.CopyTo(_live);
+        _live.Normalize();
+        _live.Save();
+        _onApply(_draft);
+        _onDemoBattery?.Invoke();
+    }
+
 }
