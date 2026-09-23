@@ -81,9 +81,16 @@
                 CornerRadius="5"
                 Background="#3D9CF0"
                 Margin="0,0,8,0"
-                VerticalAlignment="Center">
-          <Viewbox x:Name="AppIconHost" Width="11" Height="11"
-                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                VerticalAlignment="Center"
+                ClipToBounds="True">
+          <Grid>
+            <Viewbox x:Name="AppIconHost" Width="11" Height="11"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <Image x:Name="MediaArtwork"
+                   Stretch="UniformToFill"
+                   IsVisible="False"
+                   IsHitTestVisible="False"/>
+          </Grid>
         </Border>
 
         <Border x:Name="UnreadBadge"
@@ -105,23 +112,45 @@
                      Text="1" />
         </Border>
 
-        <Button x:Name="MediaPlay"
-                DockPanel.Dock="Right"
-                Padding="4,0"
-                Margin="6,0,0,0"
-                VerticalAlignment="Center"
-                Background="Transparent"
-                BorderThickness="0"
-                Click="OnMediaPlay"
-                ToolTip.Tip="Воспроизведение"
-                AutomationProperties.Name="Воспроизведение"
-                IsVisible="False">
-          <TextBlock x:Name="MediaPlayGlyph"
-                     Text="▶"
-                     FontSize="11"
-                     Foreground="#3D9CF0"
-                     VerticalAlignment="Center" />
-        </Button>
+        <StackPanel x:Name="MediaControls"
+                    DockPanel.Dock="Right"
+                    Orientation="Horizontal"
+                    Spacing="2"
+                    Margin="6,0,0,0"
+                    VerticalAlignment="Center"
+                    IsVisible="False">
+          <Button x:Name="MediaPrev"
+                  Padding="4,0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnMediaPrev"
+                  ToolTip.Tip="Предыдущий"
+                  AutomationProperties.Name="Предыдущий трек">
+            <TextBlock x:Name="MediaPrevGlyph" Text="⏮" FontSize="11" Foreground="#3D9CF0" VerticalAlignment="Center"/>
+          </Button>
+          <Button x:Name="MediaPlay"
+                  Padding="4,0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnMediaPlay"
+                  ToolTip.Tip="Воспроизведение"
+                  AutomationProperties.Name="Воспроизведение">
+            <TextBlock x:Name="MediaPlayGlyph"
+                       Text="▶"
+                       FontSize="11"
+                       Foreground="#3D9CF0"
+                       VerticalAlignment="Center" />
+          </Button>
+          <Button x:Name="MediaNext"
+                  Padding="4,0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnMediaNext"
+                  ToolTip.Tip="Следующий"
+                  AutomationProperties.Name="Следующий трек">
+            <TextBlock x:Name="MediaNextGlyph" Text="⏭" FontSize="11" Foreground="#3D9CF0" VerticalAlignment="Center"/>
+          </Button>
+        </StackPanel>
 
         <TextBlock x:Name="OverlayTitle"
                    VerticalAlignment="Center"

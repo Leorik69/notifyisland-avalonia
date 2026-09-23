@@ -18,6 +18,7 @@
 | FSM | `NotifyIsland.Core/OverlayMachine.cs` |
 | Weather labels / WMO-like map | `NotifyIsland.Core/WeatherCodes.cs` |
 | Windows weather source (no HTTP) | `WindowsWeatherSource.cs` |
+| Now Playing (SMTC) | `WindowsMediaSessionSource.cs` |
 | Outline icons | `IslandIcons.cs`, `Assets/Icons/README.md` |
 | UI overlay | `OverlayWindow.axaml` + `.axaml.cs` |
 | Settings JSON | `NotifyIsland.Core/AppSettings.cs` → `%LOCALAPPDATA%/NotifyIsland/settings.json` |
@@ -42,6 +43,7 @@ NotifyIsland.sln
 NotifyIsland.Av.csproj          # entry Avalonia app (имя exe: NotifyIsland)
 OverlayWindow.axaml(.cs)        # капсула + swipe + weather UI
 WindowsWeatherSource.cs         # WinRT/Bing cache/stub — NO Open-Meteo
+WindowsMediaSessionSource.cs    # SMTC Now Playing (WinRT)
 NotifyIsland.Core/AppSettings.cs / IslandLayout.cs
 SettingsWindow.axaml(.cs)       # полное окно настроек
 TrayService.cs / IslandSounds.cs
@@ -73,14 +75,14 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 
 **Убрать/не раздувать:** demo как продукт; Open-Meteo; Xiaomi pull-down; detached second island.
 
-**Добавить позже:** optional real SMTC; deeper CsWinRT geolocation; start with Windows.
+**Добавить позже:** battery / timer polish / hover; deeper CsWinRT geolocation; file shelf / clipboard / launcher.
 
 ## Погода — откуда данные?
 **Не Open-Meteo.** Конвейер Windows-only: WinRT geolocation (когда доступен) → Bing Weather / Widgets local cache → on-disk cache → `LocalStubWeather` (Sandbox). См. GUIDELINES §10.
 
-## Демо-медиа — откуда данные?
-Захардкожено в `OverlayMachine.RunDemoStep()` (`"Night Drive"` / `"Local Radio"` / progress 0.33).  
-Это **не** Windows SMTC. Реальный источник — отдельная будущая интеграция.
+## Медиа — откуда данные?
+**Live:** `WindowsMediaSessionSource` → Windows SMTC (`GlobalSystemMediaTransportControlsSessionManager`). При активной сессии островок получает `SetMedia` (title/artist/progress/playing/artwork).  
+**Demo:** свайп / F9 по-прежнему используют `"Night Drive"` / `"Local Radio"` в `OverlayMachine`. Если SMTC недоступен — demo/idle без принуждения Media.
 
 ## Свайпы
 `SwipeClickMaxPx=12`, `SwipeFirePx=48`, `SwipeRubberMs=180` — GUIDELINES §3b / OverlayTokens.

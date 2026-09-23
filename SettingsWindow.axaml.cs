@@ -154,6 +154,7 @@ public partial class SettingsWindow : Window
         {
         IslandVisibleBox.IsChecked = _draft.IslandVisible;
         WeatherEnabledBox.IsChecked = _draft.WeatherEnabled;
+        ShowNowPlayingBox.IsChecked = _draft.ShowNowPlaying;
         SoundEnabledBox.IsChecked = _draft.SoundEnabled;
         OffsetXBox.Value = _draft.OffsetX;
         OffsetYBox.Value = _draft.OffsetY;
@@ -322,6 +323,7 @@ public partial class SettingsWindow : Window
         _draft.IslandVisible = IslandVisibleBox.IsChecked == true;
         _draft.AllowDrag = false;
         _draft.WeatherEnabled = WeatherEnabledBox.IsChecked == true;
+        _draft.ShowNowPlaying = ShowNowPlayingBox.IsChecked == true;
         _draft.SoundEnabled = SoundEnabledBox.IsChecked == true;
         _draft.OffsetX = (int)(OffsetXBox.Value ?? 0);
         _draft.OffsetY = (int)(OffsetYBox.Value ?? 0);

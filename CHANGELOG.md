@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.7.0 — Now Playing (Windows SMTC)
+
+### Added
+- **Live Now Playing** via Windows System Media Transport Controls (`GlobalSystemMediaTransportControlsSessionManager`): title, artist, play state, timeline progress, album art.
+- `WindowsMediaSessionSource` in the Avalonia app — event + 1s poll; Play/Pause / Prev / Next try-invoke; fail-soft when WinRT/session missing (demo Media unchanged).
+- Settings → **Вид**: «Показывать Now Playing» (`ShowNowPlaying`, default ON).
+- Media row: artwork chip + Prev / Play-Pause / Next controls.
+- `OverlayPayload.ArtworkBytes` (sanitized ≤2 MB) — Core stays WinRT-free.
+
+### Changed
+- App TFM **net8.0-windows10.0.19041.0** (WinRT projections). Version **1.7.0**.
+- CONTEXT: SMTC is the real media source; demo remains for swipe/F9.
+
+### Note
+- Verify with Spotify / Edge media in Windows Sandbox. No Open-Meteo. No proprietary Nothing fonts.
+
+
 ## 1.6.0 — date chip, weather location, stock themes
 
 ### Added

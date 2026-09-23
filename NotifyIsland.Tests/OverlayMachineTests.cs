@@ -237,4 +237,50 @@ public class OverlayMachineTests
         }
         Assert.Equal(OverlayKind.Weather, sawWeather);
     }
+
+    [Fact]
+    public void Sanitize_MediaFields_AndArtworkCap()
+    {
+        var ok = OverlayMachine.Sanitize(new OverlayPayload
+        {
+            Title = "Song",
+            Subtitle = "Artist",
+            Progress = 0.5,
+            Playing = true,
+            ArtworkBytes = new byte[] { 1, 2, 3 }
+        });
+        Assert.Equal("Song", ok.Title);
+        Assert.Equal("Artist", ok.Subtitle);
+        Assert.Equal(0.5, ok.Progress);
+        Assert.True(ok.Playing);
+        Assert.NotNull(ok.ArtworkBytes);
+        Assert.Equal(3, ok.ArtworkBytes!.Length);
+
+        var huge = new byte[2_000_001];
+        var dropped = OverlayMachine.Sanitize(new OverlayPayload { ArtworkBytes = huge });
+        Assert.Null(dropped.ArtworkBytes);
+    }
+
+    [Fact]
+    public void SetMedia_PreservesPlayingAndProgress()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetMedia, new OverlayPayload
+        {
+            Title = "Track",
+            Subtitle = "Band",
+            Progress = 0.75,
+            Playing = false,
+            ArtworkBytes = new byte[] { 9 }
+        });
+        var snap = m.Snapshot();
+        Assert.Equal(OverlayKind.Media, snap.Kind);
+        Assert.Equal("Track", snap.Payload.Title);
+        Assert.Equal("Band", snap.Payload.Subtitle);
+        Assert.Equal(0.75, snap.Payload.Progress);
+        Assert.False(snap.Payload.Playing);
+        Assert.NotNull(snap.Payload.ArtworkBytes);
+        Assert.Equal(9, snap.Payload.ArtworkBytes![0]);
+    }
 }
+

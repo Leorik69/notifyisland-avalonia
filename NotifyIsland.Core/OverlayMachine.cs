@@ -55,6 +55,8 @@ public sealed class OverlayPayload
     public double? TemperatureC { get; set; }
     public int? WeatherCode { get; set; }
     public double? PrecipProb { get; set; }
+    /// <summary>Optional album art bytes (JPEG/PNG) from SMTC; null keeps kind icon.</summary>
+    public byte[]? ArtworkBytes { get; set; }
 }
 
 public sealed class OverlaySnapshot
@@ -361,6 +363,7 @@ public sealed class OverlayMachine
         _payload.TemperatureC = data.TemperatureC;
         _payload.WeatherCode = data.WeatherCode;
         _payload.PrecipProb = data.PrecipProb;
+        _payload.ArtworkBytes = data.ArtworkBytes;
     }
 
     public static OverlayPayload Sanitize(OverlayPayload raw)
@@ -384,10 +387,14 @@ public sealed class OverlayMachine
             if (double.IsNaN(pv) || double.IsInfinity(pv)) precip = null;
             else precip = Math.Clamp(pv, 0, 100);
         }
+        byte[]? art = raw.ArtworkBytes;
+        if (art is { Length: > 2_000_000 })
+            art = null; // drop oversized artwork
         return new OverlayPayload
         {
             Title = t, Subtitle = s, Body = b, Progress = p, Playing = raw.Playing,
-            RemainingSeconds = rem, TemperatureC = temp, WeatherCode = raw.WeatherCode, PrecipProb = precip
+            RemainingSeconds = rem, TemperatureC = temp, WeatherCode = raw.WeatherCode, PrecipProb = precip,
+            ArtworkBytes = art
         };
     }
 
@@ -395,7 +402,8 @@ public sealed class OverlayMachine
     {
         Title = p.Title, Subtitle = p.Subtitle, Body = p.Body,
         Progress = p.Progress, Playing = p.Playing, RemainingSeconds = p.RemainingSeconds,
-        TemperatureC = p.TemperatureC, WeatherCode = p.WeatherCode, PrecipProb = p.PrecipProb
+        TemperatureC = p.TemperatureC, WeatherCode = p.WeatherCode, PrecipProb = p.PrecipProb,
+        ArtworkBytes = p.ArtworkBytes is null ? null : (byte[])p.ArtworkBytes.Clone()
     };
 
     public static double WidthFor(OverlayKind kind, bool weatherEnabled = false)

@@ -54,6 +54,9 @@ public enum SoundPack
 public sealed class AppSettings
 {
     public bool WeatherEnabled { get; set; } = true;
+
+    /// <summary>Show live Now Playing from Windows SMTC when a session is active. Default ON.</summary>
+    public bool ShowNowPlaying { get; set; } = true;
     public double Latitude { get; set; } = 55.75;
     public double Longitude { get; set; } = 37.62;
 
@@ -241,6 +244,7 @@ public sealed class AppSettings
     public void CopyTo(AppSettings target)
     {
         target.WeatherEnabled = WeatherEnabled;
+        target.ShowNowPlaying = ShowNowPlaying;
         target.Latitude = Latitude;
         target.Longitude = Longitude;
         target.WeatherLocationMode = WeatherLocationMode;

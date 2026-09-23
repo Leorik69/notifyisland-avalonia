@@ -212,6 +212,9 @@
         <ScrollViewer Classes="tabBody">
           <StackPanel Spacing="4">
             <TextBlock Classes="sectionTitle" Text="Вид"/>
+            <CheckBox x:Name="ShowNowPlayingBox" Content="Показывать Now Playing"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Системный SMTC (Spotify, Edge, …). Выкл — только демо Media (свайп / F9)."/>
             <TextBlock Classes="fieldLabel" Text="Слой (z-order)" Margin="0,0,0,4"/>
             <ComboBox x:Name="ZOrderBox" Width="340" MaxWidth="400" HorizontalAlignment="Left">
               <ComboBoxItem Tag="Topmost" Content="Поверх всех окон"/>

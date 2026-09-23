@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
@@ -10,6 +11,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 
 namespace NotifyIsland;
@@ -19,6 +21,9 @@ public partial class OverlayWindow : Window
     private readonly OverlayMachine _machine = new();
     private readonly AppSettings _settings;
     private WindowsWeatherSource _weather;
+    private WindowsMediaSessionSource? _mediaSource;
+    private bool _mediaFromSmtc;
+    private byte[]? _lastArtworkBytes;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(1.8) };
@@ -129,6 +134,7 @@ public partial class OverlayWindow : Window
             Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
             PlaceIsland();
             _ = RefreshWeatherAsync();
+            EnsureMediaSource();
             if (_winTray is null && _tray is null)
             {
                 try
@@ -205,6 +211,8 @@ public partial class OverlayWindow : Window
         BadgeText.FontSize = Math.Max(9, fs - 2);
         BadgeText.FontFamily = family;
         MediaPlayGlyph.FontSize = Math.Max(10, fs - 1);
+        MediaPrevGlyph.FontSize = Math.Max(10, fs - 1);
+        MediaNextGlyph.FontSize = Math.Max(10, fs - 1);
         ApplyIconSizes(fs);
     }
 
@@ -439,6 +447,8 @@ public partial class OverlayWindow : Window
         AppIcon.Background = new SolidColorBrush(accent);
         OverlayProgress.Foreground = new SolidColorBrush(accent);
         MediaPlayGlyph.Foreground = new SolidColorBrush(accent);
+        MediaPrevGlyph.Foreground = new SolidColorBrush(accent);
+        MediaNextGlyph.Foreground = new SolidColorBrush(accent);
         // Soft “dot matrix” unread: slightly squarer corners + tighter glow
         UnreadDot.CornerRadius = new CornerRadius(2);
         UnreadDot.Width = 6;
@@ -631,6 +641,18 @@ public partial class OverlayWindow : Window
         _weather = new WindowsWeatherSource(_settings.Latitude, _settings.Longitude);
         if (!_settings.WeatherEnabled && _machine.Snapshot().Kind == OverlayKind.Weather)
             _machine.Dispatch(OverlayCommand.Collapse);
+        if (!_settings.ShowNowPlaying)
+        {
+            _mediaSource?.Stop();
+            _mediaSource = null;
+            if (_mediaFromSmtc && _machine.Snapshot().Kind == OverlayKind.Media)
+            {
+                _mediaFromSmtc = false;
+                _machine.Dispatch(OverlayCommand.Clear);
+            }
+        }
+        else
+            EnsureMediaSource();
         TickClock();
         ApplyWeatherSide();
         ApplyOrientationLayout();
@@ -1188,8 +1210,9 @@ public partial class OverlayWindow : Window
         else
             SetKindIcon(kind);
 
-        MediaPlay.IsVisible = kind == OverlayKind.Media;
+        MediaControls.IsVisible = kind == OverlayKind.Media;
         MediaPlayGlyph.Text = p.Playing ? "||" : "▶";
+        ApplyMediaArtwork(kind == OverlayKind.Media ? p.ArtworkBytes : null);
 
         var unread = snap.UnreadCount;
         var showBadge = overlayOn && unread > 0 && kind is OverlayKind.Notification or OverlayKind.Expanded;
@@ -1287,9 +1310,120 @@ public partial class OverlayWindow : Window
 
     private void OnMediaPlay(object? sender, RoutedEventArgs e)
     {
+        if (_mediaFromSmtc && _mediaSource is not null)
+        {
+            _ = _mediaSource.TryTogglePlayPauseAsync();
+            return;
+        }
         var next = OverlayMachine.Sanitize(_machine.Snapshot().Payload);
         next.Playing = !next.Playing;
         _machine.Dispatch(OverlayCommand.SetMedia, next);
         Paint();
+    }
+
+    private void OnMediaPrev(object? sender, RoutedEventArgs e)
+    {
+        if (_mediaSource is not null && _settings.ShowNowPlaying)
+            _ = _mediaSource.TrySkipPreviousAsync();
+    }
+
+    private void OnMediaNext(object? sender, RoutedEventArgs e)
+    {
+        if (_mediaSource is not null && _settings.ShowNowPlaying)
+            _ = _mediaSource.TrySkipNextAsync();
+    }
+
+    private void EnsureMediaSource()
+    {
+        if (!_settings.ShowNowPlaying) return;
+        if (_mediaSource is not null) return;
+        try
+        {
+            _mediaSource = new WindowsMediaSessionSource();
+            _mediaSource.Changed += OnSmtcChanged;
+            _ = _mediaSource.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("EnsureMediaSource failed", ex);
+            _mediaSource = null;
+        }
+    }
+
+    private void OnSmtcChanged(MediaSessionSnapshot? snap)
+    {
+        // Marshal to UI thread — SMTC events/poll may arrive off-thread.
+        Dispatcher.UIThread.Post(() => ApplySmtcSnapshot(snap), DispatcherPriority.Background);
+    }
+
+    private void ApplySmtcSnapshot(MediaSessionSnapshot? snap)
+    {
+        if (!_settings.ShowNowPlaying)
+            return;
+
+        if (snap is null)
+        {
+            if (_mediaFromSmtc && _machine.Snapshot().Kind == OverlayKind.Media)
+            {
+                _mediaFromSmtc = false;
+                var before = _machine.Snapshot().Kind;
+                _machine.Dispatch(OverlayCommand.Clear);
+                var after = _machine.Snapshot().Kind;
+                if (before != after) OnKindChanged(before, after);
+                ApplySize();
+                Paint();
+            }
+            return;
+        }
+
+        // Do not interrupt an active notification toast.
+        var kind = _machine.Snapshot().Kind;
+        if (kind == OverlayKind.Notification)
+            return;
+
+        var before2 = kind;
+        _mediaFromSmtc = true;
+        _machine.Dispatch(OverlayCommand.SetMedia, snap.ToPayload());
+        var after2 = _machine.Snapshot().Kind;
+        if (before2 != after2) OnKindChanged(before2, after2);
+        ApplySize();
+        Paint();
+    }
+
+    private void ApplyMediaArtwork(byte[]? bytes)
+    {
+        if (bytes is null || bytes.Length == 0)
+        {
+            MediaArtwork.IsVisible = false;
+            MediaArtwork.Source = null;
+            _lastArtworkBytes = null;
+            AppIconHost.IsVisible = true;
+            return;
+        }
+        if (_lastArtworkBytes is not null
+            && _lastArtworkBytes.Length == bytes.Length
+            && bytes.AsSpan().SequenceEqual(_lastArtworkBytes))
+        {
+            MediaArtwork.IsVisible = true;
+            AppIconHost.IsVisible = false;
+            return;
+        }
+        try
+        {
+            using var ms = new MemoryStream(bytes);
+            var bmp = new Avalonia.Media.Imaging.Bitmap(ms);
+            MediaArtwork.Source = bmp;
+            MediaArtwork.IsVisible = true;
+            AppIconHost.IsVisible = false;
+            _lastArtworkBytes = (byte[])bytes.Clone();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("ApplyMediaArtwork failed", ex);
+            MediaArtwork.IsVisible = false;
+            MediaArtwork.Source = null;
+            AppIconHost.IsVisible = true;
+            _lastArtworkBytes = null;
+        }
     }
 }

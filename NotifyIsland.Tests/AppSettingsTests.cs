@@ -9,6 +9,7 @@ public class AppSettingsTests
     {
         var s = new AppSettings();
         Assert.True(s.WeatherEnabled);
+        Assert.True(s.ShowNowPlaying);
         Assert.False(s.AllowDrag);
         Assert.True(s.IslandVisible);
         Assert.True(s.SoundEnabled);
@@ -50,6 +51,7 @@ public class AppSettingsTests
         var s = new AppSettings
         {
             WeatherEnabled = false,
+            ShowNowPlaying = false,
             WeatherSide = WeatherSide.Left,
             ZOrderMode = ZOrderMode.Desktop,
             Edge = IslandEdge.Right,
@@ -99,6 +101,7 @@ public class AppSettingsTests
         var back = AppSettings.FromJson(json);
         Assert.NotNull(back);
         Assert.False(back!.WeatherEnabled);
+        Assert.False(back.ShowNowPlaying);
         Assert.Equal(WeatherSide.Left, back.WeatherSide);
         Assert.Equal(ZOrderMode.Desktop, back.ZOrderMode);
         Assert.Equal(IslandEdge.Right, back.Edge);
@@ -199,6 +202,7 @@ public class AppSettingsTests
             ThemePreset = ThemePreset.NothingDark,
             WeatherLocationMode = WeatherLocationMode.Manual,
             WeatherLocationName = "Казань",
+            ShowNowPlaying = false,
             AllowDrag = true
         };
         var b = new AppSettings();
@@ -221,6 +225,7 @@ public class AppSettingsTests
         Assert.Equal(ThemePreset.NothingDark, b.ThemePreset);
         Assert.Equal(WeatherLocationMode.Manual, b.WeatherLocationMode);
         Assert.Equal("Казань", b.WeatherLocationName);
+        Assert.False(b.ShowNowPlaying);
         Assert.False(b.AllowDrag);
     }
 
