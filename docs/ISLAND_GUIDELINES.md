@@ -54,21 +54,24 @@
 
 ## 2. Правила анимаций NotifyIsland (actionable)
 
-Код: `OverlayTokens.MorphMs`, Avalonia `Transitions` на `Width` / `Pill.Width` / opacity точки / hover brushes.
+Код: `OverlayTokens.MorphMs`, Avalonia `Transitions` на `Width` / `Pill.Width` / opacity точки / hover brushes / swipe rubber-band / icon crossfade.
 
 | Переход | Длительность | Easing | Примечание |
 |---|---:|---|---|
-| Width morph (idle ↔ notify/media/…) | **280 мс** | `CubicEaseOut` | только ширина; высота **всегда** `CollapsedH` |
+| Width morph (idle ↔ notify/media/weather/…) | **280 мс** | `CubicEaseOut` | только ширина; высота **всегда** `CollapsedH` |
 | Hover border/background | **160 мс** | `CubicEaseInOut` | без scale-прыжков |
 | Unread-dot opacity | **280 мс** | `CubicEaseOut` | 0 ↔ 1 |
 | Notify auto-dismiss | **4000 мс** | — | затем возврат в previous/idle |
 | Demo scene cycle (после первого notify) | **1800 мс** | — | только `--demo` / F9 |
 | Контент-апдейты внутри expanded | ≤ **450 мс** | soft-out | не дольше Apple max 2 с |
+| Swipe rubber-band snap-back | **180 мс** | `CubicEaseOut` | если жест &lt; fire threshold |
+| Weather / icon glyph crossfade | **240 мс** | `CubicEaseOut` | `IconCrossfadeMs` |
 
 Запрещено:
 - менять высоту капсулы при notify (не «расти вверх»);
 - резкий snap без transition на Width;
-- анимации > 450 мс на обычные UI-переходы (кроме morph 280 и notify hold 4 с).
+- анимации > 450 мс на обычные UI-переходы (кроме morph 280 и notify hold 4 с);
+- сторонние HTTP weather API (Open-Meteo / MSN / etc.) — см. §10.
 
 ---
 
@@ -78,20 +81,41 @@ FSM: `OverlayMachine` / `OverlayKind`.
 
 | Kind | UI | Ширина (токен) |
 |---|---|---|
-| `Idle` / `Collapsed` | часы + глиф ⏱ + unread-dot (если UnreadCount>0) | `CollapsedW` = 140 |
+| `Idle` / `Collapsed` | часы + outline clock + unread-dot; при `WeatherEnabled` — compact weather (icon+temp) | `CollapsedW`=140 / `CollapsedWeatherW`=210 |
 | `Notification` | иконка · title · body · badge | > CollapsedW, ≤ ExpandedMaxW |
 | `Progress` | title · % · тонкий progress 2px | expanded |
-| `Media` | ♪ · title/subtitle · play · progress | ~400 |
+| `Media` | media icon · title/subtitle · play · progress | ~400 |
 | `Timer` | таймер | expanded |
 | `Error` | error colors | expanded |
-| `Expanded` | обзор (demo weather и т.п.) | expanded |
+| `Expanded` | обзор | expanded |
+| `Weather` | dynamic weather icon · «Ясно · 18° · 0%» | ~360 |
 
 Правила:
 1. Высота всегда **`CollapsedH = 30`**.
 2. CornerRadius = `Height / 2` (пиксель-капсула).
 3. Notify инкрементит `UnreadCount`; `Clear` сбрасывает; `Collapse` **сохраняет** unread.
-4. Клик по Idle/Collapsed → `ms-actioncenter:` (центр уведомлений Windows).
-5. Right-click → контекстное меню (Demo / Свернуть / Выход). Полные настройки — **не** в этом меню (см. §7).
+4. Клик (движение ≤ **12 px**) по Idle/Collapsed → `ms-actioncenter:`.
+5. Right-click → контекстное меню (Demo / **Погода вкл↔выкл** / Свернуть / Выход). Полные настройки — **не** в этом меню (см. §7).
+6. Swipe cycle **не** инкрементит unread (Notification slot = demo seed).
+
+---
+
+## 3b. Свайп-жесты (Xiaomi-like)
+
+Пороги (`OverlayTokens`):
+
+| Константа | Значение | Смысл |
+|---|---:|---|
+| `SwipeClickMaxPx` | **12** | ≤12 px → click (Action Center), не свайп |
+| `SwipeFirePx` | **48** | ≥48 px → жест срабатывает |
+| `SwipeRubberMs` | **180** | rubber-band назад, если 12 &lt; dist &lt; 48 |
+
+Направления (доминирующая ось):
+- **Left / Right** → `CycleNext` / `CyclePrev` среди `IslandSlot`: Idle ↔ Notification ↔ Weather (если enabled) ↔ Media.
+- **Down** → `Collapse` (minimal / Idle-Collapsed).
+- **Up** → `ExpandWidget` (из Idle: Weather если enabled, иначе Notification seed).
+
+Во время drag: `TranslateTransform` с damping; при release под fire — snap-back 180 мс.
 
 ---
 
@@ -107,23 +131,37 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | Font | Segoe UI Variable / Segoe UI, title SemiBold 12, clock 12, badge 10 |
 | Unread dot | 7×7, BoxShadow glow, opacity transition |
 
+### 4b. Иконки (единый pack)
+
+- Файл: `IslandIcons.cs` + заметка `Assets/Icons/README.md`.
+- Язык: **outline**, stroke **`IconStroke = 1.75`**, round caps/joins, design space 24×24.
+- Размеры: collapsed **12**, kind chip **11** (`IconSizeCollapsed` / `IconSizeKind`).
+- Палитра: secondary `#C8C8CC` на тёмной капсуле; белый на accent chip — читается и на light, и на dark Win11 chrome.
+- Weather keys динамические по WMO-like code (`WeatherCodes.IconKey`): clear / partly / cloud / fog / drizzle / rain / snow / storm; смена с **crossfade 240 мс**.
+- Kind keys: `clock`, `notify`, `media`, `timer`, `progress`, `error`.
+- Без платных/проприетарных пакетов; геометрии в стиле MIT Fluent / Tabler outline.
+
 ---
 
 ## 5. Функционал: есть / убрать / добавить
 
 ### Сейчас есть
-- Idle clock + unread glow
+- Idle clock + unread glow + optional minimal weather
 - Notification (width morph, badge)
-- Progress / Media / Timer / Error (через FSM + demo)
-- Demo cycle (`--demo` / F9) с **захардкоженными** payload’ами
-- Click → Action Center
-- Unit-тесты FSM
+- Progress / Media / Timer / Error / **Weather** (FSM + demo)
+- Xiaomi-like swipe (L/R cycle, up expand, down collapse)
+- Weather toggle (ПКМ «Погода вкл/выкл», persist `%LOCALAPPDATA%/NotifyIsland/settings.json`)
+- Windows-primary weather source + local stub fallback (см. §10)
+- Unified outline icon pack + weather crossfade
+- Demo cycle (`--demo` / F9) включает `SetWeather`
+- Click → Action Center (short press)
+- Unit-тесты FSM + python FSM script
 
 ### Убрать / не раздувать (обоснование)
 | Что | Почему | Референс |
 |---|---|---|
 | Автоцикл demo как «продуктовая фича» | только QA; не держать в релизе по умолчанию | Apple: LA только реальные события |
-| Отдельный «Expanded weather» как ядро | демо-заглушка, не Windows API | DI: weather — отдельное приложение, не система |
+| Open-Meteo / любой third-party weather HTTP | пользовательский запрет; Windows-only путь | — |
 | Pull-down мини-окно Xiaomi | другой UX, сложно на Win11 overlay | Xiaomi-only gesture |
 | Detached second island | нет cutout-камеры на ПК | Apple minimal — hardware-specific |
 
@@ -133,56 +171,54 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | Width-only morph + fixed H | DI «растягивание», без прыжка вверх |
 | Unread dot + badge | Nothing Glyph minimalism + DI trailing badge |
 | Action Center click | Windows-native аналог «открыть уведомления» |
-| Media/Progress/Timer kinds в FSM | Live Activities / Super Island templates |
+| Media/Progress/Timer/Weather kinds в FSM | Live Activities / Super Island templates |
+| Swipe cycle | Xiaomi multi-island |
 
-### Добавить (приоритет)
+### Добавить (приоритет, ещё не в этом workstream)
 | Что | Обоснование | Референс |
 |---|---|---|
 | **Tray icon** + quick menu + unread indicator | Win11-паттерн; DI не нужен, нам нужен entry-point | Windows UX |
-| **Окно настроек** (не раздувать tray) | позиция, z-order, ориентация, weather toggle | Xiaomi: настройки островов отдельно |
+| **Окно настроек** (не раздувать tray) | позиция, z-order, ориентация, weather toggle UI | Xiaomi: настройки островов отдельно |
 | Позиция top/bottom/left/right + X/Y px + drag | ПК ≠ iPhone notch | — |
 | Z-order: Topmost / Desktop / BehindApps | три явных режима | — |
 | Реальный **SMTC** media (опционально) | заменить мок `Night Drive` | аналог DI Now Playing |
 | Очередь уведомлений / счётчик >1 | DI minimal + Xiaomi multi-island | — |
+| Полный CsWinRT Geolocator + стабильный Bing cache parser | углубить §10 primary path | Win11 |
 
 ---
 
 ## 6. Демо и источники данных
 
-**Ответ на вопрос «откуда музыка в демо»:**  
-Это **захардкоженный мок**, не SMTC и не аудиосессия Windows.
+**Медиа в демо:** захардкоженный мок (`Night Drive` / `Local Radio`), не SMTC.
 
-- Файл: `NotifyIsland.Core/OverlayMachine.cs` → `RunDemoStep()`
-- Payload: `Title = "Night Drive"`, `Subtitle = "Local Radio"`, `Progress = 0.33`, `Playing = true`
-- Триггер: `OverlayCommand.DemoNext` из `OverlayWindow.StartDemo` / таймер `_demo`
+**Погода в демо:** `SetWeather` в `RunDemoStep()`; данные из `WindowsWeatherSource` (или stub `WeatherCodes.MockMoscow()` = ясно 18°).
+
 - Play/pause в UI только переключает флаг `Playing` в FSM (`OnMediaPlay`), звук не играет.
-
-Подключить реальное медиа: отдельный сервис чтения Windows SMTC / GlobalSystemMediaTransportControlsSessionManager → `Dispatch(SetMedia, payload)`.
 
 ---
 
 ## 7. Трей и настройки (спека)
 
-### Tray
-- Иконка в notification area.
+### Tray (ещё не реализован — спека)
+- Иконка в notification area (тот же outline pack).
 - Отражает unread (overlay icon / badge-dot).
 - **Одиночный клик / ПКМ:** меню быстрых действий только:
   - Открыть центр уведомлений
   - Показать/скрыть островок
-  - Погода вкл/выкл (если реализовано)
+  - Погода вкл/выкл
   - Настройки…
   - Выход
 - **Двойной клик:** центр уведомлений.
-- Не класть сюда координаты/z-order/ориентацию.
 
-### Окно настроек
+### Сейчас (без tray)
+- ПКМ по островку: Demo / Погода вкл↔выкл / Свернуть / Выход.
+- Persist: `%LOCALAPPDATA%/NotifyIsland/settings.json` (`WeatherEnabled`, lat/lon defaults Moscow 55.75,37.62).
+
+### Окно настроек (ещё не реализовано — спека)
 1. Расположение: сверху / снизу / слева / справа.
 2. Ручной drag островка + поля X/Y (пиксели).
 3. Ориентация: Auto | Horizontal | Vertical.
-4. Z-order (три режима):
-   - **Topmost** — поверх всех окон;
-   - **Desktop** — над иконками рабочего стола, под окнами приложений;
-   - **BehindApps** — под окнами приложений, над рабочим столом/виджетами.
+4. Z-order (три режима): Topmost / Desktop / BehindApps.
 5. Тогглы: weather, demo, start with Windows (позже).
 
 ---
@@ -200,8 +236,28 @@ FSM: `OverlayMachine` / `OverlayKind`.
 
 - [ ] Высота капсулы не изменилась (осталась 30).
 - [ ] Morph только Width, 280 мс CubicEaseOut.
-- [ ] Unread: Notify++, Clear=0, Collapse сохраняет.
-- [ ] Нет новых пунктов в tray-меню сверх §7 (остальное → Settings).
+- [ ] Unread: Notify++, Clear=0, Collapse сохраняет; cycle seed не ++.
+- [ ] Нет Open-Meteo / third-party weather HTTP.
+- [ ] Swipe thresholds 12 / 48 / 180 задокументированы и в токенах.
 - [ ] Новые kinds описаны здесь и покрыты тестом в `NotifyIsland.Tests`.
 - [ ] CONTEXT.md не дублирует числа — ссылается сюда.
 
+---
+
+## 10. Погода — Windows-only (без Open-Meteo)
+
+**Почему не виджет Windows Weather API напрямую:** у сторонних приложений **нет** стабильного публичного API виджета «Погода» Win11. Поэтому primary path — Windows-поверхности с честным fallback.
+
+Конвейер `WindowsWeatherSource` / `IWeatherSource` (без сети к open-meteo/msn/…):
+
+1. **Primary (Win11):** WinRT `Windows.Devices.Geolocation` (тип через reflection в portable-сборке; полный CsWinRT — follow-up) + best-effort чтение локального кэша Bing Weather / Widgets (`TryReadBingWeatherCache` под `%LOCALAPPDATA%\Packages\Microsoft.BingWeather*` / WebExperience / WidgetsRuntime).
+2. **On-disk cache:** `%LOCALAPPDATA%/NotifyIsland/weather-cache.json` после успешного Windows-чтения.
+3. **Sandbox / non-Windows / нет кэша:** `LocalStubWeather` → `WeatherCodes.MockMoscow()` (ясно · 18° · 0%). **Никакого HTTP.**
+
+UI:
+- **Minimal** (Idle/Collapsed + `WeatherEnabled`): outline weather icon + `18°` рядом с часами; ширина `CollapsedWeatherW`.
+- **Expanded** (`OverlayKind.Weather`): icon + `Ясно · 18° · 0%` (precip если есть).
+- Refresh: startup + каждые **15 мин** (`WeatherRefreshMs`).
+- Payload: `TemperatureC`, `WeatherCode`, `PrecipProb` (+ Title/Subtitle/Body согласованы через `WeatherCodes.ToPayload`).
+
+**Open-Meteo НЕ используется и не должен добавляться.**

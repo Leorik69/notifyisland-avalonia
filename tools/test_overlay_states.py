@@ -5,12 +5,14 @@ from pathlib import Path
 ISLAND = Path(__file__).resolve().parents[1]
 CS = (ISLAND / "NotifyIsland.Core" / "OverlayMachine.cs").read_text(encoding="utf-8")
 TOKENS = (ISLAND / "NotifyIsland.Core" / "OverlayTokens.cs").read_text(encoding="utf-8")
-KINDS = ("Idle","Collapsed","Expanded","Notification","Progress","Media","Timer","Error")
+KINDS = ("Idle","Collapsed","Expanded","Notification","Progress","Media","Timer","Error","Weather")
 
 class Payload:
-    def __init__(self, title="", subtitle="", body="", progress=0.0, playing=False, remaining=0.0):
+    def __init__(self, title="", subtitle="", body="", progress=0.0, playing=False, remaining=0.0,
+                 temp=None, code=None, precip=None):
         self.title, self.subtitle, self.body = title, subtitle, body
         self.progress, self.playing, self.remaining = progress, playing, remaining
+        self.temp, self.code, self.precip = temp, code, precip
 
 def sanitize(p: Payload) -> Payload:
     t, s, b = (p.title or "").strip(), (p.subtitle or "").strip(), (p.body or "").strip()
@@ -23,12 +25,12 @@ def sanitize(p: Payload) -> Payload:
     try: rem = float(p.remaining)
     except (TypeError, ValueError): rem = 0.0
     if math.isnan(rem) or math.isinf(rem) or rem < 0: rem = 0.0
-    return Payload(t, s, b, prog, p.playing, rem)
+    return Payload(t, s, b, prog, p.playing, rem, p.temp, p.code, p.precip)
 
 class Machine:
     def __init__(self):
         self.kind = "Idle"; self.return_to = "Idle"; self.notify_ms = 0; self.notify_dur = 4000
-        self.payload = Payload(); self.unread = 0
+        self.payload = Payload(); self.unread = 0; self.weather_enabled = True
     def dispatch(self, cmd: str, incoming: Payload | None = None) -> None:
         data = sanitize(incoming or Payload())
         if cmd == "Collapse":
@@ -55,6 +57,8 @@ class Machine:
             self.kind = "Error"; self.payload = data
             if not self.payload.body and not self.payload.title: self.payload.title = "Ошибка"
             self.notify_ms = 0
+        elif cmd == "SetWeather":
+            self.kind = "Weather"; self.payload = data; self.notify_ms = 0
         elif cmd == "Clear":
             self.kind = "Idle"; self.return_to = "Idle"; self.notify_ms = 0
             self.unread = 0; self.payload = Payload()
@@ -83,12 +87,18 @@ def test_source_has_kinds() -> None:
         assert f"    {k}" in CS or f"{k}," in CS, k
     assert "Sanitize" in CS and "DemoNext" in CS
     assert "UnreadCount" in CS
+    assert "SetWeather" in CS and "CycleNext" in CS
     assert 'FillHex = "#080808"' in TOKENS and 'AccentHex = "#3D9CF0"' in TOKENS
     morph = _token_int("MorphMs")
     assert 260 <= morph <= 320, morph
+    assert _token_int("SwipeFirePx") == 48
+    assert _token_int("SwipeClickMaxPx") == 12
+    assert _token_int("SwipeRubberMs") == 180
     assert "new WUC.Compositor()" not in CS
-    # HeightFor is constant (width-only morph)
     assert "HeightFor(OverlayKind kind) => OverlayTokens.CollapsedH" in CS or "=> OverlayTokens.CollapsedH" in CS
+    # No Open-Meteo
+    assert "open-meteo" not in CS.lower()
+    assert "OpenMeteo" not in CS
 
 def test_transitions() -> None:
     m = Machine(); m.dispatch("Expand", Payload(title="Hi")); assert m.kind == "Expanded"
@@ -99,6 +109,7 @@ def test_transitions() -> None:
     m.dispatch("SetMedia", Payload()); assert m.payload.title == "Без названия"
     m.dispatch("SetTimer", Payload(remaining=10)); m.tick(2500); assert abs(m.payload.remaining - 7.5) < 0.05
     m.dispatch("SetError", Payload()); assert m.payload.title == "Ошибка"
+    m.dispatch("SetWeather", Payload(title="Ясно", temp=18, code=0)); assert m.kind == "Weather"
     m.dispatch("Collapse"); assert m.kind == "Collapsed"
 
 def test_invalid_data() -> None:
@@ -120,6 +131,7 @@ def test_unread_count() -> None:
     m.tick(4000); assert m.unread == 1
     m.dispatch("Notify", Payload(title="B")); assert m.unread == 2
     m.dispatch("Collapse"); assert m.kind == "Collapsed" and m.unread == 2
+    m.dispatch("SetWeather", Payload(title="Ясно")); assert m.unread == 2
     m.dispatch("Clear"); assert m.unread == 0 and m.kind == "Idle"
 
 def test_fixed_height_tokens() -> None:
@@ -129,15 +141,29 @@ def test_fixed_height_tokens() -> None:
     assert w <= 160, w
     assert "ExpandedMinH" not in TOKENS
     assert "ExpandedMaxH" not in TOKENS
+    assert _token_float("CollapsedWeatherW") >= w
 
 def test_no_new_compositor_in_overlay() -> None:
     assert not re.search(r"new\s+(WUC\.)?Compositor\(\)", CS)
+
+def test_no_open_meteo_in_repo() -> None:
+    """Docs may mention Open-Meteo as forbidden; code must not call it."""
+    root = ISLAND
+    for p in root.rglob("*.cs"):
+        if "bin" in p.parts or "obj" in p.parts: continue
+        text = p.read_text(encoding="utf-8", errors="ignore")
+        low = text.lower()
+        assert "api.open-meteo.com" not in low, p
+        assert "open-meteo.com" not in low, p
+        # Ban HttpClient weather fetch patterns tied to third-party weather hosts
+        if "httprequest" in low or "httpclient" in low:
+            assert "meteo" not in low, p
 
 def main() -> int:
     failed = 0
     for fn in (test_source_has_kinds, test_transitions, test_invalid_data,
                test_notify_timer_auto_return, test_unread_count, test_fixed_height_tokens,
-               test_no_new_compositor_in_overlay):
+               test_no_new_compositor_in_overlay, test_no_open_meteo_in_repo):
         try:
             fn(); print(f"PASS  {fn.__name__}")
         except AssertionError as exc:

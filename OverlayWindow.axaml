@@ -21,20 +21,15 @@
           HorizontalAlignment="Center"
           VerticalAlignment="Center"
           ClipToBounds="False"
-          PointerPressed="OnPillPressed">
+          RenderTransformOrigin="50%,50%">
     <Grid>
-      <!-- Collapsed: clock + glowing unread dot -->
+      <!-- Collapsed: clock icon + time + optional weather + unread dot -->
       <StackPanel x:Name="CollapsedRow"
                   Orientation="Horizontal"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   Spacing="6">
-        <TextBlock x:Name="ClockGlyph"
-                   VerticalAlignment="Center"
-                   FontFamily="Segoe UI Symbol, Segoe UI Variable, Segoe UI"
-                   FontSize="11"
-                   Foreground="#C8C8CC"
-                   Text="⏱" />
+        <Viewbox x:Name="ClockIconHost" Width="12" Height="12" VerticalAlignment="Center" />
         <TextBlock x:Name="ClockText"
                    VerticalAlignment="Center"
                    FontFamily="Segoe UI Variable, Inter, Segoe UI"
@@ -42,6 +37,23 @@
                    FontWeight="SemiBold"
                    Foreground="#FFFFFF"
                    Text="00:00" />
+        <StackPanel x:Name="MinimalWeather"
+                    Orientation="Horizontal"
+                    Spacing="4"
+                    VerticalAlignment="Center"
+                    IsVisible="False">
+          <Grid Width="12" Height="12" VerticalAlignment="Center">
+            <Viewbox x:Name="WeatherIconA" Width="12" Height="12" Opacity="1" />
+            <Viewbox x:Name="WeatherIconB" Width="12" Height="12" Opacity="0" />
+          </Grid>
+          <TextBlock x:Name="WeatherTempText"
+                     VerticalAlignment="Center"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     Foreground="#C8C8CC"
+                     Text="18°" />
+        </StackPanel>
         <Border x:Name="UnreadDot"
                 Width="7" Height="7"
                 CornerRadius="3.5"
@@ -64,12 +76,8 @@
                 Background="#3D9CF0"
                 Margin="0,0,8,0"
                 VerticalAlignment="Center">
-          <TextBlock x:Name="AppIconGlyph"
-                     Text="●"
-                     FontSize="9"
-                     Foreground="#FFFFFF"
-                     HorizontalAlignment="Center"
-                     VerticalAlignment="Center" />
+          <Viewbox x:Name="AppIconHost" Width="11" Height="11"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
         </Border>
 
         <Border x:Name="UnreadBadge"
@@ -124,7 +132,6 @@
                    Text="" />
       </DockPanel>
 
-      <!-- Thin progress strip (does not change capsule height) -->
       <ProgressBar x:Name="OverlayProgress"
                    Height="2"
                    Minimum="0" Maximum="100"
