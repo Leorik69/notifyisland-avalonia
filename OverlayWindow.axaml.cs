@@ -1,12 +1,13 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
-using Avalonia.Styling;
 using Avalonia.Threading;
 
 namespace NotifyIsland;
@@ -45,15 +46,19 @@ public partial class OverlayWindow : Window
     private void EnableMorphTransitions()
     {
         var duration = TimeSpan.FromMilliseconds(OverlayTokens.MorphMs);
+        var softOut = new CubicEaseOut();
+        // Width-only morph; height stays fixed across all kinds.
         Transitions = new Transitions
         {
-            new DoubleTransition { Property = WidthProperty, Duration = duration },
-            new DoubleTransition { Property = HeightProperty, Duration = duration },
+            new DoubleTransition { Property = WidthProperty, Duration = duration, Easing = softOut },
         };
         Pill.Transitions = new Transitions
         {
-            new DoubleTransition { Property = Border.WidthProperty, Duration = duration },
-            new DoubleTransition { Property = Border.HeightProperty, Duration = duration },
+            new DoubleTransition { Property = Border.WidthProperty, Duration = duration, Easing = softOut },
+        };
+        UnreadDot.Transitions = new Transitions
+        {
+            new DoubleTransition { Property = OpacityProperty, Duration = duration, Easing = softOut },
         };
     }
 
@@ -78,18 +83,20 @@ public partial class OverlayWindow : Window
     private void TickClock()
     {
         ClockText.Text = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
-        if (_machine.Snapshot().Kind is OverlayKind.Idle or OverlayKind.Collapsed)
-            ClockText.IsVisible = true;
+        var kind = _machine.Snapshot().Kind;
+        if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
+            CollapsedRow.IsVisible = true;
     }
 
     private void ApplySize()
     {
         var snap = _machine.Snapshot();
+        var h = OverlayTokens.CollapsedH;
         Width = snap.Width;
-        Height = snap.Height;
+        Height = h;
         Pill.Width = snap.Width;
-        Pill.Height = snap.Height;
-        Pill.CornerRadius = new CornerRadius(snap.Height / 2);
+        Pill.Height = h;
+        Pill.CornerRadius = new CornerRadius(h / 2);
         PlaceTopCenter();
     }
 
@@ -104,6 +111,7 @@ public partial class OverlayWindow : Window
         var maxX = Math.Max(wa.X, wa.X + wa.Width - pw);
         var maxY = Math.Max(wa.Y, wa.Y + wa.Height - ph);
         var x = Math.Clamp(wa.X + (wa.Width - pw) / 2, wa.X, maxX);
+        // Fixed Y — island never expands upward.
         var y = Math.Clamp(wa.Y + 8, wa.Y, maxY);
         Position = new PixelPoint(x, y);
     }
@@ -111,20 +119,49 @@ public partial class OverlayWindow : Window
     private void Paint()
     {
         var snap = _machine.Snapshot();
-        var kind = snap.Kind; var p = snap.Payload;
+        var kind = snap.Kind;
+        var p = snap.Payload;
         var overlayOn = kind is OverlayKind.Notification or OverlayKind.Progress or OverlayKind.Media
             or OverlayKind.Timer or OverlayKind.Error or OverlayKind.Expanded;
+
         OverlayPanel.IsVisible = overlayOn;
-        ClockText.IsVisible = !overlayOn;
+        CollapsedRow.IsVisible = !overlayOn;
+
         OverlayTitle.Text = string.IsNullOrWhiteSpace(p.Title) ? Fallback(kind) : p.Title;
-        OverlaySubtitle.Text = string.IsNullOrWhiteSpace(p.Subtitle) ? p.Body : p.Subtitle;
+        var sub = string.IsNullOrWhiteSpace(p.Subtitle) ? p.Body : p.Subtitle;
+        if (kind == OverlayKind.Timer)
+            sub = TimeSpan.FromSeconds(Math.Ceiling(p.RemainingSeconds)).ToString(@"mm\:ss");
+        else if (kind == OverlayKind.Progress && string.IsNullOrWhiteSpace(sub))
+            sub = $"{(int)Math.Round(p.Progress * 100)}%";
+        OverlaySubtitle.Text = sub;
+
         OverlayProgress.Value = p.Progress * 100;
         OverlayProgress.IsVisible = kind is OverlayKind.Progress or OverlayKind.Media;
-        OverlayTimer.IsVisible = kind == OverlayKind.Timer;
-        OverlayTimer.Text = kind == OverlayKind.Timer ? TimeSpan.FromSeconds(Math.Ceiling(p.RemainingSeconds)).ToString(@"mm\:ss") : "";
+
         OverlayTitle.Foreground = new SolidColorBrush(Color.Parse(kind == OverlayKind.Error ? OverlayTokens.ErrorHex : OverlayTokens.TextHex));
+        AppIcon.Background = new SolidColorBrush(Color.Parse(kind == OverlayKind.Error ? OverlayTokens.ErrorHex : OverlayTokens.AccentHex));
+        AppIconGlyph.Text = kind switch
+        {
+            OverlayKind.Media => "♪",
+            OverlayKind.Timer => "◷",
+            OverlayKind.Progress => "↑",
+            OverlayKind.Error => "!",
+            OverlayKind.Notification => "●",
+            _ => "●"
+        };
+
         MediaPlay.IsVisible = kind == OverlayKind.Media;
-        MediaPlayGlyph.Text = p.Playing ? "||" : ">";
+        MediaPlayGlyph.Text = p.Playing ? "||" : "▶";
+
+        var unread = snap.UnreadCount;
+        var showBadge = overlayOn && unread > 0 && kind is OverlayKind.Notification or OverlayKind.Expanded;
+        UnreadBadge.IsVisible = showBadge;
+        BadgeText.Text = unread > 99 ? "99+" : unread.ToString(CultureInfo.InvariantCulture);
+
+        // Glowing unread dot on collapsed island
+        var showDot = !overlayOn && unread > 0;
+        UnreadDot.Opacity = showDot ? 1.0 : 0.0;
+
         ToolTip.SetTip(this, kind == OverlayKind.Idle ? "NotifyIsland" : OverlayTitle.Text);
     }
 
@@ -141,13 +178,43 @@ public partial class OverlayWindow : Window
 
     private void OnPillPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (!e.GetCurrentPoint(this).Properties.IsRightButtonPressed) return;
-        var menu = new ContextMenu();
-        menu.Items.Add(Menu("Demo F9", () => { if (_demoOn) StopDemo(); else StartDemo(); }));
-        menu.Items.Add(Menu("Свернуть", () => { _machine.Dispatch(OverlayCommand.Collapse); ApplySize(); Paint(); }));
-        menu.Items.Add(Menu("Выход", () => (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown()));
-        menu.Open(Pill);
-        e.Handled = true;
+        var props = e.GetCurrentPoint(this).Properties;
+        if (props.IsRightButtonPressed)
+        {
+            var menu = new ContextMenu();
+            menu.Items.Add(Menu("Demo F9", () => { if (_demoOn) StopDemo(); else StartDemo(); }));
+            menu.Items.Add(Menu("Свернуть", () => { _machine.Dispatch(OverlayCommand.Collapse); ApplySize(); Paint(); }));
+            menu.Items.Add(Menu("Выход", () => (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown()));
+            menu.Open(Pill);
+            e.Handled = true;
+            return;
+        }
+
+        if (props.IsLeftButtonPressed)
+        {
+            var kind = _machine.Snapshot().Kind;
+            if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
+            {
+                OpenActionCenter();
+                e.Handled = true;
+            }
+        }
+    }
+
+    private static void OpenActionCenter()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "ms-actioncenter:",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("OpenActionCenter failed", ex);
+        }
     }
 
     private static MenuItem Menu(string header, Action act)

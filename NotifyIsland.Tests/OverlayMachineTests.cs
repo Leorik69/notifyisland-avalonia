@@ -70,27 +70,58 @@ public class OverlayMachineTests
     }
 
     [Fact]
-    public void Sizes_RespectExpandedTokenBounds()
+    public void Sizes_FixedHeight_WidthVariesByKind()
     {
         Assert.Equal(OverlayTokens.CollapsedW, OverlayMachine.WidthFor(OverlayKind.Idle));
         Assert.Equal(OverlayTokens.CollapsedH, OverlayMachine.HeightFor(OverlayKind.Collapsed));
 
         foreach (OverlayKind kind in Enum.GetValues<OverlayKind>())
         {
-            if (kind is OverlayKind.Idle or OverlayKind.Collapsed) continue;
-            var w = OverlayMachine.WidthFor(kind);
             var h = OverlayMachine.HeightFor(kind);
-            Assert.InRange(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
-            Assert.InRange(h, OverlayTokens.ExpandedMinH, OverlayTokens.ExpandedMaxH);
+            Assert.Equal(OverlayTokens.CollapsedH, h);
+
+            var w = OverlayMachine.WidthFor(kind);
+            if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
+                Assert.Equal(OverlayTokens.CollapsedW, w);
+            else
+                Assert.InRange(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
         }
+
+        Assert.True(OverlayMachine.WidthFor(OverlayKind.Notification) > OverlayTokens.CollapsedW);
+    }
+
+    [Fact]
+    public void UnreadCount_NotifyIncrements_ClearResets_CollapseKeeps()
+    {
+        var m = new OverlayMachine();
+        Assert.Equal(0, m.Snapshot().UnreadCount);
+
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "A" });
+        Assert.Equal(1, m.Snapshot().UnreadCount);
+
+        m.Tick(OverlayTokens.DefaultNotifyMs);
+        Assert.Equal(1, m.Snapshot().UnreadCount);
+
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "B" });
+        Assert.Equal(2, m.Snapshot().UnreadCount);
+
+        m.Dispatch(OverlayCommand.Collapse);
+        Assert.Equal(OverlayKind.Collapsed, m.Snapshot().Kind);
+        Assert.Equal(2, m.Snapshot().UnreadCount);
+
+        m.Dispatch(OverlayCommand.Clear);
+        Assert.Equal(0, m.Snapshot().UnreadCount);
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
     }
 
     [Fact]
     public void Tokens_MorphMsIsPositive()
     {
-        Assert.Equal(260, OverlayTokens.MorphMs);
+        Assert.InRange(OverlayTokens.MorphMs, 260, 320);
         Assert.True(OverlayTokens.MorphMs > 0);
         Assert.Equal("#080808", OverlayTokens.FillHex);
         Assert.Equal("#3D9CF0", OverlayTokens.AccentHex);
+        Assert.True(OverlayTokens.CollapsedW <= 160);
+        Assert.True(OverlayTokens.CollapsedH <= 30);
     }
 }

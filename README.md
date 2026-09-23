@@ -1,13 +1,20 @@
 # NotifyIsland (Avalonia)
 
-**RU:** Прозрачная капсула top-center для Windows 11 (не WinUI). Overlay поверх рабочего стола.
+**RU:** Прозрачная капсула top-center для Windows 11 (не WinUI). Overlay поверх рабочего стола — стиль Dynamic Island: фиксированная высота, морфинг только по ширине.
 
-**EN:** Transparent top-center overlay capsule for Windows 11. Avalonia desktop app.
+**EN:** Transparent top-center overlay capsule for Windows 11. Avalonia desktop app. Fixed-height island; width-only morph.
 
 ## Requirements
 
 - .NET 8 SDK
 - Windows 11 for the overlay UI (Win32 no-activate). Linux CI builds/tests Core only.
+
+## Behavior
+
+- **Collapsed:** clock (`HH:mm`) + glowing unread dot when `UnreadCount > 0`
+- **Notification:** stretches wider (height fixed), shows icon + title/subtitle + unread badge, then collapses
+- **Left-click** (idle/collapsed): opens Windows Notification Center (`ms-actioncenter:`)
+- **Right-click:** context menu · **F9** demo · **Esc** collapse
 
 ## Run
 
@@ -20,8 +27,6 @@ Demo of all states:
 ```bash
 dotnet run --project NotifyIsland.Av.csproj -- --demo
 ```
-
-Controls: **F9** demo on/off · **Esc** collapse · **ПКМ** (right-click) context menu.
 
 ## Tests
 

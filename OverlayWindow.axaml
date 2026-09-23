@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="NotifyIsland.OverlayWindow"
         Title="NotifyIsland"
-        Width="180" Height="34"
+        Width="140" Height="30"
         CanResize="False"
         ShowInTaskbar="False"
         Topmost="True"
@@ -13,43 +13,122 @@
         Background="Transparent"
         WindowStartupLocation="Manual">
   <Border x:Name="Pill"
-          Width="180" Height="34"
-          CornerRadius="17"
+          Width="140" Height="30"
+          CornerRadius="15"
           Background="#080808"
           BorderBrush="#28FFFFFF"
           BorderThickness="1"
           HorizontalAlignment="Center"
           VerticalAlignment="Center"
+          ClipToBounds="False"
           PointerPressed="OnPillPressed">
-    <Grid Margin="12,0">
-      <TextBlock x:Name="ClockText"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center"
-                 FontFamily="Inter, Segoe UI Variable, Segoe UI"
-                 FontSize="13"
-                 FontWeight="SemiBold"
-                 Foreground="#FFFFFF"
-                 Text="00:00" />
-      <StackPanel x:Name="OverlayPanel"
-                  Spacing="4"
+    <Grid>
+      <!-- Collapsed: clock + glowing unread dot -->
+      <StackPanel x:Name="CollapsedRow"
+                  Orientation="Horizontal"
+                  HorizontalAlignment="Center"
                   VerticalAlignment="Center"
-                  IsVisible="False">
-        <DockPanel>
-          <Button x:Name="MediaPlay" DockPanel.Dock="Right" Padding="6,2" Click="OnMediaPlay"
-                  ToolTip.Tip="Воспроизведение"
-                  AutomationProperties.Name="Воспроизведение">
-            <TextBlock x:Name="MediaPlayGlyph" Text="▶" FontSize="11" Foreground="#3D9CF0" />
-          </Button>
-          <StackPanel Spacing="2">
-            <TextBlock x:Name="OverlayTitle" FontSize="13" FontWeight="SemiBold" Foreground="#FFFFFF"
-                       TextTrimming="CharacterEllipsis" Text="Обзор" />
-            <TextBlock x:Name="OverlaySubtitle" FontSize="11" Foreground="#C8C8CC"
-                       TextTrimming="CharacterEllipsis" />
-          </StackPanel>
-        </DockPanel>
-        <ProgressBar x:Name="OverlayProgress" Height="4" Minimum="0" Maximum="100" Foreground="#3D9CF0" />
-        <TextBlock x:Name="OverlayTimer" FontSize="18" FontWeight="SemiBold" Foreground="#FFFFFF" IsVisible="False" />
+                  Spacing="8">
+        <TextBlock x:Name="ClockText"
+                   VerticalAlignment="Center"
+                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   Foreground="#FFFFFF"
+                   Text="00:00" />
+        <Border x:Name="UnreadDot"
+                Width="7" Height="7"
+                CornerRadius="3.5"
+                Background="#3D9CF0"
+                VerticalAlignment="Center"
+                Opacity="0"
+                IsHitTestVisible="False"
+                BoxShadow="0 0 8 2 #AA3D9CF0" />
       </StackPanel>
+
+      <!-- Expanded single-row: icon | title/subtitle | badge -->
+      <DockPanel x:Name="OverlayPanel"
+                 Margin="10,0,10,0"
+                 IsVisible="False"
+                 VerticalAlignment="Center">
+        <Border x:Name="AppIcon"
+                DockPanel.Dock="Left"
+                Width="18" Height="18"
+                CornerRadius="5"
+                Background="#3D9CF0"
+                Margin="0,0,8,0"
+                VerticalAlignment="Center">
+          <TextBlock x:Name="AppIconGlyph"
+                     Text="●"
+                     FontSize="9"
+                     Foreground="#FFFFFF"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center" />
+        </Border>
+
+        <Border x:Name="UnreadBadge"
+                DockPanel.Dock="Right"
+                MinWidth="18" Height="18"
+                CornerRadius="9"
+                Background="#3D9CF0"
+                Padding="5,0"
+                Margin="8,0,0,0"
+                VerticalAlignment="Center"
+                IsVisible="False">
+          <TextBlock x:Name="BadgeText"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="10"
+                     FontWeight="SemiBold"
+                     Foreground="#FFFFFF"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center"
+                     Text="1" />
+        </Border>
+
+        <Button x:Name="MediaPlay"
+                DockPanel.Dock="Right"
+                Padding="4,0"
+                Margin="6,0,0,0"
+                VerticalAlignment="Center"
+                Background="Transparent"
+                BorderThickness="0"
+                Click="OnMediaPlay"
+                ToolTip.Tip="Воспроизведение"
+                AutomationProperties.Name="Воспроизведение"
+                IsVisible="False">
+          <TextBlock x:Name="MediaPlayGlyph"
+                     Text="▶"
+                     FontSize="11"
+                     Foreground="#3D9CF0"
+                     VerticalAlignment="Center" />
+        </Button>
+
+        <StackPanel Spacing="0" VerticalAlignment="Center">
+          <TextBlock x:Name="OverlayTitle"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     Foreground="#FFFFFF"
+                     TextTrimming="CharacterEllipsis"
+                     Text="Обзор" />
+          <TextBlock x:Name="OverlaySubtitle"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="10"
+                     FontWeight="Normal"
+                     Foreground="#C8C8CC"
+                     TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+      </DockPanel>
+
+      <!-- Thin progress strip (does not change capsule height) -->
+      <ProgressBar x:Name="OverlayProgress"
+                   Height="2"
+                   Minimum="0" Maximum="100"
+                   Foreground="#3D9CF0"
+                   Background="Transparent"
+                   VerticalAlignment="Bottom"
+                   Margin="12,0,12,2"
+                   IsVisible="False" />
     </Grid>
   </Border>
 </Window>

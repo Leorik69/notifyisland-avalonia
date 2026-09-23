@@ -44,6 +44,7 @@ public sealed class OverlaySnapshot
     public double Width { get; init; }
     public double Height { get; init; }
     public int NotifyMsLeft { get; init; }
+    public int UnreadCount { get; init; }
 }
 
 public sealed class OverlayMachine
@@ -54,6 +55,7 @@ public sealed class OverlayMachine
     private readonly OverlayPayload _payload = new();
     private int _demoIndex;
     private int _notifyDurationMs = OverlayTokens.DefaultNotifyMs;
+    private int _unreadCount;
 
     public int NotifyDurationMs
     {
@@ -61,13 +63,16 @@ public sealed class OverlayMachine
         set => _notifyDurationMs = Math.Clamp(value, 500, 30000);
     }
 
+    public int UnreadCount => _unreadCount;
+
     public OverlaySnapshot Snapshot() => new()
     {
         Kind = _kind,
         Payload = Clone(_payload),
         Width = WidthFor(_kind),
         Height = HeightFor(_kind),
-        NotifyMsLeft = Math.Max(0, _notifyMs)
+        NotifyMsLeft = Math.Max(0, _notifyMs),
+        UnreadCount = _unreadCount
     };
 
     public OverlaySnapshot Dispatch(OverlayCommand command, OverlayPayload? incoming = null)
@@ -78,6 +83,7 @@ public sealed class OverlayMachine
             case OverlayCommand.Collapse:
                 _kind = OverlayKind.Collapsed;
                 _notifyMs = 0;
+                // Keep unread so the collapsed glowing dot remains visible.
                 break;
             case OverlayCommand.Expand:
                 _kind = OverlayKind.Expanded;
@@ -92,6 +98,7 @@ public sealed class OverlayMachine
                 if (string.IsNullOrWhiteSpace(_payload.Title))
                     _payload.Title = "Уведомление";
                 _notifyMs = NotifyDurationMs;
+                _unreadCount = Math.Min(_unreadCount + 1, 99);
                 break;
             case OverlayCommand.SetProgress:
                 _kind = OverlayKind.Progress;
@@ -123,6 +130,7 @@ public sealed class OverlayMachine
                 _kind = OverlayKind.Idle;
                 _returnTo = OverlayKind.Idle;
                 _notifyMs = 0;
+                _unreadCount = 0;
                 Apply(new OverlayPayload());
                 break;
             case OverlayCommand.DemoNext:
@@ -208,11 +216,11 @@ public sealed class OverlayMachine
     {
         var w = kind switch
         {
-            OverlayKind.Expanded => 400,
-            OverlayKind.Notification => 360,
-            OverlayKind.Progress => 380,
-            OverlayKind.Media => 420,
-            OverlayKind.Timer => 340,
+            OverlayKind.Expanded => 340,
+            OverlayKind.Notification => 380,
+            OverlayKind.Progress => 360,
+            OverlayKind.Media => 400,
+            OverlayKind.Timer => 320,
             OverlayKind.Error => 360,
             _ => OverlayTokens.CollapsedW
         };
@@ -221,18 +229,6 @@ public sealed class OverlayMachine
         return Math.Clamp(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
     }
 
-    public static double HeightFor(OverlayKind kind)
-    {
-        var h = kind switch
-        {
-            OverlayKind.Idle or OverlayKind.Collapsed => OverlayTokens.CollapsedH,
-            OverlayKind.Media => 96,
-            OverlayKind.Expanded => 88,
-            OverlayKind.Error => 80,
-            _ => 78
-        };
-        if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
-            return h;
-        return Math.Clamp(h, OverlayTokens.ExpandedMinH, OverlayTokens.ExpandedMaxH);
-    }
+    /// <summary>Fixed height for every kind — island only morphs horizontally.</summary>
+    public static double HeightFor(OverlayKind kind) => OverlayTokens.CollapsedH;
 }

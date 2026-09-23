@@ -8,12 +8,13 @@ public static class OverlayTokens
     public const string TextSecondaryHex = "#C8C8CC";
     public const string AccentHex = "#3D9CF0";
     public const string ErrorHex = "#E8A0A0";
-    public const double CollapsedW = 180;
-    public const double CollapsedH = 34;
-    public const double ExpandedMinW = 320;
-    public const double ExpandedMaxW = 520;
-    public const double ExpandedMinH = 70;
-    public const double ExpandedMaxH = 180;
-    public const int MorphMs = 260;
+    /// <summary>Collapsed capsule width (clock + optional unread dot).</summary>
+    public const double CollapsedW = 140;
+    /// <summary>Fixed capsule height for every kind — width-only morph.</summary>
+    public const double CollapsedH = 30;
+    public const double ExpandedMinW = 280;
+    public const double ExpandedMaxW = 460;
+    /// <summary>Soft-Out morph duration (ms).</summary>
+    public const int MorphMs = 280;
     public const int DefaultNotifyMs = 4000;
 }
