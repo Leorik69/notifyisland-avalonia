@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.3 — WinForms tray (visible on Sandbox)
+
+### Fixed
+- Tray icon now uses WinForms `NotifyIcon` as primary so it actually appears in Win11 / Windows Sandbox (Avalonia `TrayIcon` often stayed hidden).
+- Avalonia `TrayService` kept as fallback only.
+- TargetFramework `net8.0-windows` + `UseWindowsForms`; `EnableWindowsTargeting` for Linux CI cross-compile.
+- Tray icon refresh only when unread count changes (no per-tick icon churn).
+
+### Docs
+- `ISLAND_GUIDELINES.md` §7 tray; `ISLAND_PREVIEW.md` items 25–28.
+
 ## 1.5.2 — tray icon UX
 
 ### Added / Fixed

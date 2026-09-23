@@ -204,19 +204,14 @@ Tray, Settings window, WeatherSide, Edge+Offset+drag, Orientation, Z-order×3, O
 ## 7. Трей и настройки
 
 ### Tray (реализовано)
-- `TrayService` + `Assets/tray.png` / `tray-unread.png` (outline notify).
-- Левый клик по трею → показать/скрыть островок.
+- Primary: `WinFormsTray` (`System.Windows.Forms.NotifyIcon`) — надёжно видно в Win11 / Sandbox.
+- Fallback: Avalonia `TrayService` (`TrayIcon`), если WinForms недоступен.
+- Иконки: `Assets/tray.png` / `tray-unread.png` (outline IslandIcons).
+- Левый клик → показать/скрыть островок.
 - Правый клик → меню: «Открыть настройки», «Показать/скрыть островок», «Демо вкл/выкл», «Погода вкл/выкл», «Выход».
 - Двойной клик → центр уведомлений Windows (`ms-actioncenter:`).
-- Unread > 0 → иконка `tray-unread.png` (точка-индикатор).
-- Tooltip с числом непрочитанных; иконка меняется при unread &gt; 0.
-- **Клик / ПКМ:** NativeMenu быстрых действий:
-  - Открыть центр уведомлений
-  - Показать/скрыть островок
-  - Погода вкл/выкл
-  - Настройки…
-  - Выход
-- **Двойной клик:** `ms-actioncenter:`.
+- Unread > 0 → `tray-unread.png` (точка-индикатор) + tooltip с числом.
+- TargetFramework: `net8.0-windows` + `UseWindowsForms` (см. `Directory.Build.props` / `EnableWindowsTargeting`).
 
 ### Окно настроек (отдельный Avalonia `Window`)
 - Открытие: трей «Настройки…» **и** ПКМ по островку «Настройки…».

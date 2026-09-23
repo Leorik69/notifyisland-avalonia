@@ -37,6 +37,8 @@ public partial class OverlayWindow : Window
     private OverlayKind _lastKind = OverlayKind.Idle;
     private SettingsWindow? _settingsWindow;
     private TrayService? _tray;
+    private WinFormsTray? _winTray;
+    private int _lastTrayUnread = -1;
     private Color _pillFill = Color.Parse("#080808");
     private double _idleFillA = 1.0;
 
@@ -60,15 +62,25 @@ public partial class OverlayWindow : Window
         ApplyOpacity();
         ApplyIslandVisibility();
 
-        // Tray must be created even if Opened is delayed/missed on no-activate overlays.
+        // Prefer WinForms NotifyIcon (visible on Win11 Sandbox); Avalonia TrayIcon as fallback.
         try
         {
-            _tray ??= new TrayService(this);
-            _tray.RefreshIcon(_machine.UnreadCount);
+            _winTray ??= new WinFormsTray(this);
+            _winTray.RefreshIcon(_machine.UnreadCount);
+            AppLog.Warn("Using WinFormsTray as primary tray");
         }
         catch (Exception ex)
         {
-            AppLog.Warn("TrayService ctor failed", ex);
+            AppLog.Warn("WinFormsTray ctor failed — falling back to Avalonia TrayService", ex);
+            try
+            {
+                _tray ??= new TrayService(this);
+                _tray.RefreshIcon(_machine.UnreadCount);
+            }
+            catch (Exception ex2)
+            {
+                AppLog.Warn("TrayService ctor failed", ex2);
+            }
         }
 
         Opened += (_, _) =>
@@ -77,14 +89,17 @@ public partial class OverlayWindow : Window
             Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
             PlaceIsland();
             _ = RefreshWeatherAsync();
-            try
+            if (_winTray is null && _tray is null)
             {
-                _tray ??= new TrayService(this);
-                _tray.RefreshIcon(_machine.UnreadCount);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Warn("TrayService Opened init failed", ex);
+                try
+                {
+                    _tray ??= new TrayService(this);
+                    _tray.RefreshIcon(_machine.UnreadCount);
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Warn("TrayService Opened init failed", ex);
+                }
             }
         };
         KeyDown += OnKey;
@@ -97,7 +112,13 @@ public partial class OverlayWindow : Window
             if (before != after) OnKindChanged(before, after);
             Paint();
             if (before != after) ApplySize();
-            _tray?.RefreshIcon(_machine.UnreadCount);
+            var unread = _machine.UnreadCount;
+            if (unread != _lastTrayUnread)
+            {
+                _lastTrayUnread = unread;
+                _tray?.RefreshIcon(unread);
+                _winTray?.RefreshIcon(unread);
+            }
         };
         _demo.Tick += (_, _) =>
         {
@@ -417,7 +438,9 @@ public partial class OverlayWindow : Window
         ApplySize();
         Paint();
         _tray?.RefreshLabels();
+        _winTray?.RefreshLabels();
         _tray?.RefreshIcon(_machine.UnreadCount);
+            _winTray?.RefreshIcon(_machine.UnreadCount);
         if (_settings.WeatherEnabled)
             _ = RefreshWeatherAsync();
     }
@@ -428,6 +451,7 @@ public partial class OverlayWindow : Window
         _settings.Save();
         ApplyIslandVisibility();
         _tray?.RefreshLabels();
+        _winTray?.RefreshLabels();
     }
 
     public void ToggleWeatherFromTray() => ToggleWeather();
@@ -439,6 +463,7 @@ public partial class OverlayWindow : Window
         if (_demoOn) StopDemo();
         else StartDemo();
         _tray?.RefreshLabels();
+        _winTray?.RefreshLabels();
     }
 
     private void ApplyIslandVisibility()
@@ -472,6 +497,7 @@ public partial class OverlayWindow : Window
         ApplySize();
         Paint();
         _tray?.RefreshLabels();
+        _winTray?.RefreshLabels();
         if (_settings.WeatherEnabled)
             _ = RefreshWeatherAsync();
     }
