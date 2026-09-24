@@ -612,7 +612,7 @@ public partial class OverlayWindow : Window
                 return;
             }
 
-            _settingsWindow = new SettingsWindow(_settings, ApplySettingsFromUi, DemoChargePill,
+            _settingsWindow = new SettingsWindow(_settings, ApplySettingsFromUi, () => _clipboardHistory, DemoChargePill,
                 StartCountdownMinutes, StartStopwatchFromSettings);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Show();

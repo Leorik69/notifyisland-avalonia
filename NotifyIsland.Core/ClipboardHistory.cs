@@ -119,6 +119,18 @@ public sealed class ClipboardHistory
         return Latest is { } e ? BuildPayload(e, now) : new OverlayPayload { ClipboardItemKind = ClipboardItemKind.None };
     }
 
+    /// <summary>
+    /// Return a snapshot of the history suitable for UI binding. Newest first.
+    /// Caller is responsible for not mutating the returned list (defensive copy).
+    /// </summary>
+    public IReadOnlyList<ClipboardEntry> SnapshotNewestFirst()
+    {
+        var list = new List<ClipboardEntry>(_items.Count);
+        for (var node = _items.Last; node is not null; node = node.Previous)
+            list.Add(node.Value);
+        return list;
+    }
+
     private static string Preview(string s, int max)
     {
         if (string.IsNullOrEmpty(s)) return "";

@@ -24,16 +24,19 @@ public partial class SettingsWindow : Window
     private readonly Action? _onStartStopwatch;
     private bool _paletteWired;
     private bool _loadingUi;
+    private readonly Func<ClipboardHistory?> _getHistory;
 
-    public SettingsWindow() : this(new AppSettings(), _ => { }) { }
+    public SettingsWindow() : this(new AppSettings(), _ => { }, null) { }
 
-    public SettingsWindow(AppSettings live, Action<AppSettings> onApply, Action? onDemoBattery = null,
+    public SettingsWindow(AppSettings live, Action<AppSettings> onApply, Func<ClipboardHistory?>? getHistory = null,
+        Action? onDemoBattery = null,
         Action<int>? onStartTimer = null, Action? onStartStopwatch = null)
     {
         _live = live;
         _draft = new AppSettings();
         live.CopyTo(_draft);
         _onApply = onApply;
+        _getHistory = getHistory ?? (() => null);
         _onDemoBattery = onDemoBattery;
         _onStartTimer = onStartTimer;
         _onStartStopwatch = onStartStopwatch;
@@ -43,6 +46,7 @@ public partial class SettingsWindow : Window
         LoadUi();
         WireVolumeLabels();
         WirePalettePreview();
+        LoadClipboardHistory();
         Closing += OnClosing;
     }
 
@@ -79,6 +83,38 @@ public partial class SettingsWindow : Window
                 HoverDelayLabel.Text = $"{(int)HoverDelaySlider.Value}";
         };
     }
+
+    private void LoadClipboardHistory()
+    {
+        var history = _getHistory();
+        ClipboardHistoryList.ItemsSource = history?.SnapshotNewestFirst().Select(ClipboardItemVm.From).ToList()
+            ?? new List<ClipboardItemVm>();
+        ClipboardEmptyText.IsVisible = history is null || history.Count == 0;
+        ClipboardHistoryList.IsVisible = !ClipboardEmptyText.IsVisible;
+    }
+
+    private void OnClipboardItemClick(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        if (sender is not Avalonia.Controls.Border { DataContext: ClipboardItemVm vm } || vm.Source is null) return;
+        bool ok = vm.Source.Kind switch
+        {
+            ClipboardItemKind.Text => WindowsClipboardWriter.WriteText(vm.Source.Text ?? ""),
+            ClipboardItemKind.File or ClipboardItemKind.MultiFile =>
+                WindowsClipboardWriter.WriteFiles(vm.Source.Paths ?? new List<string>()),
+            _ => false
+        };
+        if (ok)
+        {
+            // Bump fresh push so the just-copied item is newest (user re-copied it).
+            _getHistory()?.Push(vm.Source);
+        }
+        ClipboardEmptyText.Text = ok
+            ? $"Скопировано в буфер · {vm.KindLabelRu} · {DateTime.Now:HH:mm:ss}"
+            : $"Не удалось записать в буфер ({vm.Source.Kind})";
+        ClipboardEmptyText.IsVisible = true;
+    }
+
+    /// <summary>View-model for one history item in the Settings list (see ClipboardItemVm.cs).</summary>
 
     private void WirePalettePreview()
     {
