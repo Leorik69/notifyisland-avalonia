@@ -47,17 +47,15 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: autostart
 
 [Code]
-// Defensive kill: Inno Setup's CloseApplications=yes sometimes misses NotifyIsland
-// when the running process is hung in a WinForms message loop. Force taskkill /F
-// right before the installer copies files, so the new exe can replace the old one
-// and the user is guaranteed a fresh process when the [Run] section launches.
-function PrepareToInstall(var Refresh: Boolean): Boolean;
+// Defensive kill: CloseApplications=yes sometimes misses NotifyIsland when the
+// process is hung in a WinForms message loop. Force taskkill /F in the
+// InitializeSetup event (fires very early, before file copy).
+function InitializeSetup(): Boolean;
+var
+  KillResultCode: Integer;
 begin
+  Exec('taskkill', '/F /IM {#MyAppExeName} /T', '', SW_HIDE, ewWaitUntilTerminated, KillResultCode);
   Result := True;
-  if Exec('taskkill', '/F /IM {#MyAppExeName} /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    // intentional ignore of ResultCode — taskkill returns 128 if no process matched,
-    // which is fine.
-  ;
 end;
 
 [Run]
