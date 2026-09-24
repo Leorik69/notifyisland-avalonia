@@ -42,7 +42,7 @@
                 Background="Transparent"
                 BorderThickness="0"
                 Cursor="Hand"
-                IsVisible="False"
+                ToolTip.Tip="Предыдущий режим"
                 Click="OnCyclePrevClick"
                 Content="‹" />
         <TextBlock x:Name="ClockText"
@@ -80,7 +80,7 @@
                 Background="Transparent"
                 BorderThickness="0"
                 Cursor="Hand"
-                IsVisible="False"
+                ToolTip.Tip="Следующий режим"
                 Click="OnCycleNextClick"
                 Content="›" />
         <!-- FontAudio digital segments (HH:mm[:ss]); toggled vs ClockText via DigitalClockEnabled -->

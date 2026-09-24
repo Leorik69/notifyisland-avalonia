@@ -864,12 +864,15 @@ public partial class OverlayWindow : Window
             CyclePreviewText.IsVisible = true;
             CycleNavHint.Text = $"{snap.Payload.ClipboardCycleIndex + 1}/{cycleCount}";
             CycleNavHint.IsVisible = true;
-            // Visible chevrons become the cycle controls — show them with hover affordance.
-            CyclePrevButton.IsVisible = true;
-            CycleNextButton.IsVisible = true;
-            // Disable ‹ at index 0 and › at last index for visual feedback.
+            // Chevrons stay always visible — the dim feedback only matters in clipboard-cycle mode.
             CyclePrevButton.Opacity = snap.Payload.ClipboardCycleIndex > 0 ? 1.0 : 0.35;
             CycleNextButton.Opacity = snap.Payload.ClipboardCycleIndex < cycleCount - 1 ? 1.0 : 0.35;
+            // When in clipboard-cycle mode, hijack the chevron handlers from island-slot cycle
+            // by wiring them to clipboard history.
+            CyclePrevButton.Click -= OnCyclePrevClick;
+            CyclePrevButton.Click += OnClipboardCyclePrevClick;
+            CycleNextButton.Click -= OnCycleNextClick;
+            CycleNextButton.Click += OnClipboardCycleNextClick;
             // Replace the clock visual with the preview when cycle is active.
             ClockText.IsVisible = false;
             DigitalClockRow.IsVisible = false;
@@ -878,8 +881,13 @@ public partial class OverlayWindow : Window
         {
             CyclePreviewText.IsVisible = false;
             CycleNavHint.IsVisible = false;
-            CyclePrevButton.IsVisible = false;
-            CycleNextButton.IsVisible = false;
+            // Restore default chevron → island-slot cycle when clipboard cycle is off.
+            CyclePrevButton.Click -= OnClipboardCyclePrevClick;
+            CyclePrevButton.Click += OnCyclePrevClick;
+            CycleNextButton.Click -= OnClipboardCycleNextClick;
+            CycleNextButton.Click += OnCycleNextClick;
+            CyclePrevButton.Opacity = 1.0;
+            CycleNextButton.Opacity = 1.0;
         }
 
         var dateFmt = _settings.DateFormat;
@@ -1916,8 +1924,33 @@ public partial class OverlayWindow : Window
         Paint();
     }
 
-    /// <summary>Explicit click handlers for the visible chevron buttons (XAML Click).</summary>
+    /// <summary>
+    /// Visible chevron buttons on the pill edges. Always available on every overlay kind.
+    /// Left chevron: cycle to previous IslandSlot (Idle → Notification → Media → Weather).
+    /// Right chevron: cycle to next IslandSlot (Idle → Weather → Media → Notification).
+    /// The clipboard-cycle behavior stays accessible via the existing X-position logic
+    /// in HandleIdlePillClick when clipboard history is active.
+    /// </summary>
     private void OnCyclePrevClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        e.Handled = true;
+        _machine.Dispatch(OverlayCommand.CyclePrev);
+        ApplySize();
+        Paint();
+        IslandSounds.Play(IslandSoundKind.Hover, _settings);
+    }
+
+    private void OnCycleNextClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        e.Handled = true;
+        _machine.Dispatch(OverlayCommand.CycleNext);
+        ApplySize();
+        Paint();
+        IslandSounds.Play(IslandSoundKind.Hover, _settings);
+    }
+
+    /// <summary>Alternative click handlers wired when clipboard cycle is active.</summary>
+    private void OnClipboardCyclePrevClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         e.Handled = true;
         _machine.Dispatch(OverlayCommand.CycleClipboardPrev);
@@ -1926,7 +1959,7 @@ public partial class OverlayWindow : Window
         IslandSounds.Play(IslandSoundKind.Hover, _settings);
     }
 
-    private void OnCycleNextClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void OnClipboardCycleNextClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         e.Handled = true;
         _machine.Dispatch(OverlayCommand.CycleClipboardNext);
