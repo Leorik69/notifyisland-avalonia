@@ -169,7 +169,7 @@ public sealed class AppSettings
     public double SoundVolError { get; set; } = 1.0;
     public double SoundVolHover { get; set; } = 0.35;
 
-    /// <summary>Island morph / pulse / breath speed. Default Normal.</summary>
+    /// <summary>Island morph / pulse speed. Default Normal.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AnimationSpeed AnimationSpeed { get; set; } = AnimationSpeed.Slow;
 
@@ -205,9 +205,6 @@ public sealed class AppSettings
     public AnimationSpeed AnimUnreadPulse { get; set; } = AnimationSpeed.Normal;
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
-    public AnimationSpeed AnimIdleBreath { get; set; } = AnimationSpeed.Normal;
-
-    [JsonConverter(typeof(JsonStringEnumConverter))]
     public AnimationSpeed AnimHover { get; set; } = AnimationSpeed.Normal;
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -215,9 +212,6 @@ public sealed class AppSettings
 
     /// <summary>Enable unread-dot opacity pulse when unread &gt; 0.</summary>
     public bool AnimPulseEnabled { get; set; } = true;
-
-    /// <summary>Enable idle breathing scale on collapsed pill.</summary>
-    public bool AnimBreathEnabled { get; set; } = true;
 
     /// <summary>Notification appear style (Settings → Анимации).</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -343,11 +337,9 @@ public sealed class AppSettings
         target.AnimMorphInflate = AnimMorphInflate;
         target.AnimMorphCollapse = AnimMorphCollapse;
         target.AnimUnreadPulse = AnimUnreadPulse;
-        target.AnimIdleBreath = AnimIdleBreath;
         target.AnimHover = AnimHover;
         target.AnimSwipeRubber = AnimSwipeRubber;
         target.AnimPulseEnabled = AnimPulseEnabled;
-        target.AnimBreathEnabled = AnimBreathEnabled;
         target.AppearStyle = AppearStyle;
         target.DismissStyle = DismissStyle;
         target.SettingsWindowX = SettingsWindowX;
