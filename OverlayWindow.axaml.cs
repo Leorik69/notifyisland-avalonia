@@ -29,6 +29,8 @@ public partial class OverlayWindow : Window
     private PowerStatusSnapshot? _lastPower;
     private int? _prevPowerPercent;
     private byte[]? _lastArtworkBytes;
+    private ClipboardHistory _clipboardHistory = new();
+    private WindowsClipboardSource? _clipboardSource;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(1.8) };
@@ -107,6 +109,19 @@ public partial class OverlayWindow : Window
         _settings.Normalize();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
         _weather = new WindowsWeatherSource(_settings.Latitude, _settings.Longitude);
+        _clipboardHistory = new ClipboardHistory(Math.Clamp(_settings.ClipboardMaxItems, 1, ClipboardHistory.HardCap));
+        try
+        {
+            _clipboardSource = new WindowsClipboardSource(
+                _clipboardHistory,
+                action => Avalonia.Threading.Dispatcher.UIThread.Post(action));
+            _clipboardSource.Captured += OnClipboardCaptured;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("WindowsClipboardSource init failed", ex);
+            _clipboardSource = null;
+        }
         _pillFill = ParseColor(_settings.ColorCapsuleFill, OverlayTokens.FillHex);
         _idleFillA = _settings.Opacity;
 
@@ -148,6 +163,8 @@ public partial class OverlayWindow : Window
             _ = RefreshWeatherAsync();
             EnsureMediaSource();
             EnsurePowerSource();
+            if (_settings.ClipboardEnabled)
+                _clipboardSource?.Start();
             if (_winTray is null && _tray is null)
             {
                 try
@@ -1519,6 +1536,24 @@ public partial class OverlayWindow : Window
 
     private void OnPowerChanged(PowerStatusSnapshot snap) =>
         Dispatcher.UIThread.Post(() => ApplyPowerSnapshot(snap), DispatcherPriority.Background);
+
+    private void OnClipboardCaptured(ClipboardEntry entry)
+    {
+        // Ignore when user disabled clipboard listener at runtime.
+        if (!_settings.ClipboardEnabled) return;
+        var payload = ClipboardHistory.BuildPayload(entry, DateTimeOffset.UtcNow);
+        var snap = _machine.Dispatch(OverlayCommand.SetClipboard, payload);
+        ApplySize();
+        Paint();
+        if (snap.Kind != OverlayKind.Clipboard) return;
+        // Beep-on-copy is opt-in via Notify volume slider; v1 stays silent for MultiFile.
+        if (_settings.SoundEnabled
+            && _settings.SoundVolNotify > 0
+            && entry.Kind is ClipboardItemKind.Text or ClipboardItemKind.File)
+        {
+            IslandSounds.Play(IslandSoundKind.Notify, _settings);
+        }
+    }
 
     private void ApplyPowerSnapshot(PowerStatusSnapshot snap)
     {

@@ -161,6 +161,12 @@
               <TextBlock Text="Иконки" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
+          <ListBoxItem Tag="clipboard">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Image x:Name="NavIcon_clipboard" Width="18" Height="18" Classes="navIcon"/>
+              <TextBlock Text="Буфер обмена" VerticalAlignment="Center"/>
+            </StackPanel>
+          </ListBoxItem>
           </ListBox>
         </DockPanel>
       </Border>
@@ -584,6 +590,32 @@
                        Text="Пакеты: Tabler/Lucide (outline UI) и 4 стиля Meteocons (погода, Bas Milius MIT). SVG с SMIL; Avalonia.Svg.Skia рисует геометрию, анимация — Avalonia-motion (rotate/bob/pulse). См. docs/ICON_PACKS.md."/>
             <TextBlock Classes="mutedNote"
                        Text="Meteocons только для weather-*; остальные ключи — IslandIcons. При ошибке SVG — fallback IslandIcons."/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+        <ScrollViewer x:Name="Panel_clipboard" Classes="tabBody" IsVisible="False">
+          <StackPanel Spacing="12">
+            <Border Classes="settingsCard">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle" Text="Буфер обмена"/>
+                <TextBlock Classes="mutedNote"
+                           Text="Слушает системный буфер и показывает последнюю запись в островке. Чисто локально: история не уходит никуда, кроме памяти процесса."/>
+                <CheckBox x:Name="ClipboardEnabledBox" Content="Следить за буфером"/>
+                <TextBlock Classes="fieldLabel" Text="Размер истории"/>
+                <ComboBox x:Name="ClipboardMaxItemsBox" Width="200">
+                  <ComboBoxItem Tag="10" Content="10"/>
+                  <ComboBoxItem Tag="25" Content="25"/>
+                  <ComboBoxItem Tag="50" Content="50"/>
+                  <ComboBoxItem Tag="100" Content="100"/>
+                </ComboBox>
+                <TextBlock Classes="fieldLabel" Text="По клику на островок"/>
+                <ComboBox x:Name="ClipboardClickActionBox" Width="200">
+                  <ComboBoxItem Tag="Dismiss" Content="Просто закрыть"/>
+                  <ComboBoxItem Tag="DismissAndClear" Content="Закрыть и очистить буфер"/>
+                </ComboBox>
+                <TextBlock Classes="mutedNote"
+                           Text="v1 не вставляет в чужое окно автоматически — пользователь жмёт Ctrl+V сам. Это сохраняет focus у целевого приложения."/>
               </StackPanel>
             </Border>
           </StackPanel>

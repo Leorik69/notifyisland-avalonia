@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using Avalonia;
 using Avalonia.Controls;
@@ -212,6 +213,9 @@ public partial class SettingsWindow : Window
         SelectByTag(OrientationBox, _draft.Orientation.ToString());
         SelectByTag(ZOrderBox, _draft.ZOrderMode.ToString());
         SelectByTag(SoundPackBox, _draft.SoundPack.ToString());
+        ClipboardEnabledBox.IsChecked = _draft.ClipboardEnabled;
+        SelectByTag(ClipboardMaxItemsBox, _draft.ClipboardMaxItems.ToString(CultureInfo.InvariantCulture));
+        SelectByTag(ClipboardClickActionBox, _draft.ClipboardClickAction.ToString());
         SelectByTag(AnimSpeedBox, _draft.AnimationSpeed.ToString());
         SelectByTag(AppearStyleBox, _draft.AppearStyle.ToString());
         SelectByTag(DismissStyleBox, _draft.DismissStyle.ToString());
@@ -392,6 +396,11 @@ public partial class SettingsWindow : Window
             _draft.ZOrderMode = z;
         if (Enum.TryParse<SoundPack>(SelectedTag(SoundPackBox), true, out var pack))
             _draft.SoundPack = pack;
+        _draft.ClipboardEnabled = ClipboardEnabledBox.IsChecked == true;
+        if (int.TryParse(SelectedTag(ClipboardMaxItemsBox), NumberStyles.Integer, CultureInfo.InvariantCulture, out var cm))
+            _draft.ClipboardMaxItems = cm;
+        if (Enum.TryParse<ClipboardClickAction>(SelectedTag(ClipboardClickActionBox), true, out var ca))
+            _draft.ClipboardClickAction = ca;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimSpeedBox), true, out var anim))
             _draft.AnimationSpeed = anim;
         if (Enum.TryParse<NotifyAppearStyle>(SelectedTag(AppearStyleBox), true, out var ap))
@@ -491,6 +500,7 @@ public partial class SettingsWindow : Window
         ("anim", "sparkles"),
         ("sound", "volume-2"),
         ("icons", "shapes"),
+        ("clipboard", "clipboard"),
     ];
 
     private void WireNav()

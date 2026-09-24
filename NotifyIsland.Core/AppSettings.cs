@@ -49,6 +49,17 @@ public enum SoundPack
     Off
 }
 
+/// <summary>What happens when the user clicks the clipboard pill.</summary>
+public enum ClipboardClickAction
+{
+    /// <summary>Collapse the pill. The data is already in the system clipboard; user pastes via Ctrl+V.</summary>
+    Dismiss,
+    /// <summary>Collapse the pill AND clear the system clipboard (paranoid mode).</summary>
+    DismissAndClear,
+    /// <summary>Reserved for v1.1 — auto-paste to the previous foreground window. Disabled in v1.</summary>
+    PasteToLastFocus
+}
+
 
 /// <summary>JSON settings under %LOCALAPPDATA%/NotifyIsland/settings.json.</summary>
 public sealed class AppSettings
@@ -153,6 +164,16 @@ public sealed class AppSettings
     public double Opacity { get; set; } = 1.0;
 
     public bool SoundEnabled { get; set; } = true;
+
+    /// <summary>Enable Windows clipboard history listener and the overlay pill.</summary>
+    public bool ClipboardEnabled { get; set; } = true;
+
+    /// <summary>Max items kept in clipboard history (1–100). Default 25.</summary>
+    public int ClipboardMaxItems { get; set; } = ClipboardHistory.DefaultMaxItems;
+
+    /// <summary>What happens when the user clicks the clipboard pill.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public ClipboardClickAction ClipboardClickAction { get; set; } = ClipboardClickAction.Dismiss;
 
     /// <summary>WAV pack or System/Off. Default Nothing (original inspired tones).</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -318,6 +339,10 @@ public sealed class AppSettings
         target.IslandVisible = IslandVisible;
         target.Opacity = Math.Clamp(Opacity, 0.35, 1.0);
         target.SoundEnabled = SoundEnabled;
+        target.ClipboardEnabled = ClipboardEnabled;
+        target.ClipboardMaxItems = Math.Clamp(ClipboardMaxItems, 1, ClipboardHistory.HardCap);
+        target.ClipboardClickAction = Enum.IsDefined(typeof(ClipboardClickAction), ClipboardClickAction)
+            ? ClipboardClickAction : ClipboardClickAction.Dismiss;
         target.SoundPack = SoundPack;
         target.SoundVolume = Math.Clamp(SoundVolume, 0.0, 1.0);
         target.SoundVolNotify = Math.Clamp(SoundVolNotify, 0.0, 1.0);

@@ -15,7 +15,8 @@ public enum OverlayKind
     Timer,
     Error,
     Weather,
-    Battery
+    Battery,
+    Clipboard
 }
 
 public enum OverlayCommand
@@ -33,7 +34,18 @@ public enum OverlayCommand
     CycleNext,
     CyclePrev,
     ExpandWidget,
-    SetBattery
+    SetBattery,
+    SetClipboard
+}
+
+/// <summary>Discriminator for the latest clipboard item the island is showing.</summary>
+public enum ClipboardItemKind
+{
+    /// <summary>No clipboard data yet — should not normally reach SetClipboard.</summary>
+    None,
+    Text,
+    File,
+    MultiFile
 }
 
 /// <summary>Swipe L/R cycle slots (Idle included).</summary>
@@ -61,6 +73,12 @@ public sealed class OverlayPayload
     public double? PrecipProb { get; set; }
     /// <summary>Optional album art bytes (JPEG/PNG) from SMTC; null keeps kind icon.</summary>
     public byte[]? ArtworkBytes { get; set; }
+    /// <summary>Discriminator for SetClipboard payloads.</summary>
+    public ClipboardItemKind ClipboardItemKind { get; set; } = ClipboardItemKind.None;
+    /// <summary>File paths for File/MultiFile clipboard items. Empty for Text.</summary>
+    public IReadOnlyList<string>? ClipboardPaths { get; set; }
+    /// <summary>UTC timestamp when the clipboard item was captured. Drives sort order later.</summary>
+    public DateTimeOffset ClipboardCapturedAt { get; set; } = DateTimeOffset.MinValue;
 }
 
 public sealed class OverlaySnapshot
@@ -200,6 +218,20 @@ public sealed class OverlayMachine
                 _notifyMs = NotifyDurationMs > 0 ? Math.Min(NotifyDurationMs, BatteryAlertLogic.ChargePillMs) : BatteryAlertLogic.ChargePillMs;
                 // Charge pill is transient — do not bump unread.
                 break;
+            case OverlayCommand.SetClipboard:
+                // Defensive: ignore empty payloads rather than blanking the pill.
+                if (data.ClipboardItemKind == ClipboardItemKind.None)
+                    break;
+                if (_kind != OverlayKind.Clipboard)
+                    _returnTo = _kind == OverlayKind.Collapsed ? OverlayKind.Idle : _kind;
+                _kind = OverlayKind.Clipboard;
+                Apply(data);
+                if (string.IsNullOrWhiteSpace(_payload.Title))
+                    _payload.Title = "Буфер обмена";
+                // Longer-lived than notification — copyable payload stays around.
+                _notifyMs = NotifyDurationMs > 0 ? Math.Min(NotifyDurationMs, ClipboardHistory.MaxPillMs) : ClipboardHistory.MaxPillMs;
+                // No unread bump — clipboard events are not system notifications.
+                break;
             case OverlayCommand.DemoNext:
                 RunDemoStep();
                 break;
@@ -224,15 +256,20 @@ public sealed class OverlayMachine
     public OverlaySnapshot Tick(int deltaMs)
     {
         var dt = Math.Max(0, deltaMs);
-        if (_kind is OverlayKind.Notification or OverlayKind.Battery)
+        if (_kind is OverlayKind.Notification or OverlayKind.Battery or OverlayKind.Clipboard)
         {
             _notifyMs -= dt;
             if (_notifyMs <= 0)
             {
                 _notifyMs = 0;
-                _kind = _returnTo == OverlayKind.Notification || _returnTo == OverlayKind.Battery
+                var collapseTarget = _kind == OverlayKind.Clipboard
                     ? OverlayKind.Idle
-                    : _returnTo;
+                    : (_returnTo == OverlayKind.Notification || _returnTo == OverlayKind.Battery
+                        ? OverlayKind.Idle
+                        : _returnTo);
+                _kind = collapseTarget;
+                if (_kind == OverlayKind.Idle)
+                    _returnTo = OverlayKind.Idle;
             }
         }
         if (_kind == OverlayKind.Timer && _payload.Playing)
@@ -401,6 +438,9 @@ public sealed class OverlayMachine
         _payload.WeatherCode = data.WeatherCode;
         _payload.PrecipProb = data.PrecipProb;
         _payload.ArtworkBytes = data.ArtworkBytes;
+        _payload.ClipboardItemKind = data.ClipboardItemKind;
+        _payload.ClipboardPaths = data.ClipboardPaths;
+        _payload.ClipboardCapturedAt = data.ClipboardCapturedAt;
     }
 
     public static OverlayPayload Sanitize(OverlayPayload raw)
@@ -427,12 +467,51 @@ public sealed class OverlayMachine
         byte[]? art = raw.ArtworkBytes;
         if (art is { Length: > 2_000_000 })
             art = null; // drop oversized artwork
+
+        // Clipboard fields — be strict about sizes (history goes to JSON later).
+        var cbKind = raw.ClipboardItemKind;
+        if (!Enum.IsDefined(typeof(ClipboardItemKind), cbKind))
+            cbKind = ClipboardItemKind.None;
+        var cbPaths = raw.ClipboardPaths;
+        if (cbPaths is { Count: > 64 })
+        {
+            // Cap at 64 entries; drop empty entries while we're at it.
+            var trimmed = new List<string>(64);
+            foreach (var entry in cbPaths)
+            {
+                if (string.IsNullOrWhiteSpace(entry)) continue;
+                if (entry.Length > 260) trimmed.Add(entry[..257] + "…");
+                else trimmed.Add(entry);
+                if (trimmed.Count == 64) break;
+            }
+            cbPaths = trimmed.Count == 0 ? null : trimmed;
+        }
+        else if (cbPaths is { Count: > 0 })
+        {
+            // No truncation needed; still null out empty entries.
+            var any = false;
+            foreach (var entry in cbPaths)
+            {
+                if (!string.IsNullOrWhiteSpace(entry)) { any = true; break; }
+            }
+            if (!any) cbPaths = null;
+        }
+
+        // Inferred kind from paths when caller didn't set it explicitly.
+        if (cbKind == ClipboardItemKind.None && cbPaths is { Count: 1 })
+            cbKind = ClipboardItemKind.File;
+        else if (cbKind == ClipboardItemKind.None && cbPaths is { Count: > 1 })
+            cbKind = ClipboardItemKind.MultiFile;
+
         return new OverlayPayload
         {
             Title = t, Subtitle = s, Body = b, Progress = p, Playing = raw.Playing,
             RemainingSeconds = rem, CountUp = raw.CountUp,
             TemperatureC = temp, WeatherCode = raw.WeatherCode, PrecipProb = precip,
-            ArtworkBytes = art
+            ArtworkBytes = art,
+            ClipboardItemKind = cbKind,
+            ClipboardPaths = cbPaths,
+            ClipboardCapturedAt = raw.ClipboardCapturedAt
         };
     }
 
@@ -442,7 +521,10 @@ public sealed class OverlayMachine
         Progress = p.Progress, Playing = p.Playing, RemainingSeconds = p.RemainingSeconds,
         CountUp = p.CountUp,
         TemperatureC = p.TemperatureC, WeatherCode = p.WeatherCode, PrecipProb = p.PrecipProb,
-        ArtworkBytes = p.ArtworkBytes is null ? null : (byte[])p.ArtworkBytes.Clone()
+        ArtworkBytes = p.ArtworkBytes is null ? null : (byte[])p.ArtworkBytes.Clone(),
+        ClipboardItemKind = p.ClipboardItemKind,
+        ClipboardPaths = p.ClipboardPaths,
+        ClipboardCapturedAt = p.ClipboardCapturedAt
     };
 
     public static double WidthFor(OverlayKind kind, bool weatherEnabled = false, bool batteryChip = false)
@@ -457,6 +539,7 @@ public sealed class OverlayMachine
             OverlayKind.Error => 360,
             OverlayKind.Weather => 360,
             OverlayKind.Battery => 320,
+            OverlayKind.Clipboard => 380,
             OverlayKind.Idle or OverlayKind.Collapsed =>
                 weatherEnabled ? OverlayTokens.CollapsedWeatherW : OverlayTokens.CollapsedW,
             _ => OverlayTokens.CollapsedW

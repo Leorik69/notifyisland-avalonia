@@ -48,7 +48,10 @@ public static class IslandIcons
         ["weather-snow"] =
             "M7.5 12 A4.5 4.5 0 0 1 8 3.1 A6 6 0 0 1 19 6.5 A3.5 3.5 0 0 1 18.5 12 Z M9 15.5 L9 18.5 M8 16.5 L10 17.5 M8 17.5 L10 16.5 M13 15.5 L13 18.5 M12 16.5 L14 17.5 M12 17.5 L14 16.5",
         ["weather-storm"] =
-            "M7.5 11 A4.5 4.5 0 0 1 8 2.1 A6 6 0 0 1 19 5.5 A3.5 3.5 0 0 1 18.5 11 Z M11 12 L9 16 L12 16 L10 20"
+            "M7.5 11 A4.5 4.5 0 0 1 8 2.1 A6 6 0 0 1 19 5.5 A3.5 3.5 0 0 1 18.5 11 Z M11 12 L9 16 L12 16 L10 20",
+        // Lucide-style clipboard silhouette (24×24, outline 1.75).
+        ["clipboard"] =
+            "M16 4 H18 A2 2 0 0 1 20 6 V20 A2 2 0 0 1 18 22 H6 A2 2 0 0 1 4 20 V6 A2 2 0 0 1 6 4 H8 M15 2 H9 A1 1 0 0 0 8 3 V4 A1 1 0 0 0 9 5 H15 A1 1 0 0 0 16 4 V3 A1 1 0 0 0 15 2 Z M8 9 H16 M8 13 H16 M8 17 H13"
     };
 
     public static string? GetPathData(string key) =>
@@ -88,6 +91,7 @@ public static class IslandIcons
         OverlayKind.Notification => "notify",
         OverlayKind.Weather => "weather-clear",
         OverlayKind.Battery => "bolt",
+        OverlayKind.Clipboard => "clipboard",
         _ => "notify"
     };
 

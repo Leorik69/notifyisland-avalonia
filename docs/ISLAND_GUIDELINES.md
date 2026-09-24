@@ -223,11 +223,22 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | Width-only morph + fixed H | DI «растягивание», без прыжка вверх |
 | Unread dot + badge | Nothing Glyph minimalism + DI trailing badge |
 | Action Center click | Windows-native аналог «открыть уведомления» |
-| Media/Progress/Timer/Weather kinds в FSM | Live Activities / Super Island templates |
+| Media/Progress/Timer/Weather/Clipboard kinds в FSM | Live Activities / Super Island templates |
 | Click → Action Center | Windows-native |
+| **Clipboard history (text + file paths)** | локальный ring buffer, нет HTTP, нет «фейковой вставки»; пользователь сам жмёт Ctrl+V |
 
 ### Добавлено в этом workstream
-Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order×3, Opacity, AnimationSpeed (+ pulse/breath), color palette, Sound packs, icon pack stub.
+Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order×3, Opacity, AnimationSpeed (+ pulse), color palette, Sound packs, icon pack stub, **Clipboard history 1.0** (text + file paths, 1s polling, local-only, no auto-paste).
+
+### Clipboard history — правила
+- Только локальный ring buffer (`ClipboardHistory`), максимум 100, default 25.
+- Источник: `WindowsClipboardSource` — `GetClipboardSequenceNumber()` polling 1с, читает CF_HDROP → CF_UNICODETEXT.
+- `OverlayKind.Clipboard` (11-й) + `OverlayCommand.SetClipboard` (15-й).
+- Pill show-time `ClipboardHistory.MaxPillMs = 6000` (дольше notification — пользователь может дотянуться).
+- НЕ bump'ит unread (это не системное уведомление).
+- Звук `Notify` только на Text/File, не на MultiFile (слишком часто при копировании в Проводнике).
+- `ClipboardClickAction.Dismiss` — закрыть пилюлю, пользователь жмёт Ctrl+V сам. `DismissAndClear` — очистить системный буфер после закрытия. `PasteToLastFocus` — зарезервировано для v1.1.
+- v1 НЕ вставляет в чужое окно автоматически — это даёт focus-эффект, который мешает пользователю.
 
 ### Добавить позже
 | Что | Обоснование |
