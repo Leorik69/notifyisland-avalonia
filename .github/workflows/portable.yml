@@ -6,6 +6,15 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release
+
   fsm:
     runs-on: ubuntu-latest
     steps:
@@ -15,8 +24,18 @@ jobs:
           python-version: "3.x"
       - run: python3 tools/test_overlay_states.py
 
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet build NotifyIsland.Av.csproj -c Release
+
   publish:
     runs-on: windows-latest
+    needs: [test, build]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

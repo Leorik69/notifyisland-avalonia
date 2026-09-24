@@ -1,22 +1,37 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <RootNamespace>NotifyIsland</RootNamespace>
     <AssemblyName>NotifyIsland</AssemblyName>
     <PublishTrimmed>false</PublishTrimmed>
+    <Version>1.11.0</Version>
+    <Description>NotifyIsland Avalonia overlay for Windows 11</Description>
+    <Authors>Leorik69</Authors>
+    <DefaultItemExcludes>$(DefaultItemExcludes);NotifyIsland.Core\**;NotifyIsland.Tests\**</DefaultItemExcludes>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != '' Or '$(PublishProfile)' != ''">
     <SelfContained>true</SelfContained>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="NotifyIsland.Core\NotifyIsland.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Controls.ColorPicker" Version="11.3.22" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Svg.Skia" Version="11.3.0" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.22" />
+  </ItemGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+    <None Include="Assets\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Assets" />
   </ItemGroup>
 </Project>

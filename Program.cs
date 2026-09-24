@@ -6,6 +6,7 @@ namespace NotifyIsland;
 internal static class Program
 {
     public static bool DemoMode { get; private set; }
+    public static bool SettingsMode { get; private set; }
 
     [STAThread]
     public static void Main(string[] args)
@@ -14,6 +15,8 @@ internal static class Program
         {
             if (string.Equals(a, "--demo", StringComparison.OrdinalIgnoreCase))
                 DemoMode = true;
+            if (string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase))
+                SettingsMode = true;
         }
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);

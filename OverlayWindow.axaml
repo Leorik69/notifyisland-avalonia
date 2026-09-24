@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="NotifyIsland.OverlayWindow"
         Title="NotifyIsland"
-        Width="180" Height="34"
+        Width="170" Height="30"
         CanResize="False"
         ShowInTaskbar="False"
         Topmost="True"
@@ -13,43 +13,236 @@
         Background="Transparent"
         WindowStartupLocation="Manual">
   <Border x:Name="Pill"
-          Width="180" Height="34"
-          CornerRadius="17"
+          Width="170" Height="30"
+          CornerRadius="15"
           Background="#080808"
           BorderBrush="#28FFFFFF"
           BorderThickness="1"
           HorizontalAlignment="Center"
           VerticalAlignment="Center"
-          PointerPressed="OnPillPressed">
-    <Grid Margin="12,0">
-      <TextBlock x:Name="ClockText"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center"
-                 FontFamily="Inter, Segoe UI Variable, Segoe UI"
-                 FontSize="13"
-                 FontWeight="SemiBold"
-                 Foreground="#FFFFFF"
-                 Text="00:00" />
-      <StackPanel x:Name="OverlayPanel"
-                  Spacing="4"
+          ClipToBounds="False"
+          RenderTransformOrigin="50%,50%">
+    <Grid>
+      <!-- Collapsed: time + optional date + optional weather + unread dot (no clock icon) -->
+      <StackPanel x:Name="CollapsedRow"
+                  Orientation="Horizontal"
+                  HorizontalAlignment="Center"
                   VerticalAlignment="Center"
-                  IsVisible="False">
-        <DockPanel>
-          <Button x:Name="MediaPlay" DockPanel.Dock="Right" Padding="6,2" Click="OnMediaPlay"
+                  Spacing="6">
+        <TextBlock x:Name="ClockText"
+                   VerticalAlignment="Center"
+                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   Foreground="#FFFFFF"
+                   Text="00:00" />
+        <!-- FontAudio digital segments (HH:mm[:ss]); toggled vs ClockText via DigitalClockEnabled -->
+        <StackPanel x:Name="DigitalClockRow"
+                    Orientation="Horizontal"
+                    Spacing="1"
+                    VerticalAlignment="Center"
+                    IsVisible="False"
+                    IsHitTestVisible="False" />
+        <TextBlock x:Name="DateText"
+                   VerticalAlignment="Center"
+                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                   FontSize="11"
+                   FontWeight="Medium"
+                   Foreground="#C8C8CC"
+                   Text="24 сен" />
+        <StackPanel x:Name="MinimalWeather"
+                    Orientation="Horizontal"
+                    Spacing="4"
+                    VerticalAlignment="Center"
+                    IsVisible="False">
+          <Grid Width="12" Height="12" VerticalAlignment="Center">
+            <Viewbox x:Name="WeatherIconA" Width="12" Height="12" Opacity="1" />
+            <Viewbox x:Name="WeatherIconB" Width="12" Height="12" Opacity="0" />
+          </Grid>
+          <TextBlock x:Name="WeatherTempText"
+                     VerticalAlignment="Center"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     Foreground="#C8C8CC"
+                     Text="18°" />
+        </StackPanel>
+        <StackPanel x:Name="MinimalBattery"
+                    Orientation="Horizontal"
+                    Spacing="3"
+                    VerticalAlignment="Center"
+                    IsVisible="False">
+          <Viewbox x:Name="BatteryIconHost" Width="11" Height="11" VerticalAlignment="Center" />
+          <TextBlock x:Name="BatteryPercentText"
+                     VerticalAlignment="Center"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     Foreground="#C8C8CC"
+                     Text="100%" />
+        </StackPanel>
+        <Border x:Name="UnreadDot"
+                Width="7" Height="7"
+                CornerRadius="3.5"
+                Background="#5CB6FF"
+                VerticalAlignment="Center"
+                Opacity="0"
+                IsHitTestVisible="False"
+                BoxShadow="0 0 12 4 #E05CB6FF" />
+      </StackPanel>
+
+      <!-- Expanded single-row: icon | title/subtitle | badge -->
+      <DockPanel x:Name="OverlayPanel"
+                 Margin="10,0,10,0"
+                 IsVisible="False"
+                 VerticalAlignment="Center">
+        <Border x:Name="AppIcon"
+                DockPanel.Dock="Left"
+                Width="18" Height="18"
+                CornerRadius="5"
+                Background="#3D9CF0"
+                Margin="0,0,8,0"
+                VerticalAlignment="Center"
+                ClipToBounds="True">
+          <Grid>
+            <Viewbox x:Name="AppIconHost" Width="11" Height="11"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <Image x:Name="MediaArtwork"
+                   Stretch="UniformToFill"
+                   IsVisible="False"
+                   IsHitTestVisible="False"/>
+          </Grid>
+        </Border>
+
+        <Border x:Name="UnreadBadge"
+                DockPanel.Dock="Right"
+                MinWidth="18" Height="18"
+                CornerRadius="9"
+                Background="#3D9CF0"
+                Padding="5,0"
+                Margin="8,0,0,0"
+                VerticalAlignment="Center"
+                IsVisible="False">
+          <TextBlock x:Name="BadgeText"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="10"
+                     FontWeight="SemiBold"
+                     Foreground="#FFFFFF"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center"
+                     Text="1" />
+        </Border>
+
+        <StackPanel x:Name="MediaControls"
+                    DockPanel.Dock="Right"
+                    Orientation="Horizontal"
+                    Spacing="2"
+                    Margin="6,0,0,0"
+                    VerticalAlignment="Center"
+                    IsVisible="False">
+          <Button x:Name="MediaPrev"
+                  Padding="4,0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnMediaPrev"
+                  ToolTip.Tip="Предыдущий"
+                  AutomationProperties.Name="Предыдущий трек">
+            <TextBlock x:Name="MediaPrevGlyph" Text="⏮" FontSize="11" Foreground="#3D9CF0" VerticalAlignment="Center"/>
+          </Button>
+          <Button x:Name="MediaPlay"
+                  Padding="4,0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnMediaPlay"
                   ToolTip.Tip="Воспроизведение"
                   AutomationProperties.Name="Воспроизведение">
-            <TextBlock x:Name="MediaPlayGlyph" Text="▶" FontSize="11" Foreground="#3D9CF0" />
+            <TextBlock x:Name="MediaPlayGlyph"
+                       Text="▶"
+                       FontSize="11"
+                       Foreground="#3D9CF0"
+                       VerticalAlignment="Center" />
           </Button>
-          <StackPanel Spacing="2">
-            <TextBlock x:Name="OverlayTitle" FontSize="13" FontWeight="SemiBold" Foreground="#FFFFFF"
-                       TextTrimming="CharacterEllipsis" Text="Обзор" />
-            <TextBlock x:Name="OverlaySubtitle" FontSize="11" Foreground="#C8C8CC"
-                       TextTrimming="CharacterEllipsis" />
-          </StackPanel>
-        </DockPanel>
-        <ProgressBar x:Name="OverlayProgress" Height="4" Minimum="0" Maximum="100" Foreground="#3D9CF0" />
-        <TextBlock x:Name="OverlayTimer" FontSize="18" FontWeight="SemiBold" Foreground="#FFFFFF" IsVisible="False" />
-      </StackPanel>
+          <Button x:Name="MediaNext"
+                  Padding="4,0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnMediaNext"
+                  ToolTip.Tip="Следующий"
+                  AutomationProperties.Name="Следующий трек">
+            <TextBlock x:Name="MediaNextGlyph" Text="⏭" FontSize="11" Foreground="#3D9CF0" VerticalAlignment="Center"/>
+          </Button>
+        </StackPanel>
+
+        <StackPanel x:Name="TimerControls"
+                    DockPanel.Dock="Right"
+                    Orientation="Horizontal"
+                    Spacing="2"
+                    Margin="6,0,0,0"
+                    VerticalAlignment="Center"
+                    IsVisible="False">
+          <Button x:Name="TimerPauseBtn"
+                  Padding="4,0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnTimerPauseResume"
+                  ToolTip.Tip="Пауза / продолжить"
+                  AutomationProperties.Name="Пауза таймера">
+            <TextBlock x:Name="TimerPauseGlyph" Text="||" FontSize="11" Foreground="#3D9CF0" VerticalAlignment="Center"/>
+          </Button>
+          <Button x:Name="TimerPlusBtn"
+                  Padding="4,0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnTimerPlusOne"
+                  ToolTip.Tip="+1 мин"
+                  AutomationProperties.Name="Добавить минуту">
+            <TextBlock x:Name="TimerPlusGlyph" Text="+1" FontSize="10" FontWeight="SemiBold" Foreground="#3D9CF0" VerticalAlignment="Center"/>
+          </Button>
+          <Button x:Name="TimerCancelBtn"
+                  Padding="4,0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnTimerCancel"
+                  ToolTip.Tip="Отмена"
+                  AutomationProperties.Name="Отменить таймер">
+            <TextBlock x:Name="TimerCancelGlyph" Text="✕" FontSize="11" Foreground="#E8A0A0" VerticalAlignment="Center"/>
+          </Button>
+        </StackPanel>
+
+        <TextBlock x:Name="OverlayTitle"
+                   VerticalAlignment="Center"
+                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   Foreground="#FFFFFF"
+                   TextTrimming="CharacterEllipsis"
+                   Text="Обзор" />
+        <TextBlock x:Name="OverlaySubtitle"
+                   IsVisible="False"
+                   Height="0"
+                   FontSize="1"
+                   Text="" />
+      </DockPanel>
+
+      <!-- FontAudio digital-dot seconds strip (Idle/Collapsed); complementary to HH:mm[:ss] -->
+      <StackPanel x:Name="SecondsStrip"
+                  Orientation="Horizontal"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Bottom"
+                  Margin="10,0,10,2"
+                  Spacing="1.5"
+                  Height="8"
+                  IsVisible="False"
+                  IsHitTestVisible="False" />
+
+      <ProgressBar x:Name="OverlayProgress"
+                   Height="2"
+                   Minimum="0" Maximum="100"
+                   Foreground="#3D9CF0"
+                   Background="Transparent"
+                   VerticalAlignment="Bottom"
+                   Margin="12,0,12,2"
+                   IsVisible="False" />
     </Grid>
   </Border>
 </Window>

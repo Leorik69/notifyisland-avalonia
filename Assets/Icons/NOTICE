@@ -1,0 +1,52 @@
+NotifyIsland vendored icon packs
+================================
+
+Tabler Icons (Assets/Icons/Tabler/)
+  License: MIT
+  Copyright (c) 2020-2024 Paweł Kuna / Tabler Icons contributors
+  Source: https://github.com/tabler/tabler-icons
+  See LICENSE in this folder.
+
+Lucide (Assets/Icons/Lucide/)
+  License: ISC
+  Copyright (c) Lucide Contributors
+  Source: https://github.com/lucide-icons/lucide
+  See LICENSE in this folder.
+
+Meteocons — Fill / Flat / Line / Monochrome
+  (Assets/Icons/MeteoconsFill|Flat|Line|Monochrome/)
+  License: MIT
+  Copyright (c) 2020-present Bas Milius
+  Source: https://github.com/basmilius/meteocons · npm @meteocons/svg
+  Docs: https://meteocons.com · https://allsvgicons.com/pack/meteocons/
+  See LICENSE in each style folder.
+
+  Vendored weather keys (animated SVG with SMIL):
+    weather-clear ← clear-day
+    weather-partly ← partly-cloudy-day
+    weather-cloud ← cloudy
+    weather-fog ← fog
+    weather-drizzle ← drizzle
+    weather-rain ← rain
+    weather-snow ← snow
+    weather-storm ← thunderstorms
+    weather-sleet ← sleet
+
+  Avalonia.Svg.Skia does not execute SMIL; NotifyIsland mirrors primary
+  motion with Avalonia animations (see MeteoconsMotion.cs).
+
+Only icons needed by NotifyIsland keys are vendored.
+
+Settings nav (Lucide, ISC) — vendored for SettingsWindow sidebar (1.11.0):
+  layout-dashboard, cloud-sun, move, palette, music, type, sparkles,
+  volume-2, shapes, battery
+  Source: https://api.iconify.design/lucide/<name>.svg · https://allsvgicons.com/pack/lucide/
+
+
+FontAudio digital glyphs (Assets/Icons/FontAudio/)
+  License: CC BY 4.0
+  Designed by: @fefanto
+  Source: https://github.com/fefanto/fontaudio · Iconify fad · https://allsvgicons.com/pack/fad/
+  Icons: digital0–digital9, digital-colon, digital-dot
+  See ATTRIBUTION.md + LICENSE in this folder.
+

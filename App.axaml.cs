@@ -13,7 +13,9 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = Avalonia.Controls.ShutdownMode.OnExplicitShutdown;
-            desktop.MainWindow = new OverlayWindow();
+            var overlay = new OverlayWindow();
+            desktop.MainWindow = overlay;
+            // Tray is created on OverlayWindow.Opened (needs window handle / assets)
         }
 
         base.OnFrameworkInitializationCompleted();
