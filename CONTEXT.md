@@ -77,7 +77,7 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 ## Функционал: есть / убрать / добавить
 Кратко (детали — в GUIDELINES §5 / §10):
 
-**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); **hover expand + click pin 1.10.0**; **hide on fullscreen 1.10.0**; **Settings icon-sidebar 1.11.0**; idle breath; tray + Settings window; WeatherSide; Edge+Offset (**no island drag**); Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; timer/stopwatch; FontAudio digital clock + seconds strip; demo; tests+CI.
+**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); **hover expand + click pin 1.10.0**; **hide on fullscreen 1.10.0**; **Settings icon-sidebar 1.11.0**; tray + Settings window; WeatherSide; Edge+Offset (**no island drag**); Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; timer/stopwatch; FontAudio digital clock + seconds strip; demo; tests+CI.
 
 **Убрать/не раздувать:** demo как продукт; Open-Meteo; Xiaomi pull-down / swipe gestures; detached second island.
 
@@ -107,10 +107,6 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 ## Fullscreen
 `HideOnFullscreen` (default ON): `SHQueryUserNotificationState` + monitor-cover → Hide; restore on leave. Optional click-through if hide off.
 
-## Idle breath
-`BreathScaleAmp=0.04`, `BreathWidthAmpPx=7`, `BreathGlowAmp=0.14`, `BreathPeriodMs=2600` — только Idle/Collapsed при `AnimBreathEnabled`. Soften on hover-peek; pause while pinned.
-
-
 ## Иконки — источники
 Каталог паков: [allsvgicons.com/pack](https://allsvgicons.com/pack/). Вендор + лицензии: `Assets/Icons/NOTICE`, `docs/ICON_PACKS.md`.
 
@@ -131,7 +127,7 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 4. **Тема** — NothingDark / AppleQuiet / Ocean / Custom  
 5. **Медиа и питание** — SMTC Now Playing, battery alerts, timer/stopwatch  
 6. **Оформление** — z-order, opacity, fonts, palette, preview pill  
-7. **Анимации** — speed + appear/dismiss + pulse/breath  
+7. **Анимации** — speed + appear/dismiss + pulse  
 8. **Звуки** — packs + volumes  
 9. **Иконки** — IslandIcons / Tabler / Lucide / Meteocons  
 

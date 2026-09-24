@@ -44,7 +44,6 @@ public class AppSettingsTests
         Assert.Equal(NotifyAppearStyle.Bounce, s.AppearStyle);
         Assert.Equal(NotifyDismissStyle.Ragged, s.DismissStyle);
         Assert.True(s.AnimPulseEnabled);
-        Assert.True(s.AnimBreathEnabled);
         Assert.Equal(DateFormat.DayMonth, s.DateFormat);
         Assert.True(s.DigitalClockEnabled);
         Assert.False(s.ShowClockSeconds);
@@ -102,11 +101,9 @@ public class AppSettingsTests
             AnimMorphInflate = AnimationSpeed.Fast,
             AnimMorphCollapse = AnimationSpeed.Slow,
             AnimUnreadPulse = AnimationSpeed.Fast,
-            AnimIdleBreath = AnimationSpeed.Off,
             AnimHover = AnimationSpeed.Fast,
             AnimSwipeRubber = AnimationSpeed.Slow,
             AnimPulseEnabled = false,
-            AnimBreathEnabled = true,
             AppearStyle = NotifyAppearStyle.Pop,
             DismissStyle = NotifyDismissStyle.Glitch,
             DateFormat = DateFormat.Numeric,
@@ -167,11 +164,9 @@ public class AppSettingsTests
         Assert.Equal(AnimationSpeed.Fast, back.AnimMorphInflate);
         Assert.Equal(AnimationSpeed.Slow, back.AnimMorphCollapse);
         Assert.Equal(AnimationSpeed.Fast, back.AnimUnreadPulse);
-        Assert.Equal(AnimationSpeed.Off, back.AnimIdleBreath);
         Assert.Equal(AnimationSpeed.Fast, back.AnimHover);
         Assert.Equal(AnimationSpeed.Slow, back.AnimSwipeRubber);
         Assert.False(back.AnimPulseEnabled);
-        Assert.True(back.AnimBreathEnabled);
         Assert.Equal(NotifyAppearStyle.Pop, back.AppearStyle);
         Assert.Equal(NotifyDismissStyle.Glitch, back.DismissStyle);
         Assert.Equal(DateFormat.Numeric, back.DateFormat);

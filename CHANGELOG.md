@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Idle breath removed
+- Removed idle-breath animation entirely: `AppSettings.AnimBreathEnabled` / `AnimIdleBreath`, `OverlayTokens.BreathScaleAmp` / `BreathScaleXExtra` / `BreathWidthAmpPx` / `BreathGlowAmp`, `AnimationTiming.BreathPeriodMs`, `AnimationAction.IdleBreath`, `HoverPinMachine.SoftenBreath`. Pulse (unread-dot) kept as-is.
+- UI: dropped «Дыхание в простое» checkbox and per-action «Дыхание (idle)» speed combo. Remaining per-action speeds: morph inflate / morph collapse / unread pulse / hover.
+- GUIDELINES / CONTEXT / ISLAND_PREVIEW updated; no Idle-breath tokens documented anymore.
+
 ## 1.11.0 — Settings icon sidebar
 
 ### Added
