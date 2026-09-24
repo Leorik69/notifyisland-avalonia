@@ -44,6 +44,7 @@ public sealed class WindowsClipboardSource : IDisposable
         IsRunning = true;
         _lastSequence = GetClipboardSequenceNumber();
         _timer.Change(PollInterval, PollInterval);
+        AppLog.Info($"WindowsClipboardSource started (poll={PollInterval.TotalSeconds:F1}s, baseline seq={_lastSequence})");
     }
 
     public void Stop()
@@ -51,6 +52,7 @@ public sealed class WindowsClipboardSource : IDisposable
         if (!IsRunning) return;
         IsRunning = false;
         _timer.Change(Timeout.Infinite, Timeout.Infinite);
+        AppLog.Info("WindowsClipboardSource stopped");
     }
 
     public void Dispose()
@@ -62,14 +64,26 @@ public sealed class WindowsClipboardSource : IDisposable
     private void Tick()
     {
         var seq = GetClipboardSequenceNumber();
-        if (seq == 0 || seq == _lastSequence) return;
+        if (seq == 0)
+        {
+            AppLog.Warn("clipboard GetClipboardSequenceNumber returned 0 — last-error access denied?");
+            return;
+        }
+        if (seq == _lastSequence) return;
+        AppLog.Info($"clipboard sequence changed {_lastSequence} -> {seq}");
         _lastSequence = seq;
         var entry = TryCapture();
-        if (entry is null) return;
+        if (entry is null)
+        {
+            AppLog.Info("clipboard sequence changed but TryCapture returned null (locked or no data?)");
+            return;
+        }
+        AppLog.Info($"clipboard captured: kind={entry.Kind} textLen={entry.Text?.Length ?? 0} paths={entry.Paths?.Count ?? 0}");
         _postToUi(() =>
         {
             _history.Push(entry);
             Captured?.Invoke(entry);
+            AppLog.Info($"clipboard pushed to history: count={_history.Count}");
         });
     }
 

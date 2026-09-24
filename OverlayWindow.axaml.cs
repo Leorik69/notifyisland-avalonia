@@ -1583,14 +1583,16 @@ public partial class OverlayWindow : Window
         if (items.Count < 2)
         {
             // Single item (or empty): no cycling needed, leave the Idle pill in default clock state.
+            AppLog.Info($"RefreshIdleClipboardCycle: only {items.Count} item(s) — cycle stays inactive");
             return;
         }
         var previews = items.Select(MakeCyclePreview).ToList();
-        _machine.Dispatch(OverlayCommand.SetClipboardCycle, new OverlayPayload
+        var snap = _machine.Dispatch(OverlayCommand.SetClipboardCycle, new OverlayPayload
         {
             ClipboardCyclePreviews = previews,
             ClipboardCycleIndex = 0
         });
+        AppLog.Info($"RefreshIdleClipboardCycle: cycle ON, {snap.Payload.ClipboardCycleCount} items, first preview = \"{snap.Payload.ClipboardCyclePreview}\"");
     }
 
     private static string MakeCyclePreview(ClipboardEntry e) => e.Kind switch
