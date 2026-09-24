@@ -103,6 +103,7 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 
 ## Буфер обмена
 **Live:** `WindowsClipboardSource` (polling 1с, `GetClipboardSequenceNumber`). При новом элементе → `SetClipboard` → pill показывает превью (текст / имя файла / "N файлов"). Локально: ring buffer в памяти, без HTTP, без auto-paste. Клик по пилюле — Dismiss (по умолчанию) или DismissAndClear. Из настроек: toggle, размер истории (10/25/50/100), click action.
+**Восстановление из истории:** Settings → Буфер обмена → карточка «Последние элементы». Каждая карточка — одна запись ring buffer (новейшие сверху). Клик по карточке вызывает `WindowsClipboardWriter.WriteText` / `WriteFiles`, который восстанавливает этот item в системном буфере — потом `Ctrl+V` в любом приложении вставит его. Использование: «скопировал A, потом B по ошибке, теперь нужен A — кликнул A в истории, Ctrl+V в целевом приложении».
 **Demo:** F9 циклически показывает мок-данные других overlay kinds; clipboard pill в demo не показывается — нужен реальный copy.
 
 ## Ввод (клики)

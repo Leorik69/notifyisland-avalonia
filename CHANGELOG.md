@@ -2,6 +2,12 @@
 
 ## Unreleased — Idle breath removed + Clipboard history (1.12.0-preview)
 
+### Added — Clipboard history UI (1.12.0-preview, follow-up)
+- `WindowsClipboardWriter` (WinForms.Clipboard wrapper, STA-checked): `WriteText` / `WriteFiles` for restoring an item from history back into the system clipboard.
+- Settings → Буфер обмена: new "Последние элементы" card renders the ring buffer (newest first) as clickable cards with kind glyph, RU label, title preview, subtitle, and relative time. Click any card → re-copies that item to the system clipboard; result echoed in the empty-state label.
+- `NotifyIsland.Core.ClipboardHistory.SnapshotNewestFirst()` and `ClipboardItemVm` (Core POCO, no Avalonia deps).
+- 11 new tests (`ClipboardItemVmTests`): text/file/multi-file rendering, newline normalization, time-ago buckets.
+
 ### Removed — Idle breath
 - Removed idle-breath animation entirely: `AppSettings.AnimBreathEnabled` / `AnimIdleBreath`, `OverlayTokens.BreathScaleAmp` / `BreathScaleXExtra` / `BreathWidthAmpPx` / `BreathGlowAmp`, `AnimationTiming.BreathPeriodMs`, `AnimationAction.IdleBreath`, `HoverPinMachine.SoftenBreath`. Pulse (unread-dot) kept as-is.
 - UI: dropped «Дыхание в простое» checkbox and per-action «Дыхание (idle)» speed combo. Remaining per-action speeds: morph inflate / morph collapse / unread pulse / hover.
