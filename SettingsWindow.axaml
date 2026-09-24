@@ -489,9 +489,6 @@
                        Text="Стили применяются при входе/выходе Notification. Demo (F9) циклически показывает разные appear/dismiss."/>
 
             <CheckBox x:Name="AnimPulseEnabledBox" Content="Pulse непрочитанных" Margin="0,12,0,2"/>
-            <CheckBox x:Name="AnimBreathEnabledBox" Content="Дыхание в простое"/>
-            <TextBlock Classes="mutedNote"
-                       Text="Мягкий пульс масштаба/ширины/свечения, когда островок свёрнут (Idle). Ослабевает при hover-peek, пауза при pin; выкл при уведомлении/медиа."/>
 
             <TextBlock Classes="fieldLabel" Text="Морф / появление (inflate)"/>
             <ComboBox x:Name="AnimMorphInflateBox" Width="260">
@@ -509,13 +506,6 @@
             </ComboBox>
             <TextBlock Classes="fieldLabel" Text="Pulse непрочитанных"/>
             <ComboBox x:Name="AnimUnreadPulseBox" Width="260">
-              <ComboBoxItem Tag="Slow" Content="Медленнее"/>
-              <ComboBoxItem Tag="Normal" Content="Обычная"/>
-              <ComboBoxItem Tag="Fast" Content="Быстрее"/>
-              <ComboBoxItem Tag="Off" Content="Выкл"/>
-            </ComboBox>
-            <TextBlock Classes="fieldLabel" Text="Дыхание (idle)"/>
-            <ComboBox x:Name="AnimIdleBreathBox" Width="260">
               <ComboBoxItem Tag="Slow" Content="Медленнее"/>
               <ComboBoxItem Tag="Normal" Content="Обычная"/>
               <ComboBoxItem Tag="Fast" Content="Быстрее"/>

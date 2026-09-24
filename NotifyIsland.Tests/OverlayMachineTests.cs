@@ -212,8 +212,6 @@ public class OverlayMachineTests
         Assert.True(OverlayTokens.CollapsedH <= 30);
         Assert.Equal(12, OverlayTokens.ClickMaxPx);
         Assert.Equal(OverlayTokens.ClickMaxPx, OverlayTokens.SwipeClickMaxPx);
-        Assert.Equal(0.04, OverlayTokens.BreathScaleAmp);
-        Assert.Equal(7, OverlayTokens.BreathWidthAmpPx);
     }
 
     [Fact]
