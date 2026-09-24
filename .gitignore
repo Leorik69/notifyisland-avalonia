@@ -52,3 +52,8 @@ PresentationNative_cor3.dll
 wpfgfx_cor3.dll
 vcruntime140_cor3.dll
 D3DCompiler_47_cor3.dll
+
+## Build artifacts
+# Output of `setup/pack-release.ps1` and `dotnet publish`.
+dist/
+publish/
