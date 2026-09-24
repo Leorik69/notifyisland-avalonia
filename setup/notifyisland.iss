@@ -46,5 +46,19 @@ Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: autostart
 
+[Code]
+// Defensive kill: Inno Setup's CloseApplications=yes sometimes misses NotifyIsland
+// when the running process is hung in a WinForms message loop. Force taskkill /F
+// right before the installer copies files, so the new exe can replace the old one
+// and the user is guaranteed a fresh process when the [Run] section launches.
+function PrepareToInstall(var Refresh: Boolean): Boolean;
+begin
+  Result := True;
+  if Exec('taskkill', '/F /IM {#MyAppExeName} /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    // intentional ignore of ResultCode — taskkill returns 128 if no process matched,
+    // which is fine.
+  ;
+end;
+
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
