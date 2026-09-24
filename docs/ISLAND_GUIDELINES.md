@@ -24,12 +24,12 @@
 | Seconds strip (FontAudio digital-dot) | **есть (1.10.0)** |
 | Weather (Windows-only) | есть |
 | Tray | WinForms NotifyIcon |
-| Settings tabs | есть |
+| Settings sidebar (Lucide nav) | **есть (1.11.0)** |
 | Gesture swipes | **убраны** (1.8.1) — только клики |
 | Animation speed | есть |
-| Color palette | есть (Вид) |
+| Color palette | есть (Оформление) |
 | Icon packs | IslandIcons + Tabler/Lucide vendored |
-| Font size / family | есть (Вид) |
+| Font size / family | есть (Оформление) |
 | Per-action animations | есть (вкладка Анимации) |
 | Appear / Dismiss styles | Inflate/SlideDown/FadeScale/Bounce/Pop + Collapse/SlideUp/FadeScaleOut/Ragged/Glitch |
 | Icon size ↔ FontSize | IconDip = FontSize × k |
@@ -213,7 +213,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 - Weather toggle (tray / ПКМ / Settings), Windows-primary source (§10)
 - Unified outline icon pack + weather crossfade + tray icons
 - **Tray** quick menu + unread icon/tooltip
-- **Settings window** (отдельный Window, single-instance, **TabControl** по категориям): placement, z-order, opacity, sounds, orientation, drag/XY
+- **Settings window** (отдельный Window, single-instance, **sidebar ListBox + Lucide icons**, 1.11.0): placement, z-order, opacity, sounds, orientation, Edge+Offset (no drag)
 - Z-order Topmost / Desktop / BehindApps (Win32 SetWindowPos)
 - Edge + OffsetX/Y (без mouse drag)
 - Opacity 0.35–1.0 на fill; AnimationSpeed (Slow|Normal|Fast|Off) с pulse/breath; SoundPack (Nothing|Ios|System|Off) + SoundEnabled + master/per-event volumes
@@ -276,17 +276,18 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 - Открытие: трей «Настройки…» **и** ПКМ по островку «Настройки…».
 - **Не** popup / не flyout / не dump в ContextMenu.
 - Single-instance: повторное открытие → `Activate()` существующего.
-- Геометрия окна Settings persist: `SettingsWindowX/Y/Width/Height` (отдельно от OffsetX/Y островка); default ~**520×640**.
-- UI: Avalonia **`TabControl`** по категориям (тёмная тема `#1C1C1E`), не один длинный scroll-pile. Низ окна — DockPanel: Отмена / Применить / OK.
-- Вкладки (RU):
-  1. **Островок** — `IslandVisible` + **`DateFormat`** + digital clock + **hover/pin/fullscreen** (1.10.0). Иконка часов убрана.
-  2. **Погода** — `WeatherEnabled`, `WeatherSide`, **`WeatherLocationMode`** (Windows|Manual), `WeatherLocationName`, lat/lon + пресеты городов. Заметка: температура из Windows; при Manual — выбранное имя на expanded/tooltip. Без third-party HTTP.
-  3. **Расположение** — `Edge` (Top/Bottom/Left/Right), `OffsetX`/`OffsetY`, `Orientation` (Auto|Horizontal|Vertical)
-  4. **Тема** — `ThemePreset`: NothingDark | AppleQuiet | Ocean | Custom. Сток Apply перезаписывает палитру/шрифт/анимации/иконки/дату/звук; расхождение → Custom; кнопка «Перейти в кастом».
-  5. **Вид** — `ZOrderMode` + `Opacity` + **палитра** + FontSize/FontFamily (редактируемо при Custom)
-  6. **Анимации** — master + per-action + Appear/Dismiss
-  7. **Звуки** — `SoundEnabled`, pack `Nothing`|`Ios`|`System`|`Off`, master `SoundVolume`, per-event `SoundVol*`
-  8. **Иконки** — `IconPack` (IslandIcons / Tabler / Lucide / Meteocons*); см. `docs/ICON_PACKS.md`
+- Геометрия окна Settings persist: `SettingsWindowX/Y/Width/Height` (отдельно от OffsetX/Y островка); default ~**720×560** (1.11.0).
+- UI: Avalonia **левый nav rail (ListBox) + правый content** (тёмная тема `#121214` / cards `#1C1C1E`), Lucide SVG icons; не TabControl. Низ окна — DockPanel: Отмена / Применить / OK.
+- Разделы sidebar (RU):
+  1. **Островок** — visibility, дата, FontAudio clock, seconds strip, hover/pin, fullscreen
+  2. **Погода** — Windows-primary weather
+  3. **Расположение** — Edge + Offset X/Y + Orientation (**без drag**)
+  4. **Тема** — NothingDark / AppleQuiet / Ocean / Custom
+  5. **Медиа и питание** — Now Playing (SMTC), battery alerts, timer/stopwatch
+  6. **Оформление** — `ZOrderMode` + `Opacity` + **палитра** + FontSize/FontFamily + preview (Custom)
+  7. **Анимации** — speed + appear/dismiss + pulse/breath
+  8. **Звуки** — packs + volumes
+  9. **Иконки** — IslandIcons / Tabler / Lucide / Meteocons
 - Все `x:Name` контролов сохранены — `LoadUi` / `ReadUi` / `WireVolumeLabels` без ломки.
 
 ### Theme presets (1.6.0)
@@ -303,7 +304,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 ### Позиция (без drag)
 - Мышиное перетаскивание островка **удалено**. `AllowDrag` всегда `false` (Normalize мигрирует старые settings).
 - Позиция только через **Расположение**: Edge + OffsetX/Y (+ Orientation).
-- Указатель на островке: свайпы L/R (виджеты), up expand, down collapse, click → Action Center.
+- Указатель на островке: **clicks only** (1.8.1+): hover-peek / click-pin; double-click → Action Center; Esc unpin. Свайпов нет.
 
 ### Persist
 `%LOCALAPPDATA%/NotifyIsland/settings.json` — все поля `AppSettings` (Weather*, Edge, Offsets, Orientation, ZOrder, Opacity, AnimationSpeed, Sound*, IslandVisible, SettingsWindow*).

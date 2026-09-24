@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.11.0 — Settings icon sidebar
+
+### Added
+- **SettingsWindow** redesigned: left **nav rail** (~216px) with **Lucide** SVG icons + Russian labels; right scrollable content in rounded cards (Nothing-ish near-black chrome).
+- IA split: **Медиа и питание** (Now Playing / battery / timer) and **Оформление** (z-order, opacity, fonts, palette, preview) replace the old junk-drawer **Вид** tab.
+- Vendored Lucide nav glyphs: `layout-dashboard`, `cloud-sun`, `move`, `palette`, `music`, `type`, `sparkles`, `volume-2`, `shapes` (+ `battery`) under `Assets/Icons/Lucide/` (ISC).
+- Default Settings window size **720×560** (resizable); selected nav tint + accent highlight.
+
+### Changed
+- Version **1.11.0**. No TabControl tabs — `ListBox` nav switches content panels; all existing `x:Name` controls preserved so Apply/Load persistence is unchanged.
+- Fixed `ShowSecondsStrip` write-back on Apply (was load-only).
+
+### Note
+- No swipe / Open-Meteo / island drag. FontAudio clock, hover/pin, fullscreen hide, SMTC, battery, timer preserved. Russian UI.
+
+
 ## 1.10.0 — Hover expand + click pin + hide on fullscreen
 
 ### Added

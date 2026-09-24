@@ -4,7 +4,7 @@
 
 ## Что это
 **NotifyIsland** — плавающая капсула (Dynamic Island–style) для **Windows 11** на **Avalonia / .NET 8**.  
-Показывает часы, непрочитанные, уведомления, прогресс, медиа, таймер, **погоду**; hover-peek + click-pin; двойной клик / меню — Action Center; полноэкранное скрытие; **без свайпов**.
+Показывает часы, непрочитанные, уведомления, прогресс, медиа, таймер, **погоду**; hover-peek + click-pin; двойной клик / меню — Action Center; полноэкранное скрытие; Settings **sidebar + Lucide icons** (1.11.0); **без свайпов**.
 
 Репозиторий: https://github.com/Leorik69/notifyisland-avalonia  
 Ветка разработки: `fix/win11-stability-build` · PR: https://github.com/Leorik69/notifyisland-avalonia/pull/8
@@ -27,7 +27,7 @@
 | UI overlay | `OverlayWindow.axaml` + `.axaml.cs` |
 | Settings JSON | `NotifyIsland.Core/AppSettings.cs` → `%LOCALAPPDATA%/NotifyIsland/settings.json` |
 | Layout helpers | `NotifyIsland.Core/IslandLayout.cs` |
-| Settings UI | `SettingsWindow.axaml(.cs)` — отдельный Window |
+| Settings UI | `SettingsWindow.axaml(.cs)` — отдельный Window, **sidebar ListBox + Lucide/Tabler nav icons** (не TabControl; 1.11.0) |
 | Tray | `TrayService.cs` + `Assets/tray*.png` |
 | Z-order / fullscreen | `Win32Overlay.ApplyZOrder` / `IsFullscreenOrBusy` |
 | Hover + pin | `NotifyIsland.Core/HoverPinMachine.cs` |
@@ -51,7 +51,7 @@ WindowsWeatherSource.cs         # WinRT/Bing cache/stub — NO Open-Meteo
 WindowsMediaSessionSource.cs    # SMTC Now Playing (WinRT)
 WindowsPowerSource.cs           # Battery / AC (WinForms PowerStatus)
 NotifyIsland.Core/AppSettings.cs / IslandLayout.cs
-SettingsWindow.axaml(.cs)       # полное окно настроек
+SettingsWindow.axaml(.cs)       # Settings sidebar (Lucide nav) + panels
 TrayService.cs / IslandSounds.cs
 IslandIcons.cs + Assets/tray*.png
 Assets/Icons/README.md + Assets/Sounds/**
@@ -72,16 +72,16 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 ./publish/NotifyIsland.exe          # обычный запуск
 ./publish/NotifyIsland.exe --demo   # демо-цикл (мок-данные + weather step)
 ```
-Горячие клавиши в overlay: **F9** demo on/off, **F10** charge pill, **F11** low-battery, **F12** timer/stopwatch, **Esc** collapse.
+Горячие клавиши в overlay: **F9** demo on/off, **F10** charge pill, **F11** low-battery, **F12** timer/stopwatch, **Esc** unpin (и collapse). Версия продукта: **1.11.0**.
 
 ## Функционал: есть / убрать / добавить
 Кратко (детали — в GUIDELINES §5 / §10):
 
-**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); **hover expand + click pin 1.10.0**; **hide on fullscreen 1.10.0**; idle breath; tray + Settings window; WeatherSide; Edge+Offset; Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; timer/stopwatch; FontAudio digital clock; demo; tests+CI.
+**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); **hover expand + click pin 1.10.0**; **hide on fullscreen 1.10.0**; **Settings icon-sidebar 1.11.0**; idle breath; tray + Settings window; WeatherSide; Edge+Offset (**no island drag**); Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; timer/stopwatch; FontAudio digital clock + seconds strip; demo; tests+CI.
 
 **Убрать/не раздувать:** demo как продукт; Open-Meteo; Xiaomi pull-down / swipe gestures; detached second island.
 
-**Добавить позже:** deeper CsWinRT geolocation; file shelf / clipboard / launcher.
+**Добавить позже (backlog):** deeper CsWinRT geolocation; **file shelf / clipboard / launcher** (не в scope сейчас).
 
 ## Погода — откуда данные?
 **Не Open-Meteo.** Конвейер Windows-only: WinRT geolocation (когда доступен) → Bing Weather / Widgets local cache → on-disk cache → `LocalStubWeather` (Sandbox). См. GUIDELINES §10.
@@ -109,6 +109,39 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 
 ## Idle breath
 `BreathScaleAmp=0.04`, `BreathWidthAmpPx=7`, `BreathGlowAmp=0.14`, `BreathPeriodMs=2600` — только Idle/Collapsed при `AnimBreathEnabled`. Soften on hover-peek; pause while pinned.
+
+
+## Иконки — источники
+Каталог паков: [allsvgicons.com/pack](https://allsvgicons.com/pack/). Вендор + лицензии: `Assets/Icons/NOTICE`, `docs/ICON_PACKS.md`.
+
+| Пакет | Лицензия | Путь | Назначение |
+|---|---|---|---|
+| Lucide | ISC | `Assets/Icons/Lucide/` | Island outline + **Settings nav** (1.11.0) |
+| Tabler | MIT | `Assets/Icons/Tabler/` | Island outline |
+| Meteocons ×4 | MIT (Bas Milius) | `Assets/Icons/Meteocons*/` | Weather SVG |
+| FontAudio (fad) | CC BY 4.0 @fefanto | `Assets/Icons/FontAudio/` | Digital clock + digital-dot strip |
+| IslandIcons | built-in | `IslandIcons.cs` | Fallback geometries |
+
+## Settings IA (1.11.0)
+Левый **nav rail** (ListBox) + правый scroll; не TabControl. Секции:
+
+1. **Островок** — visibility, дата, FontAudio clock, seconds strip, hover/pin, fullscreen  
+2. **Погода** — Windows-primary (не Open-Meteo)  
+3. **Расположение** — Edge + Offset X/Y + Orientation (**drag островка нет**)  
+4. **Тема** — NothingDark / AppleQuiet / Ocean / Custom  
+5. **Медиа и питание** — SMTC Now Playing, battery alerts, timer/stopwatch  
+6. **Оформление** — z-order, opacity, fonts, palette, preview pill  
+7. **Анимации** — speed + appear/dismiss + pulse/breath  
+8. **Звуки** — packs + volumes  
+9. **Иконки** — IslandIcons / Tabler / Lucide / Meteocons  
+
+Открыть: трей → «Настройки…» / ПКМ остров → Настройки. Проверить иконки nav: слева 9 пунктов с Lucide SVG, акцент при выборе.
+
+## Sandbox deploy (standing rule)
+Всегда **свежий** publish в Windows Sandbox: `Desktop\notifyisland-fresh-<sha>` (короткий SHA). Перед запуском — **убить** старый `NotifyIsland.exe`. Не переиспользовать предыдущую папку publish.
+
+## Исследование / конкуренты
+Краткий legal inspiration: [`docs/NOTHING_INSPIRATION.md`](docs/NOTHING_INSPIRATION.md). Внешний research brief по чужим island-стекам — **не в репо** (если появится файл — добавить путь сюда). Не копировать Apple Live Activities 1:1; Nothing — только легальная inspiration (OFL fonts / synthesized sounds).
 
 ## Как подключать контекст в инструментах
 1. **Cursor / Copilot / любой агент:** открыть репо → прочитать `CONTEXT.md`, затем `docs/ISLAND_GUIDELINES.md`, затем `OverlayTokens.cs`.

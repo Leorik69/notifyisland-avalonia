@@ -1,9 +1,11 @@
 using System;
+using System.IO;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Svg.Skia;
 
 namespace NotifyIsland;
 
@@ -35,6 +37,7 @@ public partial class SettingsWindow : Window
         _onStartTimer = onStartTimer;
         _onStartStopwatch = onStartStopwatch;
         InitializeComponent();
+        WireNav();
         RestoreGeometry();
         LoadUi();
         WireVolumeLabels();
@@ -142,8 +145,8 @@ public partial class SettingsWindow : Window
 
     private void RestoreGeometry()
     {
-        Width = Math.Clamp(_draft.SettingsWindowWidth, 400, 1200);
-        Height = Math.Clamp(_draft.SettingsWindowHeight, 520, 1200);
+        Width = Math.Clamp(_draft.SettingsWindowWidth, 640, 1400);
+        Height = Math.Clamp(_draft.SettingsWindowHeight, 480, 1200);
         if (_draft.SettingsWindowX is int x && _draft.SettingsWindowY is int y)
             Position = new PixelPoint(x, y);
         else
@@ -414,6 +417,7 @@ public partial class SettingsWindow : Window
             _draft.DateFormat = df;
         _draft.DigitalClockEnabled = DigitalClockBox.IsChecked == true;
         _draft.ShowClockSeconds = ShowClockSecondsBox.IsChecked == true;
+        _draft.ShowSecondsStrip = ShowSecondsStripBox.IsChecked == true;
         _draft.HoverExpandEnabled = HoverExpandBox.IsChecked == true;
         _draft.HoverExpandDelayMs = (int)Math.Clamp(HoverDelaySlider.Value, 0, 1000);
         _draft.HoverCollapseGraceMs = OverlayTokens.HoverCollapseGraceMs;
@@ -480,5 +484,84 @@ public partial class SettingsWindow : Window
         else
             _onStartTimer?.Invoke(IslandTimerLogic.ClampPresetMinutes((int)TimerDefaultSlider.Value));
     }
-}
 
+    private static readonly (string Id, string Icon)[] NavEntries =
+    [
+        ("island", "layout-dashboard"),
+        ("weather", "cloud-sun"),
+        ("placement", "move"),
+        ("theme", "palette"),
+        ("media", "music"),
+        ("look", "type"),
+        ("anim", "sparkles"),
+        ("sound", "volume-2"),
+        ("icons", "shapes"),
+    ];
+
+    private void WireNav()
+    {
+        if (NavList.SelectedIndex < 0 && NavList.ItemCount > 0)
+            NavList.SelectedIndex = 0;
+        ApplyNavSelection();
+        TintSelectedNavIcon();
+    }
+
+    private void OnNavSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        ApplyNavSelection();
+        TintSelectedNavIcon();
+    }
+
+    private void ApplyNavSelection()
+    {
+        var tag = (NavList.SelectedItem as ListBoxItem)?.Tag?.ToString() ?? "island";
+        foreach (var (id, _) in NavEntries)
+        {
+            if (this.FindControl<ScrollViewer>($"Panel_{id}") is { } panel)
+                panel.IsVisible = string.Equals(id, tag, StringComparison.Ordinal);
+        }
+    }
+
+    private void TintSelectedNavIcon()
+    {
+        var tag = (NavList.SelectedItem as ListBoxItem)?.Tag?.ToString();
+        foreach (var (id, icon) in NavEntries)
+        {
+            if (this.FindControl<Avalonia.Controls.Image>($"NavIcon_{id}") is not { } img) continue;
+            var hex = string.Equals(id, tag, StringComparison.Ordinal) ? "#5CB6FF" : "#C8C8CC";
+            img.Source = LoadNavSvg(icon, hex);
+        }
+    }
+
+    private static SvgImage? LoadNavSvg(string iconFile, string hex)
+    {
+        try
+        {
+            var path = ResolveNavSvgPath(iconFile);
+            if (path is null) return null;
+            var xml = File.ReadAllText(path);
+            xml = xml.Replace("currentColor", hex, StringComparison.OrdinalIgnoreCase);
+            var loaded = SvgSource.LoadFromSvg(xml);
+            if (loaded is null) return null;
+            return new SvgImage { Source = loaded };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ResolveNavSvgPath(string iconFile)
+    {
+        var name = iconFile + ".svg";
+        var candidates = new[]
+        {
+            System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "Icons", "Lucide", name),
+            System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Assets", "Icons", "Lucide", name)),
+        };
+        foreach (var c in candidates)
+            if (File.Exists(c)) return c;
+        return null;
+    }
+
+}

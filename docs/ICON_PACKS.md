@@ -83,3 +83,20 @@ Meteocons применяется только к `weather-*`; остальные
 
 - Проприетарные / Apple SF Symbols / платные паки  
 - Извлечение иконок из прошивок Nothing OS / iOS  
+
+## Settings sidebar nav (1.11.0)
+
+`SettingsWindow` loads Lucide outline SVGs from `Assets/Icons/Lucide/` for the left nav rail
+(not via `IconPackService` island keys). Browse: [allsvgicons.com/pack](https://allsvgicons.com/pack/).
+
+| Section | Lucide file |
+|---|---|
+| Островок | layout-dashboard |
+| Погода | cloud-sun |
+| Расположение | move |
+| Тема | palette |
+| Медиа и питание | music |
+| Оформление | type |
+| Анимации | sparkles |
+| Звуки | volume-2 |
+| Иконки | shapes |

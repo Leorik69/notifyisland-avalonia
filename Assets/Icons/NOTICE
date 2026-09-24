@@ -37,6 +37,12 @@ Meteocons — Fill / Flat / Line / Monochrome
 
 Only icons needed by NotifyIsland keys are vendored.
 
+Settings nav (Lucide, ISC) — vendored for SettingsWindow sidebar (1.11.0):
+  layout-dashboard, cloud-sun, move, palette, music, type, sparkles,
+  volume-2, shapes, battery
+  Source: https://api.iconify.design/lucide/<name>.svg · https://allsvgicons.com/pack/lucide/
+
+
 FontAudio digital glyphs (Assets/Icons/FontAudio/)
   License: CC BY 4.0
   Designed by: @fefanto
