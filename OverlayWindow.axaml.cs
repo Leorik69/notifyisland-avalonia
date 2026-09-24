@@ -547,7 +547,7 @@ public partial class OverlayWindow : Window
         {
             var kind = _machine.Snapshot().Kind;
             if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
-                HandleIdlePillClick();
+                HandleIdlePillClick(pos.X);
             else if (kind == OverlayKind.Timer)
             {
                 // Click keeps timer visible with controls (already expanded overlay).
@@ -855,6 +855,25 @@ public partial class OverlayWindow : Window
         ClockText.IsVisible = !digitalOn || !digitalOk;
         DigitalClockRow.IsVisible = digitalOn && digitalOk;
 
+        // Clipboard-cycle preview wins over the clock when the user has at least one item.
+        var snap = _machine.Snapshot();
+        var cycleCount = snap.Payload.ClipboardCycleCount;
+        if (cycleCount > 1)
+        {
+            CyclePreviewText.Text = snap.Payload.ClipboardCyclePreview;
+            CyclePreviewText.IsVisible = true;
+            CycleNavHint.Text = $"‹ {snap.Payload.ClipboardCycleIndex + 1}/{cycleCount} ›";
+            CycleNavHint.IsVisible = true;
+            // Replace the clock visual with the preview when cycle is active.
+            ClockText.IsVisible = false;
+            DigitalClockRow.IsVisible = false;
+        }
+        else
+        {
+            CyclePreviewText.IsVisible = false;
+            CycleNavHint.IsVisible = false;
+        }
+
         var dateFmt = _settings.DateFormat;
         if (dateFmt == DateFormat.Off)
         {
@@ -879,7 +898,7 @@ public partial class OverlayWindow : Window
         var batteryChip = _settings.ShowBatteryInCollapsed
             && _lastPower is { HasBattery: true }
             && snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed;
-        var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge, batteryChip);
+        var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge, batteryChip, snap.Payload.ClipboardCycleCount);
         if (snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed)
         {
             var peek = _hoverPin.IsContentExpanded;
@@ -1546,6 +1565,8 @@ public partial class OverlayWindow : Window
         ApplySize();
         Paint();
         if (snap.Kind != OverlayKind.Clipboard) return;
+        // Refresh the Idle-pill cycle previews so prev/next zones show the latest history.
+        RefreshIdleClipboardCycle();
         // Beep-on-copy is opt-in via Notify volume slider; v1 stays silent for MultiFile.
         if (_settings.SoundEnabled
             && _settings.SoundVolNotify > 0
@@ -1554,6 +1575,31 @@ public partial class OverlayWindow : Window
             IslandSounds.Play(IslandSoundKind.Notify, _settings);
         }
     }
+
+    /// <summary>Push the current ring-buffer previews into FSM so the Idle pill can cycle.</summary>
+    private void RefreshIdleClipboardCycle()
+    {
+        var items = _clipboardHistory.SnapshotNewestFirst();
+        if (items.Count < 2)
+        {
+            // Single item (or empty): no cycling needed, leave the Idle pill in default clock state.
+            return;
+        }
+        var previews = items.Select(MakeCyclePreview).ToList();
+        _machine.Dispatch(OverlayCommand.SetClipboardCycle, new OverlayPayload
+        {
+            ClipboardCyclePreviews = previews,
+            ClipboardCycleIndex = 0
+        });
+    }
+
+    private static string MakeCyclePreview(ClipboardEntry e) => e.Kind switch
+    {
+        ClipboardItemKind.Text => (e.Text ?? "").Replace("\r\n", " ").Replace('\n', ' ').Trim(),
+        ClipboardItemKind.File => System.IO.Path.GetFileName(e.Paths is { Count: > 0 } ? e.Paths[0] : ""),
+        ClipboardItemKind.MultiFile => $"{e.Paths?.Count ?? 0} файлов",
+        _ => ""
+    };
 
     private void ApplyPowerSnapshot(PowerStatusSnapshot snap)
     {
@@ -1791,11 +1837,42 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// Idle/Collapsed click: single → pin/unpin; double (≤400 ms) → Action Center.
-    /// When ClickPinEnabled is off, single click opens Action Center (compat).
+    /// Idle/Collapsed click. Three zones when clipboard cycle is active:
+    ///   - left third  → cycle to previous history item
+    ///   - middle third → Action Center (single click on the clock area)
+    ///   - right third  → cycle to next history item
+    /// Without clipboard cycle: existing behavior (single → pin/unpin; double → Action Center).
     /// </summary>
-    private void HandleIdlePillClick()
+    private void HandleIdlePillClick(double releaseX)
     {
+        var snap = _machine.Snapshot();
+        // Clipboard-cycle zones take priority over pin/unpin when there's a history to browse.
+        if (snap.Payload.ClipboardCycleCount > 1)
+        {
+            var pillW = Pill.Bounds.Width;
+            if (pillW <= 0) pillW = OverlayTokens.CollapsedWeatherW + 80;
+            var third = pillW / 3.0;
+            if (releaseX < third)
+            {
+                _machine.Dispatch(OverlayCommand.CycleClipboardPrev);
+                ApplySize(); Paint();
+                IslandSounds.Play(IslandSoundKind.Hover, _settings);
+            }
+            else if (releaseX > 2 * third)
+            {
+                _machine.Dispatch(OverlayCommand.CycleClipboardNext);
+                ApplySize(); Paint();
+                IslandSounds.Play(IslandSoundKind.Hover, _settings);
+            }
+            else
+            {
+                // Middle = clock zone → Action Center directly (per user request).
+                TrayService.OpenActionCenter();
+                IslandSounds.Play(IslandSoundKind.Notify, _settings);
+            }
+            return;
+        }
+
         var now = DateTime.UtcNow;
         if ((now - _lastPillClickUtc).TotalMilliseconds < 400)
         {

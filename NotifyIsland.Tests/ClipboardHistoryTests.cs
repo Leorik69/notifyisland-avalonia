@@ -69,6 +69,26 @@ public class ClipboardHistoryTests
     }
 
     [Fact]
+    public void SnapshotNewestFirst_ReversesOrder()
+    {
+        var h = new ClipboardHistory();
+        for (var i = 0; i < 5; i++)
+            h.Push(ClipboardEntry.FromText($"item{i}", T(i)));
+        var snap = h.SnapshotNewestFirst();
+        Assert.Equal(5, snap.Count);
+        Assert.Equal("item4", snap[0].Text);
+        Assert.Equal("item3", snap[1].Text);
+        Assert.Equal("item0", snap[4].Text);
+    }
+
+    [Fact]
+    public void SnapshotNewestFirst_Empty_ReturnsEmpty()
+    {
+        var h = new ClipboardHistory();
+        Assert.Empty(h.SnapshotNewestFirst());
+    }
+
+    [Fact]
     public void BuildPayload_Text_TruncatesTitleAndBody()
     {
         var entry = ClipboardEntry.FromText(new string('x', 500), T(0));

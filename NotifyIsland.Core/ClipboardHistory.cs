@@ -43,6 +43,15 @@ public sealed class ClipboardHistory
     /// <summary>Snapshot of the current history, oldest → newest.</summary>
     public IReadOnlyList<ClipboardEntry> Snapshot() => _items.ToList();
 
+    /// <summary>Snapshot of the current history, newest → oldest. Defensive copy.</summary>
+    public IReadOnlyList<ClipboardEntry> SnapshotNewestFirst()
+    {
+        var list = new List<ClipboardEntry>(_items.Count);
+        for (var node = _items.Last; node is not null; node = node.Previous)
+            list.Add(node.Value);
+        return list;
+    }
+
     /// <summary>
     /// Push a new clipboard entry. De-duplicates against the most recent item (identical
     /// text/path → ignored). Older entries beyond capacity are dropped from the front.

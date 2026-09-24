@@ -35,7 +35,10 @@ public enum OverlayCommand
     CyclePrev,
     ExpandWidget,
     SetBattery,
-    SetClipboard
+    SetClipboard,
+    SetClipboardCycle,
+    CycleClipboardNext,
+    CycleClipboardPrev
 }
 
 /// <summary>Discriminator for the latest clipboard item the island is showing.</summary>
@@ -79,6 +82,14 @@ public sealed class OverlayPayload
     public IReadOnlyList<string>? ClipboardPaths { get; set; }
     /// <summary>UTC timestamp when the clipboard item was captured. Drives sort order later.</summary>
     public DateTimeOffset ClipboardCapturedAt { get; set; } = DateTimeOffset.MinValue;
+    /// <summary>Index into the cycle list for the Idle/Collapsed clipboard browser. -1 = inactive.</summary>
+    public int ClipboardCycleIndex { get; set; } = -1;
+    /// <summary>Total count of clipboard history items visible in the cycle browser.</summary>
+    public int ClipboardCycleCount { get; set; }
+    /// <summary>Preview text for the currently cycled item (first 60 chars or filename).</summary>
+    public string ClipboardCyclePreview { get; set; } = "";
+    /// <summary>Per-item previews for the cycle browser (newest first). Empty when not cycling.</summary>
+    public IReadOnlyList<string> ClipboardCyclePreviews { get; set; } = Array.Empty<string>();
 }
 
 public sealed class OverlaySnapshot
@@ -104,6 +115,8 @@ public sealed class OverlayMachine
     private int _unreadCount;
     private bool _weatherEnabled = true;
     private OverlayPayload _lastWeather = WeatherCodes.MockMoscow();
+    private List<string> _cyclePreviews = new();
+    private int _cycleIndex = -1;
 
     public int NotifyDurationMs
     {
@@ -231,6 +244,27 @@ public sealed class OverlayMachine
                 // Longer-lived than notification — copyable payload stays around.
                 _notifyMs = NotifyDurationMs > 0 ? Math.Min(NotifyDurationMs, ClipboardHistory.MaxPillMs) : ClipboardHistory.MaxPillMs;
                 // No unread bump — clipboard events are not system notifications.
+                break;
+            case OverlayCommand.SetClipboardCycle:
+                // Install cycle previews + index. Used by the Idle/Collapsed pill to browse
+                // the last N clipboard items without leaving Idle.
+                if (data.ClipboardCyclePreviews is { Count: > 0 } previews)
+                {
+                    _cyclePreviews = previews.ToList();
+                    _cycleIndex = Math.Clamp(data.ClipboardCycleIndex, 0, previews.Count - 1);
+                    _payload.ClipboardCyclePreviews = previews;
+                    _payload.ClipboardCycleIndex = _cycleIndex;
+                    _payload.ClipboardCycleCount = _cyclePreviews.Count;
+                    _payload.ClipboardCyclePreview = _cyclePreviews[_cycleIndex];
+                    _payload.Title = _cyclePreviews[_cycleIndex];
+                    _payload.Subtitle = $"{_cycleIndex + 1}/{_cyclePreviews.Count}";
+                }
+                break;
+            case OverlayCommand.CycleClipboardNext:
+                CycleClipboardInternal(+1);
+                break;
+            case OverlayCommand.CycleClipboardPrev:
+                CycleClipboardInternal(-1);
                 break;
             case OverlayCommand.DemoNext:
                 RunDemoStep();
@@ -369,6 +403,17 @@ public sealed class OverlayMachine
         _ => IslandSlot.Idle
     };
 
+    private void CycleClipboardInternal(int delta)
+    {
+        if (_cyclePreviews.Count == 0) return;
+        var n = _cyclePreviews.Count;
+        _cycleIndex = ((_cycleIndex + delta) % n + n) % n;
+        _payload.ClipboardCycleIndex = _cycleIndex;
+        _payload.ClipboardCyclePreview = _cyclePreviews[_cycleIndex];
+        _payload.Title = _cyclePreviews[_cycleIndex];
+        _payload.Subtitle = $"{_cycleIndex + 1}/{n}";
+    }
+
     private void ApplyWeather(OverlayPayload data)
     {
         OverlayPayload weather;
@@ -441,6 +486,11 @@ public sealed class OverlayMachine
         _payload.ClipboardItemKind = data.ClipboardItemKind;
         _payload.ClipboardPaths = data.ClipboardPaths;
         _payload.ClipboardCapturedAt = data.ClipboardCapturedAt;
+        _payload.ClipboardCycleIndex = data.ClipboardCycleIndex;
+        _payload.ClipboardCycleCount = data.ClipboardCycleCount;
+        _payload.ClipboardCyclePreview = data.ClipboardCyclePreview;
+        _payload.ClipboardCyclePreviews = data.ClipboardCyclePreviews;
+        _payload.ClipboardCapturedAt = data.ClipboardCapturedAt;
     }
 
     public static OverlayPayload Sanitize(OverlayPayload raw)
@@ -511,7 +561,11 @@ public sealed class OverlayMachine
             ArtworkBytes = art,
             ClipboardItemKind = cbKind,
             ClipboardPaths = cbPaths,
-            ClipboardCapturedAt = raw.ClipboardCapturedAt
+            ClipboardCapturedAt = raw.ClipboardCapturedAt,
+            ClipboardCycleIndex = raw.ClipboardCycleIndex,
+            ClipboardCycleCount = raw.ClipboardCycleCount,
+            ClipboardCyclePreview = raw.ClipboardCyclePreview,
+            ClipboardCyclePreviews = raw.ClipboardCyclePreviews
         };
     }
 
@@ -524,10 +578,14 @@ public sealed class OverlayMachine
         ArtworkBytes = p.ArtworkBytes is null ? null : (byte[])p.ArtworkBytes.Clone(),
         ClipboardItemKind = p.ClipboardItemKind,
         ClipboardPaths = p.ClipboardPaths,
-        ClipboardCapturedAt = p.ClipboardCapturedAt
+        ClipboardCapturedAt = p.ClipboardCapturedAt,
+        ClipboardCycleIndex = p.ClipboardCycleIndex,
+        ClipboardCycleCount = p.ClipboardCycleCount,
+        ClipboardCyclePreview = p.ClipboardCyclePreview,
+        ClipboardCyclePreviews = p.ClipboardCyclePreviews
     };
 
-    public static double WidthFor(OverlayKind kind, bool weatherEnabled = false, bool batteryChip = false)
+    public static double WidthFor(OverlayKind kind, bool weatherEnabled = false, bool batteryChip = false, int cycleCount = 0)
     {
         var w = kind switch
         {
@@ -548,6 +606,9 @@ public sealed class OverlayMachine
         {
             if (batteryChip)
                 w += OverlayTokens.CollapsedBatteryExtraW;
+            // Clipboard cycle preview replaces the clock — pill needs to fit preview + nav hint.
+            if (cycleCount > 1)
+                w = Math.Max(w, 280);
             return w;
         }
         return Math.Clamp(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
