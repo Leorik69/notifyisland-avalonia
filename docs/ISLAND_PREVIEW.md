@@ -64,7 +64,7 @@
 48. Пакет иконок (stub): IslandIcons + плановые Tabler/Lucide/Phosphor — см. `docs/ICON_PACKS.md`.
 
 ### Целевой стек (кратко)
-Must: Now Playing, timer/progress alerts, compact↔expanded morph, top-center, fullscreen-safe, weather, tray, settings tabs, clicks only, idle breath, animation speed, palette, icon packs.  
+Must: Now Playing, timer/progress alerts, compact-expanded morph, top-center, fullscreen-safe, weather, tray, settings tabs, clicks only, clipboard history (text + paths), animation speed, palette, icon packs.
 Backlog differentiators: file shelf / clipboard / launcher. Не копируем Apple TM naming; без fake Live Activities без Win API.
 
 

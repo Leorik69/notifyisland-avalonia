@@ -77,7 +77,7 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 ## Функционал: есть / убрать / добавить
 Кратко (детали — в GUIDELINES §5 / §10):
 
-**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); **hover expand + click pin 1.10.0**; **hide on fullscreen 1.10.0**; **Settings icon-sidebar 1.11.0**; idle breath; tray + Settings window; WeatherSide; Edge+Offset (**no island drag**); Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; timer/stopwatch; FontAudio digital clock + seconds strip; demo; tests+CI.
+**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); **hover expand + click pin 1.10.0**; **hide on fullscreen 1.10.0**; **Settings icon-sidebar 1.11.0**; **clipboard history (text + file paths, локальный ring buffer) 1.12.0**; tray + Settings window; WeatherSide; Edge+Offset (**no island drag**); Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; timer/stopwatch; FontAudio digital clock + seconds strip; demo; tests+CI.
 
 **Убрать/не раздувать:** demo как продукт; Open-Meteo; Xiaomi pull-down / swipe gestures; detached second island.
 

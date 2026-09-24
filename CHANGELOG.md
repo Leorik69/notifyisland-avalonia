@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Clipboard history (1.12.0-preview)
+- New `OverlayKind.Clipboard` (11th) and `OverlayCommand.SetClipboard` (15th). Pill auto-collapses after `ClipboardHistory.MaxPillMs = 6000`. Does not bump unread.
+- `NotifyIsland.Core.ClipboardHistory` — pure ring buffer (capacity 1–100, default 25) with de-dup against latest identical item and `BuildPayload` for the FSM. `ClipboardItemKind`: None / Text / File / MultiFile. Russian plural (1 файл / 2 файла / 5 файлов / 11 файлов / 21 файл / 22 файла / 25 файлов).
+- `WindowsClipboardSource` — polling 1s, uses `GetClipboardSequenceNumber()` for change detection. Reads CF_HDROP first, falls back to CF_UNICODETEXT. Captured event marshals to UI thread.
+- Settings: new "Буфер обмена" sidebar section — toggle, max items (10/25/50/100), click action (Dismiss / DismissAndClear).
+- `IslandIcons` gained a built-in Lucide-style `clipboard` outline so the new nav rail entry and the kind pill icon render without needing a vendored SVG (falls back via `IconPackService`).
+- Image / rich-text clipboard formats intentionally out of scope for v1 (per docs/research-modules.md §Clipboard v1.1).
+- Tests: 14 new in `ClipboardHistoryTests` (capacity, de-dup, ignore-None, pop/clear, payload preview, Russian plural, equality). Total: 165/165 pass.
+
 ## 1.11.0 — Settings icon sidebar
 
 ### Added
