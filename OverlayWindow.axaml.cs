@@ -29,6 +29,8 @@ public partial class OverlayWindow : Window
     private PowerStatusSnapshot? _lastPower;
     private int? _prevPowerPercent;
     private byte[]? _lastArtworkBytes;
+    private ClipboardHistory _clipboardHistory = new();
+    private WindowsClipboardSource? _clipboardSource;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(1.8) };
@@ -54,13 +56,8 @@ public partial class OverlayWindow : Window
     private readonly ScaleTransform _pillScale = new(1, 1);
     private readonly TransformGroup _pillTransforms = new();
     private readonly DispatcherTimer _pulseTimer = new() { Interval = TimeSpan.FromMilliseconds(33) };
-    private readonly DispatcherTimer _breathTimer = new() { Interval = TimeSpan.FromMilliseconds(33) };
     private double _pulsePhase;
-    private double _breathPhase;
     private bool _pulseActive;
-    private bool _breathActive;
-    private double _breathBaseW;
-    private double _breathBaseH;
     private bool _hoverWired;
     private readonly HoverPinMachine _hoverPin = new();
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromMilliseconds(OverlayTokens.FullscreenPollMs) };
@@ -112,6 +109,19 @@ public partial class OverlayWindow : Window
         _settings.Normalize();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
         _weather = new WindowsWeatherSource(_settings.Latitude, _settings.Longitude);
+        _clipboardHistory = new ClipboardHistory(Math.Clamp(_settings.ClipboardMaxItems, 1, ClipboardHistory.HardCap));
+        try
+        {
+            _clipboardSource = new WindowsClipboardSource(
+                _clipboardHistory,
+                action => Avalonia.Threading.Dispatcher.UIThread.Post(action));
+            _clipboardSource.Captured += OnClipboardCaptured;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("WindowsClipboardSource init failed", ex);
+            _clipboardSource = null;
+        }
         _pillFill = ParseColor(_settings.ColorCapsuleFill, OverlayTokens.FillHex);
         _idleFillA = _settings.Opacity;
 
@@ -153,6 +163,8 @@ public partial class OverlayWindow : Window
             _ = RefreshWeatherAsync();
             EnsureMediaSource();
             EnsurePowerSource();
+            if (_settings.ClipboardEnabled)
+                _clipboardSource?.Start();
             if (_winTray is null && _tray is null)
             {
                 try
@@ -294,7 +306,7 @@ public partial class OverlayWindow : Window
 
     /// <summary>
     /// Re-apply morph / fade / rubber durations from <see cref="AppSettings.AnimationSpeed"/>.
-    /// Off → ~1 ms transitions and no pulse/breath. Called from ctor and settings Apply.
+    /// Off → ~1 ms transitions and no pulse. Called from ctor and settings Apply.
     /// </summary>
     private void ApplyAnimationSettings()
     {
@@ -313,7 +325,7 @@ public partial class OverlayWindow : Window
         Transitions = null;
 
         // Pill: only brush hover transitions. Width/Height animated manually (see StartMorph).
-        // Do NOT put Opacity/Scale transitions here — they fight pulse/breath timers.
+        // Do NOT put Opacity/Scale transitions here — they fight pulse timers.
         Pill.Transitions = new Transitions
         {
             new BrushTransition { Property = Border.BorderBrushProperty, Duration = hover, Easing = softInOut },
@@ -339,14 +351,12 @@ public partial class OverlayWindow : Window
         {
             StopMorph(snapToTarget: true);
             StopUnreadPulse(resetOpacity: false);
-            StopBreathing();
         }
         else
         {
             var snap = _machine.Snapshot();
             var overlayOn = IsOverlayKind(snap.Kind);
             SyncUnreadPulse(!overlayOn && snap.UnreadCount > 0);
-            SyncBreathing(!overlayOn);
         }
     }
 
@@ -396,83 +406,6 @@ public partial class OverlayWindow : Window
         if (_pulsePhase > Math.PI * 2.0) _pulsePhase -= Math.PI * 2.0;
         // Visible 0.40 ↔ 1.0 opacity pulse (no Opacity Transition fighting this timer)
         UnreadDot.Opacity = 0.70 + 0.30 * Math.Sin(_pulsePhase);
-    }
-
-    private void SyncBreathing(bool shouldBreath)
-    {
-        var breathSpeed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimIdleBreath);
-        // Pause idle breath while click-pinned; hover-peek softens amplitude in OnBreathTick.
-        if (_hoverPin.IsPinned)
-            shouldBreath = false;
-        if (!shouldBreath || !_settings.AnimBreathEnabled || !AnimationTiming.IsEnabled(breathSpeed))
-        {
-            StopBreathing();
-            return;
-        }
-        if (_breathActive) return;
-        if (_morphActive) return;
-        _breathActive = true;
-        _breathPhase = 0;
-        // Capture settled layout size so width morph does not fight ApplySize.
-        _breathBaseW = Pill.Width > 0 ? Pill.Width : Width;
-        _breathBaseH = Pill.Height > 0 ? Pill.Height : Height;
-        if (_breathBaseW <= 0) _breathBaseW = OverlayTokens.CollapsedW;
-        if (_breathBaseH <= 0) _breathBaseH = OverlayTokens.CollapsedH;
-        _breathTimer.Tick -= OnBreathTick;
-        _breathTimer.Tick += OnBreathTick;
-        _breathTimer.Start();
-    }
-
-    private void StopBreathing()
-    {
-        if (_breathActive)
-        {
-            _breathTimer.Stop();
-            _breathTimer.Tick -= OnBreathTick;
-            _breathActive = false;
-            if (_breathBaseW > 0 && !_morphActive)
-            {
-                Width = _breathBaseW;
-                Height = _breathBaseH > 0 ? _breathBaseH : Height;
-                Pill.Width = _breathBaseW;
-                if (_breathBaseH > 0) Pill.Height = _breathBaseH;
-                Pill.CornerRadius = new CornerRadius(Math.Min(Pill.Width, Pill.Height) / 2);
-            }
-            ApplyOpacity();
-            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#28FFFFFF"));
-        }
-        _pillScale.ScaleX = 1.0;
-        _pillScale.ScaleY = 1.0;
-    }
-
-    private void OnBreathTick(object? sender, EventArgs e)
-    {
-        var breathSpeed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimIdleBreath);
-        if (!_settings.AnimBreathEnabled || !AnimationTiming.IsEnabled(breathSpeed) || _morphActive)
-        {
-            StopBreathing();
-            return;
-        }
-        var period = AnimationTiming.ScaleMs(AnimationTiming.BreathPeriodMs, breathSpeed);
-        _breathPhase += (Math.PI * 2.0) * (33.0 / Math.Max(1, period));
-        if (_breathPhase > Math.PI * 2.0) _breathPhase -= Math.PI * 2.0;
-        var wave = Math.Sin(_breathPhase);
-        // Soften while hover-peek (not pinned — pinned pauses breath entirely).
-        var soft = _hoverPin.SoftenBreath && !_hoverPin.IsPinned ? 0.25 : 1.0;
-        // Visible idle life: scale ~1.0↔1.04 (+ slight X bias), width ±7px, fill glow pulse.
-        var sy = 1.0 + OverlayTokens.BreathScaleAmp * soft * wave;
-        var sx = sy + OverlayTokens.BreathScaleXExtra * soft * wave;
-        _pillScale.ScaleX = sx;
-        _pillScale.ScaleY = sy;
-        var w = Math.Max(40, _breathBaseW + OverlayTokens.BreathWidthAmpPx * soft * wave);
-        Width = w;
-        Pill.Width = w;
-        Pill.CornerRadius = new CornerRadius(Math.Min(w, Pill.Height > 0 ? Pill.Height : _breathBaseH) / 2);
-        var glow = Math.Clamp(_idleFillA + OverlayTokens.BreathGlowAmp * soft * wave, 0.35, 1.0);
-        Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, glow));
-        // Soft border shimmer synced with breath
-        var borderA = 0.16 + 0.14 * (0.5 + 0.5 * wave);
-        Pill.BorderBrush = new SolidColorBrush(Color.FromArgb((byte)(borderA * 255), 255, 255, 255));
     }
 
     private static Color WithAlpha(Color c, double a) =>
@@ -614,7 +547,7 @@ public partial class OverlayWindow : Window
         {
             var kind = _machine.Snapshot().Kind;
             if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
-                HandleIdlePillClick();
+                HandleIdlePillClick(pos.X);
             else if (kind == OverlayKind.Timer)
             {
                 // Click keeps timer visible with controls (already expanded overlay).
@@ -867,7 +800,7 @@ public partial class OverlayWindow : Window
             if (_hoverPin.IsContentExpanded)
             {
                 _hoverPin.EscapeOrUnpin();
-                SyncBreathingAfterHover();
+                ApplyPinnedBorderVisual();
                 ApplySize(); Paint();
                 e.Handled = true;
                 return;
@@ -922,6 +855,41 @@ public partial class OverlayWindow : Window
         ClockText.IsVisible = !digitalOn || !digitalOk;
         DigitalClockRow.IsVisible = digitalOn && digitalOk;
 
+        // Clipboard-cycle preview wins over the clock when the user has at least one item.
+        var snap = _machine.Snapshot();
+        var cycleCount = snap.Payload.ClipboardCycleCount;
+        if (cycleCount > 1)
+        {
+            CyclePreviewText.Text = snap.Payload.ClipboardCyclePreview;
+            CyclePreviewText.IsVisible = true;
+            CycleNavHint.Text = $"{snap.Payload.ClipboardCycleIndex + 1}/{cycleCount}";
+            CycleNavHint.IsVisible = true;
+            // Chevrons stay always visible — the dim feedback only matters in clipboard-cycle mode.
+            CyclePrevButton.Opacity = snap.Payload.ClipboardCycleIndex > 0 ? 1.0 : 0.35;
+            CycleNextButton.Opacity = snap.Payload.ClipboardCycleIndex < cycleCount - 1 ? 1.0 : 0.35;
+            // When in clipboard-cycle mode, hijack the chevron handlers from island-slot cycle
+            // by wiring them to clipboard history.
+            CyclePrevButton.Click -= OnCyclePrevClick;
+            CyclePrevButton.Click += OnClipboardCyclePrevClick;
+            CycleNextButton.Click -= OnCycleNextClick;
+            CycleNextButton.Click += OnClipboardCycleNextClick;
+            // Replace the clock visual with the preview when cycle is active.
+            ClockText.IsVisible = false;
+            DigitalClockRow.IsVisible = false;
+        }
+        else
+        {
+            CyclePreviewText.IsVisible = false;
+            CycleNavHint.IsVisible = false;
+            // Restore default chevron → island-slot cycle when clipboard cycle is off.
+            CyclePrevButton.Click -= OnClipboardCyclePrevClick;
+            CyclePrevButton.Click += OnCyclePrevClick;
+            CycleNextButton.Click -= OnClipboardCycleNextClick;
+            CycleNextButton.Click += OnCycleNextClick;
+            CyclePrevButton.Opacity = 1.0;
+            CycleNextButton.Opacity = 1.0;
+        }
+
         var dateFmt = _settings.DateFormat;
         if (dateFmt == DateFormat.Off)
         {
@@ -946,7 +914,7 @@ public partial class OverlayWindow : Window
         var batteryChip = _settings.ShowBatteryInCollapsed
             && _lastPower is { HasBattery: true }
             && snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed;
-        var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge, batteryChip);
+        var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge, batteryChip, snap.Payload.ClipboardCycleCount);
         if (snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed)
         {
             var peek = _hoverPin.IsContentExpanded;
@@ -957,13 +925,9 @@ public partial class OverlayWindow : Window
                 w += OverlayTokens.IdlePeekExtraW;
         }
 
-        // If idle breath is morphing width, measure from the settled base so we don't spuriously morph.
-        var fromW = _breathActive && _breathBaseW > 0
-            ? _breathBaseW
-            : (Pill.Width > 0 ? Pill.Width : Width);
-        var fromH = _breathActive && _breathBaseH > 0
-            ? _breathBaseH
-            : (Pill.Height > 0 ? Pill.Height : Height);
+        // If width is morphing, measure from the settled base so we don't spuriously morph.
+        var fromW = Pill.Width > 0 ? Pill.Width : Width;
+        var fromH = Pill.Height > 0 ? Pill.Height : Height;
         if (fromW <= 0) fromW = w;
         if (fromH <= 0) fromH = h;
 
@@ -992,11 +956,6 @@ public partial class OverlayWindow : Window
         Pill.Width = w;
         Pill.Height = h;
         Pill.CornerRadius = new CornerRadius(Math.Min(w, h) / 2);
-        if (_breathActive)
-        {
-            _breathBaseW = w;
-            _breathBaseH = h;
-        }
         PlaceIsland();
     }
 
@@ -1004,7 +963,6 @@ public partial class OverlayWindow : Window
         double fromW, double fromH, double toW, double toH,
         AnimationSpeed morphSpeed, bool inflate, bool enteringNotify, bool leavingNotify)
     {
-        StopBreathing();
         _morphFromW = fromW;
         _morphFromH = fromH;
         _morphToW = toW;
@@ -1101,11 +1059,8 @@ public partial class OverlayWindow : Window
     private void ResetMorphVisuals()
     {
         Pill.Opacity = 1;
-        if (!_breathActive)
-        {
-            _pillScale.ScaleX = 1;
-            _pillScale.ScaleY = 1;
-        }
+        _pillScale.ScaleX = 1;
+        _pillScale.ScaleY = 1;
         if (!_pressing)
         {
             _pillTranslate.X = 0;
@@ -1163,8 +1118,6 @@ public partial class OverlayWindow : Window
             StopMorph(snapToTarget: false);
             ResetMorphVisuals();
             SetSizeImmediate(_morphToW, _morphToH);
-            var snap = _machine.Snapshot();
-            SyncBreathing(!IsOverlayKind(snap.Kind));
         }
     }
 
@@ -1395,8 +1348,6 @@ public partial class OverlayWindow : Window
             SyncUnreadPulse(true);
         }
 
-        SyncBreathing(!overlayOn);
-
         var tip = kind switch
         {
             OverlayKind.Idle or OverlayKind.Collapsed when _hoverPin.IsPinned =>
@@ -1621,6 +1572,53 @@ public partial class OverlayWindow : Window
     private void OnPowerChanged(PowerStatusSnapshot snap) =>
         Dispatcher.UIThread.Post(() => ApplyPowerSnapshot(snap), DispatcherPriority.Background);
 
+    private void OnClipboardCaptured(ClipboardEntry entry)
+    {
+        // Ignore when user disabled clipboard listener at runtime.
+        if (!_settings.ClipboardEnabled) return;
+        var payload = ClipboardHistory.BuildPayload(entry, DateTimeOffset.UtcNow);
+        var snap = _machine.Dispatch(OverlayCommand.SetClipboard, payload);
+        ApplySize();
+        Paint();
+        if (snap.Kind != OverlayKind.Clipboard) return;
+        // Refresh the Idle-pill cycle previews so prev/next zones show the latest history.
+        RefreshIdleClipboardCycle();
+        // Beep-on-copy is opt-in via Notify volume slider; v1 stays silent for MultiFile.
+        if (_settings.SoundEnabled
+            && _settings.SoundVolNotify > 0
+            && entry.Kind is ClipboardItemKind.Text or ClipboardItemKind.File)
+        {
+            IslandSounds.Play(IslandSoundKind.Notify, _settings);
+        }
+    }
+
+    /// <summary>Push the current ring-buffer previews into FSM so the Idle pill can cycle.</summary>
+    private void RefreshIdleClipboardCycle()
+    {
+        var items = _clipboardHistory.SnapshotNewestFirst();
+        if (items.Count < 2)
+        {
+            // Single item (or empty): no cycling needed, leave the Idle pill in default clock state.
+            AppLog.Info($"RefreshIdleClipboardCycle: only {items.Count} item(s) — cycle stays inactive");
+            return;
+        }
+        var previews = items.Select(MakeCyclePreview).ToList();
+        var snap = _machine.Dispatch(OverlayCommand.SetClipboardCycle, new OverlayPayload
+        {
+            ClipboardCyclePreviews = previews,
+            ClipboardCycleIndex = 0
+        });
+        AppLog.Info($"RefreshIdleClipboardCycle: cycle ON, {snap.Payload.ClipboardCycleCount} items, first preview = \"{snap.Payload.ClipboardCyclePreview}\"");
+    }
+
+    private static string MakeCyclePreview(ClipboardEntry e) => e.Kind switch
+    {
+        ClipboardItemKind.Text => (e.Text ?? "").Replace("\r\n", " ").Replace('\n', ' ').Trim(),
+        ClipboardItemKind.File => System.IO.Path.GetFileName(e.Paths is { Count: > 0 } ? e.Paths[0] : ""),
+        ClipboardItemKind.MultiFile => $"{e.Paths?.Count ?? 0} файлов",
+        _ => ""
+    };
+
     private void ApplyPowerSnapshot(PowerStatusSnapshot snap)
     {
         var prev = _lastPower;
@@ -1801,7 +1799,7 @@ public partial class OverlayWindow : Window
             _settings.ClickPinEnabled,
             _settings.HoverExpandDelayMs,
             _settings.HoverCollapseGraceMs);
-        SyncBreathingAfterHover();
+        ApplyPinnedBorderVisual();
     }
 
     private bool TickHoverPin(int deltaMs)
@@ -1819,7 +1817,7 @@ public partial class OverlayWindow : Window
         var changed = _hoverPin.Tick(deltaMs);
         if (changed)
         {
-            SyncBreathingAfterHover();
+            ApplyPinnedBorderVisual();
             TickClock();
         }
         return changed;
@@ -1832,7 +1830,7 @@ public partial class OverlayWindow : Window
         var before = _hoverPin.IsContentExpanded;
         _hoverPin.PointerEnter();
         if (_hoverPin.IsContentExpanded != before || _hoverPin.Phase == HoverPinPhase.HoverPending)
-            SyncBreathingAfterHover();
+            ApplyPinnedBorderVisual();
     }
 
     private void OnPillHoverLeave()
@@ -1841,28 +1839,61 @@ public partial class OverlayWindow : Window
         _hoverPin.PointerLeave();
         if (_hoverPin.IsContentExpanded != before)
         {
-            SyncBreathingAfterHover();
+            ApplyPinnedBorderVisual();
             ApplySize();
             Paint();
             TickClock();
         }
     }
 
-    private void SyncBreathingAfterHover()
+    private void ApplyPinnedBorderVisual()
     {
-        var snap = _machine.Snapshot();
-        var overlayOn = IsOverlayKind(snap.Kind);
-        SyncBreathing(!overlayOn);
+        // Pinned state gets a brighter outline. Run after any hover-pin transition
+        // (Expand, Collapse, Escape, etc.). Idempotent.
         if (_hoverPin.IsPinned)
             Pill.BorderBrush = new SolidColorBrush(Color.Parse("#88FFFFFF"));
     }
 
     /// <summary>
-    /// Idle/Collapsed click: single → pin/unpin; double (≤400 ms) → Action Center.
-    /// When ClickPinEnabled is off, single click opens Action Center (compat).
+    /// Idle/Collapsed click. Three zones when clipboard cycle is active:
+    ///   - left third  → cycle to previous history item
+    ///   - middle third → Action Center (single click on the clock area)
+    ///   - right third  → cycle to next history item
+    /// Without clipboard cycle: existing behavior (single → pin/unpin; double → Action Center).
+    /// Note: explicit chevron Buttons (`‹` / `›`) handle cycle clicks directly via
+    /// OnCyclePrevClick / OnCycleNextClick — this X-position path is the fallback for
+    /// the empty gap between chevron and clock area.
     /// </summary>
-    private void HandleIdlePillClick()
+    private void HandleIdlePillClick(double releaseX)
     {
+        var snap = _machine.Snapshot();
+        // Clipboard-cycle zones take priority over pin/unpin when there's a history to browse.
+        if (snap.Payload.ClipboardCycleCount > 1)
+        {
+            var pillW = Pill.Bounds.Width;
+            if (pillW <= 0) pillW = OverlayTokens.CollapsedWeatherW + 80;
+            var third = pillW / 3.0;
+            if (releaseX < third)
+            {
+                _machine.Dispatch(OverlayCommand.CycleClipboardPrev);
+                ApplySize(); Paint();
+                IslandSounds.Play(IslandSoundKind.Hover, _settings);
+            }
+            else if (releaseX > 2 * third)
+            {
+                _machine.Dispatch(OverlayCommand.CycleClipboardNext);
+                ApplySize(); Paint();
+                IslandSounds.Play(IslandSoundKind.Hover, _settings);
+            }
+            else
+            {
+                // Middle = clock zone → Action Center directly (per user request).
+                TrayService.OpenActionCenter();
+                IslandSounds.Play(IslandSoundKind.Notify, _settings);
+            }
+            return;
+        }
+
         var now = DateTime.UtcNow;
         if ((now - _lastPillClickUtc).TotalMilliseconds < 400)
         {
@@ -1889,10 +1920,52 @@ public partial class OverlayWindow : Window
         if (!_hoverPin.IsPinned && _pointerOverPill && _settings.HoverExpandEnabled)
             _hoverPin.PointerEnter();
 
-        SyncBreathingAfterHover();
-        TickClock();
         ApplySize();
         Paint();
+    }
+
+    /// <summary>
+    /// Visible chevron buttons on the pill edges. Always available on every overlay kind.
+    /// Left chevron: cycle to previous IslandSlot (Idle → Notification → Media → Weather).
+    /// Right chevron: cycle to next IslandSlot (Idle → Weather → Media → Notification).
+    /// The clipboard-cycle behavior stays accessible via the existing X-position logic
+    /// in HandleIdlePillClick when clipboard history is active.
+    /// </summary>
+    private void OnCyclePrevClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        e.Handled = true;
+        _machine.Dispatch(OverlayCommand.CyclePrev);
+        ApplySize();
+        Paint();
+        IslandSounds.Play(IslandSoundKind.Hover, _settings);
+    }
+
+    private void OnCycleNextClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        e.Handled = true;
+        _machine.Dispatch(OverlayCommand.CycleNext);
+        ApplySize();
+        Paint();
+        IslandSounds.Play(IslandSoundKind.Hover, _settings);
+    }
+
+    /// <summary>Alternative click handlers wired when clipboard cycle is active.</summary>
+    private void OnClipboardCyclePrevClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        e.Handled = true;
+        _machine.Dispatch(OverlayCommand.CycleClipboardPrev);
+        ApplySize();
+        Paint();
+        IslandSounds.Play(IslandSoundKind.Hover, _settings);
+    }
+
+    private void OnClipboardCycleNextClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        e.Handled = true;
+        _machine.Dispatch(OverlayCommand.CycleClipboardNext);
+        ApplySize();
+        Paint();
+        IslandSounds.Play(IslandSoundKind.Hover, _settings);
     }
 
     /// <summary>

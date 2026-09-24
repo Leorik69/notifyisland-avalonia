@@ -35,7 +35,6 @@ public class HoverPinMachineTests
         Assert.True(m.Tick(200));
         Assert.Equal(HoverPinPhase.HoverExpanded, m.Phase);
         Assert.True(m.IsContentExpanded);
-        Assert.True(m.SoftenBreath);
     }
 
     [Fact]

@@ -1,9 +1,9 @@
 namespace NotifyIsland;
 
-/// <summary>User-facing animation speed for island morph / pulse / breath.</summary>
+/// <summary>User-facing animation speed for island morph / pulse.</summary>
 public enum AnimationSpeed
 {
-    /// <summary>No motion — instant layout, no pulse/breath.</summary>
+    /// <summary>No motion — instant layout, no pulse.</summary>
     Off,
     /// <summary>~1.6× base durations (slower, softer).</summary>
     Slow,
@@ -21,7 +21,6 @@ public enum AnimationAction
     /// <summary>Morph collapse (notify dismiss / return to clock).</summary>
     MorphCollapse,
     UnreadPulse,
-    IdleBreath,
     Hover,
     SwipeRubber,
     IconCrossfade
@@ -36,9 +35,6 @@ public static class AnimationTiming
 
     /// <summary>Base unread-dot pulse full cycle (ms) at Normal speed.</summary>
     public const int PulsePeriodMs = 1600;
-
-    /// <summary>Base idle breathing full cycle (ms) at Normal speed. Slightly quicker so amp is readable.</summary>
-    public const int BreathPeriodMs = 2600;
 
     /// <summary>Base hover brush transition (ms).</summary>
     public const int HoverMs = 160;
