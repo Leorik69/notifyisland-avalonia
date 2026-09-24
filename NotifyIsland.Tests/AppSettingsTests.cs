@@ -316,4 +316,77 @@ public class AppSettingsTests
             Assert.Equal(pack, back.IconPack);
         }
     }
+
+    /// <summary>
+    /// Guard against CP1251-mojibake regressions: AppSettings.Load / Save use
+    /// File.ReadAllText / File.WriteAllText with no explicit encoding (UTF-8
+    /// default). If any text file in the app ever ships as CP1251 / Latin1
+    /// (a stale 1.3.x artifact, a PowerShell Get-Content without -Encoding
+    /// UTF8, or a manual Notepad save on a non-UTF8 system), the round-trip
+    /// silently breaks. Pin UTF-8 for every script NotifyIsland users might
+    /// type in WeatherLocationName.
+    /// </summary>
+    [Fact]
+    public void Json_RoundTrip_PreservesUtf8ThroughFileIo()
+    {
+        var samples = new[]
+        {
+            "Москва",                                   // Cyrillic (default)
+            "Санкт-Петербург",                          // Cyrillic + dash
+            "Токио / 東京",                              // Cyrillic + CJK
+            "القاهرة",                                  // RTL Arabic
+            "Αθήνα",                                    // Greek
+            "🎉 שלום 北京",                              // Emoji + Hebrew + CJK
+            "café — naïve — résumé",                    // Latin-1 + em-dash
+            "👨‍👩‍👧‍👦",                                    // ZWJ family
+            "हिन्दी",                                    // Devanagari
+            "🇷🇺"                                        // Regional indicator
+        };
+
+        foreach (var name in samples)
+        {
+            var s = new AppSettings { WeatherLocationName = name };
+            var json = s.ToJson();
+
+            var dir = Path.Combine(Path.GetTempPath(), "notifyisland-utf8-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "settings.json");
+
+            try
+            {
+                File.WriteAllText(path, json);
+                var bytes = File.ReadAllBytes(path);
+
+                // No UTF-16 BOMs (would indicate someone re-encoded as UTF-16).
+                Assert.False(bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE,
+                              $"UTF-16 BE BOM in {path}");
+                Assert.False(bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF,
+                              $"UTF-16 LE BOM in {path}");
+                // No UTF-8 BOM (File.WriteAllText default is no BOM; intentional).
+                Assert.False(bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF,
+                              $"UTF-8 BOM in {path} (default WriteAllText writes no BOM)");
+
+                // Body must decode as UTF-8 (the only encoding AppSettings.Load supports).
+                try
+                {
+                    System.Text.Encoding.UTF8.GetCharCount(bytes);
+                }
+                catch (System.Text.DecoderFallbackException)
+                {
+                    Assert.Fail($"Not valid UTF-8: {path}");
+                }
+
+                // Round-trip via the same code path the app uses:
+                // File.ReadAllText + AppSettings.FromJson.
+                var readBack = File.ReadAllText(path);
+                var back = AppSettings.FromJson(readBack);
+                Assert.NotNull(back);
+                Assert.Equal(name, back!.WeatherLocationName);
+            }
+            finally
+            {
+                if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+            }
+        }
+    }
 }
