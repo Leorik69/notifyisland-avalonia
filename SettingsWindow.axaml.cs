@@ -218,10 +218,8 @@ public partial class SettingsWindow : Window
         SelectByTag(AnimMorphInflateBox, _draft.AnimMorphInflate.ToString());
         SelectByTag(AnimMorphCollapseBox, _draft.AnimMorphCollapse.ToString());
         SelectByTag(AnimUnreadPulseBox, _draft.AnimUnreadPulse.ToString());
-        SelectByTag(AnimIdleBreathBox, _draft.AnimIdleBreath.ToString());
         SelectByTag(AnimHoverBox, _draft.AnimHover.ToString());
         AnimPulseEnabledBox.IsChecked = _draft.AnimPulseEnabled;
-        AnimBreathEnabledBox.IsChecked = _draft.AnimBreathEnabled;
         SelectByTag(IconPackBox, _draft.IconPack);
         SelectByTag(FontFamilyBox, _draft.FontFamily);
         SelectByTag(DateFormatBox, _draft.DateFormat.ToString());
@@ -406,12 +404,9 @@ public partial class SettingsWindow : Window
             _draft.AnimMorphCollapse = mc;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimUnreadPulseBox), true, out var up))
             _draft.AnimUnreadPulse = up;
-        if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimIdleBreathBox), true, out var ib))
-            _draft.AnimIdleBreath = ib;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimHoverBox), true, out var hv))
             _draft.AnimHover = hv;
         _draft.AnimPulseEnabled = AnimPulseEnabledBox.IsChecked == true;
-        _draft.AnimBreathEnabled = AnimBreathEnabledBox.IsChecked == true;
 
         if (Enum.TryParse<DateFormat>(SelectedTag(DateFormatBox), true, out var df))
             _draft.DateFormat = df;
