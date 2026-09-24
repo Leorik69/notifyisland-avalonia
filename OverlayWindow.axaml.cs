@@ -869,14 +869,15 @@ public partial class OverlayWindow : Window
         ClockText.Text = formatted;
 
         var digitalOn = _settings.DigitalClockEnabled;
-        ClockText.IsVisible = !digitalOn;
-        DigitalClockRow.IsVisible = digitalOn;
+        var digitalOk = false;
         if (digitalOn)
         {
             // Subtle colon blink once per second (lit on even seconds).
             var colonLit = (now.Second % 2) == 0;
-            DigitalClockView.Apply(DigitalClockRow, formatted, _clockDigitSize, _clockBrush, colonLit);
+            digitalOk = DigitalClockView.Apply(DigitalClockRow, formatted, _clockDigitSize, _clockBrush, colonLit);
         }
+        ClockText.IsVisible = !digitalOn || !digitalOk;
+        DigitalClockRow.IsVisible = digitalOn && digitalOk;
 
         var dateFmt = _settings.DateFormat;
         if (dateFmt == DateFormat.Off)
