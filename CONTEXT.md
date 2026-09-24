@@ -4,7 +4,7 @@
 
 ## Что это
 **NotifyIsland** — плавающая капсула (Dynamic Island–style) для **Windows 11** на **Avalonia / .NET 8**.  
-Показывает часы, непрочитанные, уведомления, прогресс, медиа, таймер, **погоду**; hover-peek + click-pin; двойной клик / меню — Action Center; полноэкранное скрытие; Settings **sidebar + Lucide icons** (1.11.0); **без свайпов**.
+Показывает часы, непрочитанные, уведомления, прогресс, медиа, таймер, **погоду**, **буфер обмена**; hover-peek + click-pin; двойной клик / меню — Action Center; полноэкранное скрытие; Settings **sidebar + Lucide icons** (1.11.0); **без свайпов**.
 
 Репозиторий: https://github.com/Leorik69/notifyisland-avalonia  
 Ветка разработки: `fix/win11-stability-build` · PR: https://github.com/Leorik69/notifyisland-avalonia/pull/8
@@ -21,6 +21,7 @@
 | Now Playing (SMTC) | `WindowsMediaSessionSource.cs` |
 | Battery / charging | `WindowsPowerSource.cs` + `NotifyIsland.Core/BatteryAlertLogic.cs` |
 | Timer / stopwatch | `NotifyIsland.Core/IslandTimerLogic.cs` + `OverlayMachine` SetTimer/Tick |
+| Clipboard history | `NotifyIsland.Core/ClipboardHistory.cs` + `WindowsClipboardSource.cs` |
 | Digital clock (FontAudio) | `DigitalClockGlyphs` + `DigitalClockView` + `Assets/Icons/FontAudio/` |
 | Seconds strip (digital-dot) | `SecondsStripLogic` + `SecondsStripView` |
 | Outline icons | `IslandIcons.cs`, `Assets/Icons/README.md` |
@@ -50,13 +51,14 @@ OverlayWindow.axaml(.cs)        # капсула + clicks + weather UI
 WindowsWeatherSource.cs         # WinRT/Bing cache/stub — NO Open-Meteo
 WindowsMediaSessionSource.cs    # SMTC Now Playing (WinRT)
 WindowsPowerSource.cs           # Battery / AC (WinForms PowerStatus)
-NotifyIsland.Core/AppSettings.cs / IslandLayout.cs
+WindowsClipboardSource.cs       # clipboard polling 1s, Win32
+NotifyIsland.Core/AppSettings.cs / IslandLayout.cs / ClipboardHistory.cs
 SettingsWindow.axaml(.cs)       # Settings sidebar (Lucide nav) + panels
 TrayService.cs / IslandSounds.cs
 IslandIcons.cs + Assets/tray*.png
 Assets/Icons/README.md + Assets/Sounds/**
-NotifyIsland.Core/              # OverlayMachine, OverlayTokens, WeatherCodes
-NotifyIsland.Tests/             # unit tests FSM
+NotifyIsland.Core/              # OverlayMachine, OverlayTokens, WeatherCodes, ClipboardHistory
+NotifyIsland.Tests/             # unit tests FSM + Core
 docs/ISLAND_GUIDELINES.md       # правила островка
 CONTEXT.md                      # этот файл
 tools/test_overlay_states.py    # FSM smoke (python)
@@ -70,18 +72,18 @@ python3 tools/test_overlay_states.py
 dotnet build NotifyIsland.Av.csproj -c Release
 dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained false -o ./publish
 ./publish/NotifyIsland.exe          # обычный запуск
-./publish/NotifyIsland.exe --demo   # демо-цикл (мок-данные + weather step)
+./publish/NotifyIsland.exe --demo   # демо-цикл (моке-данные + weather step)
 ```
 Горячие клавиши в overlay: **F9** demo on/off, **F10** charge pill, **F11** low-battery, **F12** timer/stopwatch, **Esc** unpin (и collapse). Версия продукта: **1.11.0**.
 
-## Функционал: есть / убрать / добавить
+## Функциональность: есть / убрать / добавить
 Кратко (детали — в GUIDELINES §5 / §10):
 
-**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); **hover expand + click pin 1.10.0**; **hide on fullscreen 1.10.0**; **Settings icon-sidebar 1.11.0**; idle breath; tray + Settings window; WeatherSide; Edge+Offset (**no island drag**); Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; timer/stopwatch; FontAudio digital clock + seconds strip; demo; tests+CI.
+**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); **hover expand + click pin 1.10.0**; **hide on fullscreen 1.10.0**; **Settings icon-sidebar 1.11.0**; **clipboard history (text + file paths, локальный ring buffer) 1.12.0**; tray + Settings window; WeatherSide; Edge+Offset (**no island drag**); Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; timer/stopwatch; FontAudio digital clock + seconds strip; demo; tests+CI.
 
-**Убрать/не раздувать:** demo как продукт; Open-Meteo; Xiaomi pull-down / swipe gestures; detached second island.
+**Убрать/не раздувать:** demo как продукт; Open-Meteo; Xiaomi pull-down / swipe gestures; detached second island; **idle breath animation** (снесено — pulse непрочитанных остался).
 
-**Добавить позже (backlog):** deeper CsWinRT geolocation; **file shelf / clipboard / launcher** (не в scope сейчас).
+**Добавить позже (backlog):** deeper CsWinRT geolocation; image clipboard formats; clipboard auto-paste to last focus; **file shelf / launcher** (не в scope сейчас).
 
 ## Погода — откуда данные?
 **Не Open-Meteo.** Конвейер Windows-only: WinRT geolocation (когда доступен) → Bing Weather / Widgets local cache → on-disk cache → `LocalStubWeather` (Sandbox). См. GUIDELINES §10.
@@ -99,6 +101,11 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 **Приоритет:** идущий таймер удерживает островок над SMTC до отмены/завершения (клик по Media снимает приоритет).  
 **Секундомер:** `TimerStopwatchMode` + `CountUp` (счёт вверх).
 
+## Буфер обмена
+**Live:** `WindowsClipboardSource` (polling 1с, `GetClipboardSequenceNumber`). При новом элементе → `SetClipboard` → pill показывает превью (текст / имя файла / "N файлов"). Локально: ring buffer в памяти, без HTTP, без auto-paste. Клик по пилюле — Dismiss (по умолчанию) или DismissAndClear. Из настроек: toggle, размер истории (10/25/50/100), click action.
+**Восстановление из истории:** Settings → Буфер обмена → карточка «Последние элементы». Каждая карточка — одна запись ring buffer (новейшие сверху). Клик по карточке вызывает `WindowsClipboardWriter.WriteText` / `WriteFiles`, который восстанавливает этот item в системном буфере — потом `Ctrl+V` в любом приложении вставит его. Использование: «скопировал A, потом B по ошибке, теперь нужен A — кликнул A в истории, Ctrl+V в целевом приложении».
+**Demo:** F9 циклически показывает мок-данные других overlay kinds; clipboard pill в demo не показывается — нужен реальный copy.
+
 ## Ввод (клики)
 Жесты свайпа **убраны** (1.8.1). `ClickMaxPx=12` — GUIDELINES §3b / OverlayTokens. `CycleNext`/`CyclePrev` остаются в FSM для тестов/API.
 - Idle/Collapsed: **одинарный клик** = pin/unpin; **двойной клик** = Action Center; Esc = unpin.
@@ -106,10 +113,6 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 
 ## Fullscreen
 `HideOnFullscreen` (default ON): `SHQueryUserNotificationState` + monitor-cover → Hide; restore on leave. Optional click-through if hide off.
-
-## Idle breath
-`BreathScaleAmp=0.04`, `BreathWidthAmpPx=7`, `BreathGlowAmp=0.14`, `BreathPeriodMs=2600` — только Idle/Collapsed при `AnimBreathEnabled`. Soften on hover-peek; pause while pinned.
-
 
 ## Иконки — источники
 Каталог паков: [allsvgicons.com/pack](https://allsvgicons.com/pack/). Вендор + лицензии: `Assets/Icons/NOTICE`, `docs/ICON_PACKS.md`.
@@ -127,15 +130,16 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 
 1. **Островок** — visibility, дата, FontAudio clock, seconds strip, hover/pin, fullscreen  
 2. **Погода** — Windows-primary (не Open-Meteo)  
-3. **Расположение** — Edge + Offset X/Y + Orientation (**drag островка нет**)  
+3. **Расположение** — Edge + Offset X/Y + Orientation (**drag острова нет**)  
 4. **Тема** — NothingDark / AppleQuiet / Ocean / Custom  
 5. **Медиа и питание** — SMTC Now Playing, battery alerts, timer/stopwatch  
 6. **Оформление** — z-order, opacity, fonts, palette, preview pill  
-7. **Анимации** — speed + appear/dismiss + pulse/breath  
+7. **Анимации** — speed + appear/dismiss + pulse (breath убран)  
 8. **Звуки** — packs + volumes  
 9. **Иконки** — IslandIcons / Tabler / Lucide / Meteocons  
+10. **Буфер обмена** — toggle, размер истории, click action (1.12.0)  
 
-Открыть: трей → «Настройки…» / ПКМ остров → Настройки. Проверить иконки nav: слева 9 пунктов с Lucide SVG, акцент при выборе.
+Открыть: трей → «Настройки…» / ПКМ остр. → Настройки. Проверить иконки nav: слева 10 пунктов с Lucide SVG, акцент при выборе.
 
 ## Sandbox deploy (standing rule)
 Всегда **свежий** publish в Windows Sandbox: `Desktop\notifyisland-fresh-<sha>` (короткий SHA). Перед запуском — **убить** старый `NotifyIsland.exe`. Не переиспользовать предыдущую папку publish.
@@ -149,7 +153,7 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 3. **Новый агент на другом устройстве:** `git clone` → те же два файла первыми; не выдумывать тайминги; не добавлять Open-Meteo.
 4. **Правило:** перед UI-PR сверить чеклист GUIDELINES §9.
 
-## Соглашения кода
+## Согласования кода
 - Русский UI-copy ок; код/идентификаторы — English.
 - Лог: `%TEMP%\notifyisland.log` через `AppLog`.
 - Не активировать окно (no-activate).

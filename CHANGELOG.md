@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased — Idle breath removed + Clipboard history (1.12.0-preview)
+
+### Added — Clipboard history UI (1.12.0-preview, follow-up)
+- `WindowsClipboardWriter` (WinForms.Clipboard wrapper, STA-checked): `WriteText` / `WriteFiles` for restoring an item from history back into the system clipboard.
+- Settings → Буфер обмена: new "Последние элементы" card renders the ring buffer (newest first) as clickable cards with kind glyph, RU label, title preview, subtitle, and relative time. Click any card → re-copies that item to the system clipboard; result echoed in the empty-state label.
+- `NotifyIsland.Core.ClipboardHistory.SnapshotNewestFirst()` and `ClipboardItemVm` (Core POCO, no Avalonia deps).
+- 11 new tests (`ClipboardItemVmTests`): text/file/multi-file rendering, newline normalization, time-ago buckets.
+
+### Removed — Idle breath
+- Removed idle-breath animation entirely: `AppSettings.AnimBreathEnabled` / `AnimIdleBreath`, `OverlayTokens.BreathScaleAmp` / `BreathScaleXExtra` / `BreathWidthAmpPx` / `BreathGlowAmp`, `AnimationTiming.BreathPeriodMs`, `AnimationAction.IdleBreath`, `HoverPinMachine.SoftenBreath`. Pulse (unread-dot) kept as-is.
+- UI: dropped «Дыхание в простое» checkbox and per-action «Дыхание (idle)» speed combo. Remaining per-action speeds: morph inflate / morph collapse / unread pulse / hover.
+- GUIDELINES / CONTEXT / ISLAND_PREVIEW updated; no Idle-breath tokens documented anymore.
+
+### Added — Clipboard history (1.12.0-preview)
+- New `OverlayKind.Clipboard` (11th) and `OverlayCommand.SetClipboard` (15th). Pill auto-collapses after `ClipboardHistory.MaxPillMs = 6000`. Does not bump unread.
+- `NotifyIsland.Core.ClipboardHistory` — pure ring buffer (capacity 1–100, default 25) with de-dup against latest identical item and `BuildPayload` for the FSM. `ClipboardItemKind`: None / Text / File / MultiFile. Russian plural (1 файл / 2 файла / 5 файлов / 11 файлов / 21 файл / 22 файла / 25 файлов).
+- `WindowsClipboardSource` — polling 1s, uses `GetClipboardSequenceNumber()` for change detection. Reads CF_HDROP first, falls back to CF_UNICODETEXT. Captured event marshals to UI thread.
+- Settings: new "Буфер обмена" sidebar section — toggle, max items (10/25/50/100), click action (Dismiss / DismissAndClear).
+- `IslandIcons` gained a built-in Lucide-style `clipboard` outline so the new nav rail entry and the kind pill icon render without needing a vendored SVG (falls back via `IconPackService`).
+- Image / rich-text clipboard formats intentionally out of scope for v1 (per docs/research-modules.md §Clipboard v1.1).
+- Tests: 14 new in `ClipboardHistoryTests` (capacity, de-dup, ignore-None, pop/clear, payload preview, Russian plural, equality). Total: 165/165 pass.
+
 ## 1.11.0 — Settings icon sidebar
 
 ### Added
@@ -37,7 +59,7 @@
 
 ### Added
 - **Digital clock** on Idle/Collapsed overlay: FontAudio (`fad`) 7-segment SVGs `HH:mm` (optional `HH:mm:ss`).
-- Vendored icons: `digital0`…`digital9`, `digital-colon`, `digital-dot` under `Assets/Icons/FontAudio/` (CC BY 4.0, @fefanto). Offline — no Iconify at runtime.
+- Vendored icons: `digital0`–`digital9`, `digital-colon`, `digital-dot` under `Assets/Icons/FontAudio/` (CC BY 4.0, @fefanto). Offline — no Iconify at runtime.
 - Settings → **Островок**: «Цифровые часы (FontAudio)» (`DigitalClockEnabled`, default **ON**); «Показывать секунды» (`ShowClockSeconds`, default OFF).
 - Subtle colon opacity blink once per second; glyphs tint with theme text color (`currentColor`).
 - Core helper `DigitalClockGlyphs` + UI `DigitalClockView`; xUnit mapping tests.
@@ -52,9 +74,9 @@
 
 ### Added
 - **Countdown timer** in the island (`OverlayKind.Timer`): live `mm:ss` / `h:mm:ss`, Pause/Resume, Cancel, +1 мин.
-- Start from **tray → Таймер** presets (1/5/10/25 мин + default), **Settings → Вид → Таймер**, or **F12**.
-- On reach 0: notification «Таймер / Время вышло» + notify sound (if enabled), then Idle.
-- **Stopwatch** (count-up) via Settings «Режим секундомера» + same Start/F12 path.
+- Start from **tray > Таймер** presets (1/5/10/25 мин + default), **Settings > Медиа и питание > Таймер**, or **F12**.
+- On reach 0: notification «Таймер» / «Время вышло» + notify sound (if enabled), then Idle.
+- **Stopwatch** (count-up) via Settings «Секундомер» + same Start/F12 path.
 - Settings: `TimerEnabled` (default ON), `TimerDefaultMinutes` (default 5), `TimerStopwatchMode` (default OFF).
 - Core: `IslandTimerLogic` + `OverlayPayload.CountUp`; `Tick` pauses when `Playing=false`, completes countdown → Notify.
 
@@ -67,13 +89,12 @@
 ### Note
 - No hover-expand. No Open-Meteo. No island drag.
 
-
 ## 1.8.1 — Clicks only + stronger idle breath
 
 ### Changed
-- **Gestures removed**: no swipe L/R/U/D to cycle slots or expand/collapse. Pointer is **clicks only** (≤`ClickMaxPx` → Action Center on Idle/Collapsed; right-click menu unchanged). Media Prev/Play/Next, tray, Settings, F9–F11 demos kept. `CycleNext`/`CyclePrev` remain in `OverlayMachine` for API/tests/demo.
+- **Gestures removed**: no swipe L/R/U/D to cycle slots or expand/collapse. Pointer is **clicks only** («ClickMaxPx» > Action Center on Idle/Collapsed; right-click menu unchanged). Media Prev/Play/Next, tray, Settings, F9–F11 demos kept. `CycleNext`/`CyclePrev` remain in `OverlayMachine` for API/tests/demo.
 - **Idle breath** more visible: scale ~1.0↔1.04 (+ slight X bias), width morph ±7 px, fill glow + border shimmer; period 2600 ms. Stops while expanded/notification/media/battery overlay; resumes on Idle/Collapsed. `AnimBreathEnabled` default ON.
-- Settings: removed «Свайп rubber-band» and «Свайп» volume row; SMTC note no longer mentions свайп.
+- Settings: removed «резиночный rubber-band» and «swipe volume row»; SMTC note no longer mentions «свайп».
 
 ### Docs
 - GUIDELINES / CONTEXT: gestures out, clicks only; breath tokens documented.
@@ -86,8 +107,8 @@
 ### Added
 - **Charge pill** (`OverlayKind.Battery`): transient morph on AC connect (and meaningful % bumps while charging) — title «Зарядка», subtitle percent, progress bar, auto-dismiss ~3.5s back to prior kind.
 - **Low-battery alert** via `Notify` once per discharge cycle below threshold (default 20%, hysteresis +5% / AC reset).
-- `WindowsPowerSource` — WinForms `SystemInformation.PowerStatus` poll (fail-soft); Core stays WinRT-free via `BatteryAlertLogic`.
-- Settings → **Вид / Питание**: «Оповещения зарядки и низкого заряда» (`ShowBatteryAlerts`, default ON), «% в свёрнутом» (`ShowBatteryInCollapsed`, default OFF), порог (`LowBatteryPercent` 5–50), кнопка демо.
+- `WindowsPowerSource` → WinForms `SystemInformation.PowerStatus` poll (fail-soft); Core stays WinRT-free via `BatteryAlertLogic`.
+- Settings → **Медиа и питание**: «Показывать уведомления» о заряде (`ShowBatteryAlerts`, default ON), «% в свёрнутом» («ShowBatteryInCollapsed», default OFF), «Порог» (`LowBatteryPercent` 5–50), «Демо заряда».
 - Collapsed battery chip when enabled; icons `battery` / `bolt` in `IslandIcons`.
 - Demo: **F10** charge pill, **F11** low-battery (Sandbox-friendly when AC state is fixed).
 
@@ -101,10 +122,10 @@
 
 ### Added
 - **Live Now Playing** via Windows System Media Transport Controls (`GlobalSystemMediaTransportControlsSessionManager`): title, artist, play state, timeline progress, album art.
-- `WindowsMediaSessionSource` in the Avalonia app — event + 1s poll; Play/Pause / Prev / Next try-invoke; fail-soft when WinRT/session missing (demo Media unchanged).
-- Settings → **Вид**: «Показывать Now Playing» (`ShowNowPlaying`, default ON).
+- `WindowsMediaSessionSource` in the Avalonia app → event + 1s poll; Play/Pause / Prev / Next try-invoke; fail-soft when WinRT/session missing (demo Media unchanged).
+- Settings → **Медиа и питание**: «Показывать Now Playing» (`ShowNowPlaying`, default ON).
 - Media row: artwork chip + Prev / Play-Pause / Next controls.
-- `OverlayPayload.ArtworkBytes` (sanitized ≤2 MB) — Core stays WinRT-free.
+- `OverlayPayload.ArtworkBytes` (sanitized <2 MB) — Core stays WinRT-free.
 
 ### Changed
 - App TFM **net8.0-windows10.0.19041.0** (WinRT projections). Version **1.7.0**.
@@ -113,13 +134,12 @@
 ### Note
 - Verify with Spotify / Edge media in Windows Sandbox. No Open-Meteo. No proprietary Nothing fonts.
 
-
 ## 1.6.0 — date chip, weather location, stock themes
 
 ### Added
-- **Date next to time** in collapsed row (`DateFormat`: Off / DayMonth / WeekdayShort / WeekdayDay / Numeric / FullShort). Default **DayMonth** («24 сен», ru-RU). Settings → **Островок**.
-- **Weather location**: `WeatherLocationMode` Windows | Manual + `WeatherLocationName` + lat/lon; city presets (Москва, СПб, …). Settings → **Погода**. Manual shows chosen label on expanded weather / tooltip; temperature remains Windows-primary (honest note in UI). **No Open-Meteo.**
-- **Theme presets** (`ThemePreset`): **NothingDark**, **AppleQuiet**, **Ocean**, **Custom**. Settings → **Тема**. Stock Apply overwrites palette, font, anim speeds/styles, icon pack, date format, sound pack. Divergent save → auto **Custom**; button «Перейти в кастом».
+- **Date next to time** in collapsed row (`DateFormat`: Off / DayMonth / WeekdayShort / WeekdayDay / Numeric / FullShort). Default **DayMonth** («24 сен», ru-RU). Settings → **Оформление**.
+- **Weather location**: `WeatherLocationMode` Windows | Manual + `WeatherLocationName` + lat/lon; city presets (Москва, СПб, Казань). Settings → **Погода**. Manual shows chosen label on expanded weather / tooltip; temperature remains Windows-primary (honest note in UI). **No Open-Meteo.**
+- **Theme presets** (`ThemePreset`): **NothingDark**, **AppleQuiet**, **Ocean**, **Custom**. Settings → **Тема**. Stock Apply overwrites palette, font, anim speeds/styles, icon pack, date format, sound pack. Divergent save → auto **Custom**; button «Сбросить пресет».
 
 ### Changed
 - Removed clipped **clock icon** (`ClockIconHost`) from collapsed island — frees space for date.
@@ -129,15 +149,10 @@
 ### Note
 - Weather stays Windows-primary. No proprietary asset rips.
 
-
 ## 1.5.9 — Meteocons weather icon packs (4 styles)
 
 ### Added
-- Four **Meteocons** (Bas Milius, MIT) weather packs selectable in Settings → **Иконки**:
-  - **Meteocons Fill** — заливка
-  - **Meteocons Flat** — плоский
-  - **Meteocons Line** — контур
-  - **Meteocons Monochrome** — монохром (tint to text color)
+- Four **Meteocons** (Bas Milius, MIT) weather packs selectable in Settings → **Иконки**:  - **Meteocons Fill** — заливка  - **Meteocons Flat** — плоский  - **Meteocons Line** — контур  - **Meteocons Monochrome** — монохром (tint to text color)
 - Vendored animated SVGs from `@meteocons/svg` under `Assets/Icons/Meteocons{Fill,Flat,Line,Monochrome}/` for keys: clear, partly, cloud, fog, drizzle, rain, snow, storm, sleet.
 - `MeteoconsMap` (Core) + `MeteoconsMotion` — Avalonia rotate/bob/pulse (Skia does not run SMIL; SMIL kept in files).
 - Attribution: `Assets/Icons/NOTICE`, per-folder `LICENSE`, `docs/ICON_PACKS.md`.
@@ -149,31 +164,28 @@
 ### Note
 - No proprietary Nothing fonts. No WebView2 dependency in this drop.
 
-
-
-## 1.5.8 — animation styles, slower soft morph, icon↔FontSize
+## 1.5.8 — animation styles, slower soft morph, icon-FontSize
 
 ### Added
 - **Appear styles** (`NotifyAppearStyle`): Inflate, SlideDown, FadeScale, Bounce, Pop — Settings → Анимации.
-- **Dismiss styles** (`NotifyDismissStyle`): Collapse, SlideUp, FadeScaleOut, Ragged («рваный» jitter), Glitch (stutter).
+- **Dismiss styles** (`NotifyDismissStyle`): Collapse, SlideUp, FadeScaleOut, Ragged (рваный jitter), Glitch (stutter).
 - Styles wired into morph path on Notification enter/leave; Demo (F9) cycles appear/dismiss so all are visible.
 - `AnimationEasing` (CubicOut / SpringOut / PopScale / GlitchStep) — no linear morph.
 - Icon DIP scales with FontSize: `IconDip = FontSize × k` (collapsed k≈1.0, kind k≈0.92); Viewbox hosts update on FontSize/IconPack change.
 
 ### Changed
-- Base `MorphMs` **280 → 420**; defaults lean Slow (`AnimationSpeed`, `AnimMorphInflate`, `AnimMorphCollapse`).
+- Base `MorphMs` 280 → **420**; defaults lean Slow (`AnimationSpeed`, `AnimMorphInflate`, `AnimMorphCollapse`).
 - Default Appear=**Bounce**, Dismiss=**Ragged**.
 - Version **1.5.8**.
 
 ### Note
 - Per-action speed multipliers retained. No proprietary font/sound rips.
 
-
 ## 1.5.7 — UX: font size, palette swatches, icon packs, per-action anim, Nothing-inspired fonts
 
 ### Added
-- **Font size** (10–18 px) in Settings **Вид**; persisted `FontSize`; applied to clock, titles, weather temp, badge.
-- **Font family** ComboBox: Системный / Space Grotesk / JetBrains Mono; OFL fonts in `Assets/Fonts/` (see `docs/NOTHING_INSPIRATION.md`).
+- **Font size** (10–18 px) in Settings **Оформление**; persisted `FontSize`; applied to clock, titles, weather temp, badge.
+- **Font family** ComboBox: системный / Space Grotesk / JetBrains Mono; OFL fonts in `Assets/Fonts/` (see `docs/NOTHING_INSPIRATION.md`).
 - **Visual palette**: preset swatches + Avalonia `ColorPicker` with live preview pill (replaces hex-only text boxes).
 - **Real icon packs**: vendored Tabler (MIT) and Lucide (ISC) SVGs under `Assets/Icons/{Tabler,Lucide}/`; ComboBox switches pack; `IconPackService` + IslandIcons fallback; `docs/ICON_PACKS.md` + NOTICE.
 - **Per-action animations** tab **Анимации**: master speed + toggle pulse/breath + Slow/Normal/Fast/Off for morph inflate, morph collapse, unread pulse, idle breath, hover, swipe rubber.
@@ -181,7 +193,7 @@
 
 ### Changed
 - Version **1.5.7**; Settings default size slightly larger for new controls.
-- Unread dot slightly more “matrix” (square-ish corners).
+- Unread dot slightly more «matrix» (square-ish corners).
 
 ### Note
 - No Open-Meteo. No proprietary Nothing/Apple firmware assets.
@@ -189,29 +201,28 @@
 ## 1.5.6 — no-drag, morph fix, palette, icon packs
 
 ### Fixed
-- **Animations visible again:** Avalonia `Transitions` on `Window.Width` were unreliable; morph now uses an explicit 16 ms timer (`StartMorph` / `OnMorphTick`) with CubicEaseOut on both Window and Pill size. Demo alternates expand ↔ collapse so inflate/collapse is obvious.
+- **Animations visible again:** Avalonia `Transitions` on `Window.Width` were unreliable; morph now uses an explicit 16 ms timer (`StartMorph` / `OnMorphTick`) with CubicEaseOut on both Window and Pill size. Demo alternates expand → collapse so inflate/collapse is obvious.
 - Unread pulse and idle breath were killed by Opacity/Scale `Transitions` fighting 33 ms timers — those transitions removed; pulse 0.40↔1.0, breath ±2.5%.
 - Temporary `AppLog.Info` line when morph starts (`%TEMP%/notifyisland.log`).
 
 ### Removed
-- Mouse drag-reposition (`AllowDrag` hold >200 мс). Position only via Settings **Расположение** (Edge + Offset X/Y). Pointer kept for swipes / click Action Center. Checkbox removed; `Normalize()` forces `AllowDrag=false`.
+- Mouse drag-reposition (`AllowDrag` hold >200 мс). Position only via Settings «Расположение» (Edge + Offset X/Y). Pointer kept for swipes / click Action Center. Checkbox removed; `Normalize()` forces `AllowDrag=false`.
 
 ### Added
-- Color palette in Settings **Вид**: capsule fill, accent, primary/secondary text (`ColorCapsuleFill` / `ColorAccent` / `ColorTextPrimary` / `ColorTextSecondary`); live Apply.
+- Color palette in Settings **Оформление**: capsule fill, accent, primary/secondary text (`ColorCapsuleFill` / `ColorAccent` / `ColorTextPrimary` / `ColorTextSecondary`); live Apply.
 - Icon pack stub in **Иконки** + research doc [`docs/ICON_PACKS.md`](docs/ICON_PACKS.md) (Tabler MIT, Lucide ISC, Phosphor MIT, Fluent MIT, Heroicons MIT).
 - Target stack section in `ISLAND_GUIDELINES.md` §0 / `ISLAND_PREVIEW.md`.
 
 ### Docs
 - Drag removed; animation table; palette; icon packs; product pick (must vs backlog differentiators).
 
-
 ## 1.5.5 — situation-aware island animations
 
 ### Added
 - `AnimationSpeed` setting: **Off** | **Slow** (~1.6×) | **Normal** (1×) | **Fast** (~0.55×); default Normal; persisted in `settings.json`.
-- Settings **Вид** tab: ComboBox «Скорость анимаций» (`AnimSpeedBox`).
+- Settings **Анимации** tab: ComboBox «Скорость анимаций» (`AnimSpeedBox`).
 - Unread-dot gentle opacity pulse when unread > 0 (Idle/Collapsed).
-- Idle/Collapsed subtle “breathing” scale (±1.2%) on the pill.
+- Idle/Collapsed subtle «breathing» scale (±1.2%) on the pill.
 - `AnimationTiming` helper in Core (multipliers + `ScaleMs`); unit tests for Off / Slow / Normal / Fast.
 
 ### Changed
@@ -222,12 +233,11 @@
 ### Docs
 - `ISLAND_GUIDELINES.md` animation table + settings tab; `ISLAND_PREVIEW.md` animation items.
 
-
 ## 1.5.4 — tabbed Settings window
 
 ### Changed
 - Settings UI redesigned: Avalonia `TabControl` with categories instead of one long scroll pile.
-- Tabs (RU): **Островок**, **Погода**, **Расположение**, **Вид**, **Звуки**, **Иконки**.
+- Tabs (RU): **Островок**, **Погода**, **Расположение**, **Тема**, **Звуки**, **Иконки**.
 - Default Settings window size ~520×640; geometry still persisted.
 - Bottom bar unchanged: Отмена / Применить / OK.
 
@@ -251,14 +261,12 @@
 - System tray icon with unread badge (`tray.png` / `tray-unread.png`).
 - Left-click toggles island visibility; right-click menu (settings / island / demo / weather / exit); double-click opens Action Center.
 
-
 ## 1.5.1 — Settings crash fix
 
 ### Fixed
 - Opening **Настройки** from the island context menu no longer crashes.
 - Cause: hand-written `InitializeComponent()` called only `AvaloniaXamlLoader.Load` and never wired `x:Name` fields → `NullReferenceException` in `LoadUi()`.
 - Fix: use Avalonia-generated `InitializeComponent()`.
-
 
 ## 1.5.0 — sound packs
 

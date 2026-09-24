@@ -99,7 +99,7 @@
 
 ## 2. Правила анимаций NotifyIsland (actionable)
 
-Код: `OverlayTokens.MorphMs` (**420**), `AnimationTiming` + `AppSettings.AnimationSpeed` (default **Slow**) + per-action + **`AppearStyle`/`DismissStyle`**; **явный timer-morph** `StartMorph`/`OnMorphTick` на Width/Height + aux (opacity/scale/translate/jitter); `AnimationEasing` (CubicOut / SpringOut / Pop / Glitch — без linear); pulse/breath — timer без Opacity/Scale Transition; `ApplyAnimationSettings()` в ctor + Settings Apply.
+Код: `OverlayTokens.MorphMs` (**420**), `AnimationTiming` + `AppSettings.AnimationSpeed` (default **Slow**) + per-action + **`AppearStyle`/`DismissStyle`**; **явный timer-morph** `StartMorph`/`OnMorphTick` на Width/Height + aux (opacity/scale/translate/jitter); `AnimationEasing` (CubicOut / SpringOut / Pop / Glitch — без linear); pulse — timer без Opacity/Scale Transition; `ApplyAnimationSettings()` в ctor + Settings Apply.
 
 Базовые длительности (**Normal**). Множители: **Slow≈1.6×**, **Normal=1×**, **Fast≈0.55×**, **Off→1 мс**. Defaults lean Slow.
 
@@ -109,9 +109,8 @@
 | Appear styles | × morph | см. enum | Inflate, SlideDown (−20→0 Y + fade), FadeScale (0.85→1), Bounce (spring), Pop (punch) |
 | Dismiss styles | × morph | см. enum | Collapse, SlideUp, FadeScaleOut, Ragged (X jitter), Glitch (stutter) |
 | Hover border/background | **160 мс** | `CubicEaseInOut` | лёгкий +0.06 fill alpha |
-| Unread-dot pulse (unread &gt; 0) | **1600 мс**/цикл | sine | opacity 0.40↔1.0; Idle/Collapsed |
-| Idle breathing | **3200 мс**/цикл | sine | scale ±2.5%; пауза во время morph |
-| Notify auto-dismiss | **4000 мс** | — | затем dismiss-style → idle |
+| Unread-dot pulse (unread &gt; 0) | **1600 мс**/цикл | sine | opacity 0.40↔1.0; Idle/Collapsed |
+| Notify auto-dismiss | **4000 мс** | — | затем dismiss-style → idle |
 | Demo scene cycle | **1800 мс** | — | циклирует Appear/Dismiss styles |
 | Swipe rubber-band | **180 мс** | CubicOut | |
 | Icon crossfade | **240 мс** | CubicOut | |
@@ -167,16 +166,6 @@ FSM: `OverlayMachine` / `OverlayKind`.
 - Hover-peek / click-pin: Core `HoverPinMachine` (1.10.0). Без свайпов.
 - Fullscreen: `HideOnFullscreen` → hide via `Win32Overlay.IsFullscreenOrBusy`; optional click-through.
 
-### Idle breath (усилен 1.8.1; soften 1.10.0)
-| Токен | Значение |
-|---|---:|
-| `BreathPeriodMs` | **2600** |
-| `BreathScaleAmp` | **0.04** (~1.0↔1.04) |
-| `BreathWidthAmpPx` | **±7** |
-| `BreathGlowAmp` | **0.14** |
-
-Только Idle/Collapsed при `AnimBreathEnabled` (default ON). Стоп на notification/media/battery/expanded. Soften (~25%) на hover-peek; пауза при pin.
-
 ---
 
 ## 4. Индикаторы, цвета, типографика
@@ -209,14 +198,14 @@ FSM: `OverlayMachine` / `OverlayKind`.
 - Idle clock + unread glow + optional minimal weather (+ WeatherSide L/R)
 - Notification morph (H: width / V: height), badge
 - Progress / Media / Timer / Error / **Weather** (FSM + demo)
-- **Clicks only** (no swipe); idle breath scale/width/glow
+- **Clicks only** (no swipe)
 - Weather toggle (tray / ПКМ / Settings), Windows-primary source (§10)
 - Unified outline icon pack + weather crossfade + tray icons
 - **Tray** quick menu + unread icon/tooltip
 - **Settings window** (отдельный Window, single-instance, **sidebar ListBox + Lucide icons**, 1.11.0): placement, z-order, opacity, sounds, orientation, Edge+Offset (no drag)
 - Z-order Topmost / Desktop / BehindApps (Win32 SetWindowPos)
 - Edge + OffsetX/Y (без mouse drag)
-- Opacity 0.35–1.0 на fill; AnimationSpeed (Slow|Normal|Fast|Off) с pulse/breath; SoundPack (Nothing|Ios|System|Off) + SoundEnabled + master/per-event volumes
+- Opacity 0.35–1.0 на fill; AnimationSpeed (Slow|Normal|Fast|Off) с pulse; SoundPack (Nothing|Ios|System|Off) + SoundEnabled + master/per-event volumes
 - Demo cycle (`--demo` / F9); Click → Action Center
 - Unit-тесты FSM + AppSettings + IslandLayout + python FSM script
 
@@ -234,11 +223,23 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | Width-only morph + fixed H | DI «растягивание», без прыжка вверх |
 | Unread dot + badge | Nothing Glyph minimalism + DI trailing badge |
 | Action Center click | Windows-native аналог «открыть уведомления» |
-| Media/Progress/Timer/Weather kinds в FSM | Live Activities / Super Island templates |
+| Media/Progress/Timer/Weather/Clipboard kinds в FSM | Live Activities / Super Island templates |
 | Click → Action Center | Windows-native |
+| **Clipboard history (text + file paths)** | локальный ring buffer, нет HTTP, нет «фейковой вставки»; пользователь сам жмёт Ctrl+V |
 
 ### Добавлено в этом workstream
-Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order×3, Opacity, AnimationSpeed (+ pulse/breath), color palette, Sound packs, icon pack stub.
+Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order×3, Opacity, AnimationSpeed (+ pulse), color palette, Sound packs, icon pack stub, **Clipboard history 1.0** (text + file paths, 1s polling, local-only, no auto-paste).
+
+### Clipboard history — правила
+- Только локальный ring buffer (`ClipboardHistory`), максимум 100, default 25.
+- Источник: `WindowsClipboardSource` — `GetClipboardSequenceNumber()` polling 1с, читает CF_HDROP → CF_UNICODETEXT.
+- `OverlayKind.Clipboard` (11-й) + `OverlayCommand.SetClipboard` (15-й).
+- Pill show-time `ClipboardHistory.MaxPillMs = 6000` (дольше notification — пользователь может дотянуться).
+- НЕ bump'ит unread (это не системное уведомление).
+- Звук `Notify` только на Text/File, не на MultiFile (слишком часто при копировании в Проводнике).
+- `ClipboardClickAction.Dismiss` — закрыть пилюлю, пользователь жмёт Ctrl+V сам. `DismissAndClear` — очистить системный буфер после закрытия. `PasteToLastFocus` — зарезервировано для v1.1.
+- v1 НЕ вставляет в чужое окно автоматически — это даёт focus-эффект, который мешает пользователю.
+- **Settings → Буфер обмена → «Последние элементы»**: визуальный список истории (новейшие сверху). Клик по элементу = `WindowsClipboardWriter.WriteText` / `WriteFiles` восстанавливает его в системный буфер обмена. Используй это чтобы вернуть копию N-шагов назад без выхода из текущего приложения.
 
 ### Добавить позже
 | Что | Обоснование |
@@ -285,7 +286,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
   4. **Тема** — NothingDark / AppleQuiet / Ocean / Custom
   5. **Медиа и питание** — Now Playing (SMTC), battery alerts, timer/stopwatch
   6. **Оформление** — `ZOrderMode` + `Opacity` + **палитра** + FontSize/FontFamily + preview (Custom)
-  7. **Анимации** — speed + appear/dismiss + pulse/breath
+  7. **Анимации** — speed + appear/dismiss + pulse
   8. **Звуки** — packs + volumes
   9. **Иконки** — IslandIcons / Tabler / Lucide / Meteocons
 - Все `x:Name` контролов сохранены — `LoadUi` / `ReadUi` / `WireVolumeLabels` без ломки.
@@ -334,7 +335,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 - [ ] Morph Width base 420 мс Soft easing (× AnimationSpeed); Appear/Dismiss styles на Notification.
 - [ ] Unread: Notify++, Clear=0, Collapse сохраняет; cycle seed не ++.
 - [ ] Нет Open-Meteo / third-party weather HTTP.
-- [x] Clicks only (`ClickMaxPx=12`); swipe UI removed (1.8.1). Idle breath tokens documented.
+- [x] Clicks only (`ClickMaxPx=12`); swipe UI removed (1.8.1). Idle breath removed (see CHANGELOG unreleased).
 - [ ] Новые kinds описаны здесь и покрыты тестом в `NotifyIsland.Tests`.
 - [ ] CONTEXT.md не дублирует числа — ссылается сюда.
 - [ ] Settings — отдельный Window; tray меню только quick actions.

@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using Avalonia;
 using Avalonia.Controls;
@@ -23,16 +24,19 @@ public partial class SettingsWindow : Window
     private readonly Action? _onStartStopwatch;
     private bool _paletteWired;
     private bool _loadingUi;
+    private readonly Func<ClipboardHistory?> _getHistory;
 
-    public SettingsWindow() : this(new AppSettings(), _ => { }) { }
+    public SettingsWindow() : this(new AppSettings(), _ => { }, null) { }
 
-    public SettingsWindow(AppSettings live, Action<AppSettings> onApply, Action? onDemoBattery = null,
+    public SettingsWindow(AppSettings live, Action<AppSettings> onApply, Func<ClipboardHistory?>? getHistory = null,
+        Action? onDemoBattery = null,
         Action<int>? onStartTimer = null, Action? onStartStopwatch = null)
     {
         _live = live;
         _draft = new AppSettings();
         live.CopyTo(_draft);
         _onApply = onApply;
+        _getHistory = getHistory ?? (() => null);
         _onDemoBattery = onDemoBattery;
         _onStartTimer = onStartTimer;
         _onStartStopwatch = onStartStopwatch;
@@ -42,6 +46,7 @@ public partial class SettingsWindow : Window
         LoadUi();
         WireVolumeLabels();
         WirePalettePreview();
+        LoadClipboardHistory();
         Closing += OnClosing;
     }
 
@@ -78,6 +83,38 @@ public partial class SettingsWindow : Window
                 HoverDelayLabel.Text = $"{(int)HoverDelaySlider.Value}";
         };
     }
+
+    private void LoadClipboardHistory()
+    {
+        var history = _getHistory();
+        ClipboardHistoryList.ItemsSource = history?.SnapshotNewestFirst().Select(ClipboardItemVm.From).ToList()
+            ?? new List<ClipboardItemVm>();
+        ClipboardEmptyText.IsVisible = history is null || history.Count == 0;
+        ClipboardHistoryList.IsVisible = !ClipboardEmptyText.IsVisible;
+    }
+
+    private void OnClipboardItemClick(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        if (sender is not Avalonia.Controls.Border { DataContext: ClipboardItemVm vm } || vm.Source is null) return;
+        bool ok = vm.Source.Kind switch
+        {
+            ClipboardItemKind.Text => WindowsClipboardWriter.WriteText(vm.Source.Text ?? ""),
+            ClipboardItemKind.File or ClipboardItemKind.MultiFile =>
+                WindowsClipboardWriter.WriteFiles(vm.Source.Paths ?? new List<string>()),
+            _ => false
+        };
+        if (ok)
+        {
+            // Bump fresh push so the just-copied item is newest (user re-copied it).
+            _getHistory()?.Push(vm.Source);
+        }
+        ClipboardEmptyText.Text = ok
+            ? $"Скопировано в буфер · {vm.KindLabelRu} · {DateTime.Now:HH:mm:ss}"
+            : $"Не удалось записать в буфер ({vm.Source.Kind})";
+        ClipboardEmptyText.IsVisible = true;
+    }
+
+    /// <summary>View-model for one history item in the Settings list (see ClipboardItemVm.cs).</summary>
 
     private void WirePalettePreview()
     {
@@ -212,16 +249,17 @@ public partial class SettingsWindow : Window
         SelectByTag(OrientationBox, _draft.Orientation.ToString());
         SelectByTag(ZOrderBox, _draft.ZOrderMode.ToString());
         SelectByTag(SoundPackBox, _draft.SoundPack.ToString());
+        ClipboardEnabledBox.IsChecked = _draft.ClipboardEnabled;
+        SelectByTag(ClipboardMaxItemsBox, _draft.ClipboardMaxItems.ToString(CultureInfo.InvariantCulture));
+        SelectByTag(ClipboardClickActionBox, _draft.ClipboardClickAction.ToString());
         SelectByTag(AnimSpeedBox, _draft.AnimationSpeed.ToString());
         SelectByTag(AppearStyleBox, _draft.AppearStyle.ToString());
         SelectByTag(DismissStyleBox, _draft.DismissStyle.ToString());
         SelectByTag(AnimMorphInflateBox, _draft.AnimMorphInflate.ToString());
         SelectByTag(AnimMorphCollapseBox, _draft.AnimMorphCollapse.ToString());
         SelectByTag(AnimUnreadPulseBox, _draft.AnimUnreadPulse.ToString());
-        SelectByTag(AnimIdleBreathBox, _draft.AnimIdleBreath.ToString());
         SelectByTag(AnimHoverBox, _draft.AnimHover.ToString());
         AnimPulseEnabledBox.IsChecked = _draft.AnimPulseEnabled;
-        AnimBreathEnabledBox.IsChecked = _draft.AnimBreathEnabled;
         SelectByTag(IconPackBox, _draft.IconPack);
         SelectByTag(FontFamilyBox, _draft.FontFamily);
         SelectByTag(DateFormatBox, _draft.DateFormat.ToString());
@@ -394,6 +432,11 @@ public partial class SettingsWindow : Window
             _draft.ZOrderMode = z;
         if (Enum.TryParse<SoundPack>(SelectedTag(SoundPackBox), true, out var pack))
             _draft.SoundPack = pack;
+        _draft.ClipboardEnabled = ClipboardEnabledBox.IsChecked == true;
+        if (int.TryParse(SelectedTag(ClipboardMaxItemsBox), NumberStyles.Integer, CultureInfo.InvariantCulture, out var cm))
+            _draft.ClipboardMaxItems = cm;
+        if (Enum.TryParse<ClipboardClickAction>(SelectedTag(ClipboardClickActionBox), true, out var ca))
+            _draft.ClipboardClickAction = ca;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimSpeedBox), true, out var anim))
             _draft.AnimationSpeed = anim;
         if (Enum.TryParse<NotifyAppearStyle>(SelectedTag(AppearStyleBox), true, out var ap))
@@ -406,12 +449,9 @@ public partial class SettingsWindow : Window
             _draft.AnimMorphCollapse = mc;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimUnreadPulseBox), true, out var up))
             _draft.AnimUnreadPulse = up;
-        if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimIdleBreathBox), true, out var ib))
-            _draft.AnimIdleBreath = ib;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimHoverBox), true, out var hv))
             _draft.AnimHover = hv;
         _draft.AnimPulseEnabled = AnimPulseEnabledBox.IsChecked == true;
-        _draft.AnimBreathEnabled = AnimBreathEnabledBox.IsChecked == true;
 
         if (Enum.TryParse<DateFormat>(SelectedTag(DateFormatBox), true, out var df))
             _draft.DateFormat = df;
@@ -496,6 +536,7 @@ public partial class SettingsWindow : Window
         ("anim", "sparkles"),
         ("sound", "volume-2"),
         ("icons", "shapes"),
+        ("clipboard", "clipboard"),
     ];
 
     private void WireNav()

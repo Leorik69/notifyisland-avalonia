@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:CompileBindings="False"
         x:Class="NotifyIsland.SettingsWindow"
         Title="Настройки NotifyIsland"
         Width="720" Height="560"
@@ -159,6 +160,12 @@
             <StackPanel Orientation="Horizontal" Spacing="10">
               <Image x:Name="NavIcon_icons" Width="18" Height="18" Classes="navIcon"/>
               <TextBlock Text="Иконки" VerticalAlignment="Center"/>
+            </StackPanel>
+          </ListBoxItem>
+          <ListBoxItem Tag="clipboard">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Image x:Name="NavIcon_clipboard" Width="18" Height="18" Classes="navIcon"/>
+              <TextBlock Text="Буфер обмена" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
           </ListBox>
@@ -489,9 +496,6 @@
                        Text="Стили применяются при входе/выходе Notification. Demo (F9) циклически показывает разные appear/dismiss."/>
 
             <CheckBox x:Name="AnimPulseEnabledBox" Content="Pulse непрочитанных" Margin="0,12,0,2"/>
-            <CheckBox x:Name="AnimBreathEnabledBox" Content="Дыхание в простое"/>
-            <TextBlock Classes="mutedNote"
-                       Text="Мягкий пульс масштаба/ширины/свечения, когда островок свёрнут (Idle). Ослабевает при hover-peek, пауза при pin; выкл при уведомлении/медиа."/>
 
             <TextBlock Classes="fieldLabel" Text="Морф / появление (inflate)"/>
             <ComboBox x:Name="AnimMorphInflateBox" Width="260">
@@ -509,13 +513,6 @@
             </ComboBox>
             <TextBlock Classes="fieldLabel" Text="Pulse непрочитанных"/>
             <ComboBox x:Name="AnimUnreadPulseBox" Width="260">
-              <ComboBoxItem Tag="Slow" Content="Медленнее"/>
-              <ComboBoxItem Tag="Normal" Content="Обычная"/>
-              <ComboBoxItem Tag="Fast" Content="Быстрее"/>
-              <ComboBoxItem Tag="Off" Content="Выкл"/>
-            </ComboBox>
-            <TextBlock Classes="fieldLabel" Text="Дыхание (idle)"/>
-            <ComboBox x:Name="AnimIdleBreathBox" Width="260">
               <ComboBoxItem Tag="Slow" Content="Медленнее"/>
               <ComboBoxItem Tag="Normal" Content="Обычная"/>
               <ComboBoxItem Tag="Fast" Content="Быстрее"/>
@@ -594,6 +591,61 @@
                        Text="Пакеты: Tabler/Lucide (outline UI) и 4 стиля Meteocons (погода, Bas Milius MIT). SVG с SMIL; Avalonia.Svg.Skia рисует геометрию, анимация — Avalonia-motion (rotate/bob/pulse). См. docs/ICON_PACKS.md."/>
             <TextBlock Classes="mutedNote"
                        Text="Meteocons только для weather-*; остальные ключи — IslandIcons. При ошибке SVG — fallback IslandIcons."/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+        <ScrollViewer x:Name="Panel_clipboard" Classes="tabBody" IsVisible="False">
+          <StackPanel Spacing="12">
+            <Border Classes="settingsCard">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle" Text="Буфер обмена"/>
+                <TextBlock Classes="mutedNote"
+                           Text="Слушает системный буфер и показывает последнюю запись в островке. Чисто локально: история не уходит никуда, кроме памяти процесса."/>
+                <CheckBox x:Name="ClipboardEnabledBox" Content="Следить за буфером"/>
+                <TextBlock Classes="fieldLabel" Text="Размер истории"/>
+                <ComboBox x:Name="ClipboardMaxItemsBox" Width="200">
+                  <ComboBoxItem Tag="10" Content="10"/>
+                  <ComboBoxItem Tag="25" Content="25"/>
+                  <ComboBoxItem Tag="50" Content="50"/>
+                  <ComboBoxItem Tag="100" Content="100"/>
+                </ComboBox>
+                <TextBlock Classes="fieldLabel" Text="По клику на островок"/>
+                <ComboBox x:Name="ClipboardClickActionBox" Width="200">
+                  <ComboBoxItem Tag="Dismiss" Content="Просто закрыть"/>
+                  <ComboBoxItem Tag="DismissAndClear" Content="Закрыть и очистить буфер"/>
+                </ComboBox>
+                <TextBlock Classes="mutedNote"
+                           Text="v1 не вставляет в чужое окно автоматически — пользователь жмёт Ctrl+V сам. Это сохраняет focus у целевого приложения."/>
+              </StackPanel>
+            </Border>
+            <Border Classes="settingsCard">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle" Text="Последние элементы"/>
+                <TextBlock Classes="mutedNote"
+                           Text="Локальный ring buffer в памяти процесса. Клик по элементу — копирует его обратно в системный буфер, чтобы потом вставить в другом приложении через Ctrl+V."/>
+                <ItemsControl x:Name="ClipboardHistoryList" MaxHeight="320">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Classes="settingsCard" Margin="0,2" Padding="10,6" Cursor="Hand"
+                              Tag="{Binding}" PointerPressed="OnClipboardItemClick">
+                        <DockPanel LastChildFill="True">
+                          <TextBlock Text="{Binding KindGlyph}" Width="22" VerticalAlignment="Center" FontSize="14"/>
+                          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding TimeAgoRu}" Foreground="#888890" FontSize="11"/>
+                            <TextBlock Text="{Binding KindLabelRu}" Foreground="#5CB6FF" FontSize="11"/>
+                          </StackPanel>
+                          <StackPanel Margin="6,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" MaxWidth="460"/>
+                            <TextBlock Text="{Binding Subtitle}" Foreground="#888890" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="460"/>
+                          </StackPanel>
+                        </DockPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock x:Name="ClipboardEmptyText" Classes="mutedNote"
+                           Text="История пуста — скопируйте что-нибудь в другом приложении."/>
               </StackPanel>
             </Border>
           </StackPanel>
