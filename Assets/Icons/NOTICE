@@ -36,3 +36,11 @@ Meteocons — Fill / Flat / Line / Monochrome
   motion with Avalonia animations (see MeteoconsMotion.cs).
 
 Only icons needed by NotifyIsland keys are vendored.
+
+FontAudio digital glyphs (Assets/Icons/FontAudio/)
+  License: CC BY 4.0
+  Designed by: @fefanto
+  Source: https://github.com/fefanto/fontaudio · Iconify fad · https://allsvgicons.com/pack/fad/
+  Icons: digital0–digital9, digital-colon, digital-dot
+  See ATTRIBUTION.md + LICENSE in this folder.
+

@@ -21,6 +21,7 @@
 | Now Playing (SMTC) | `WindowsMediaSessionSource.cs` |
 | Battery / charging | `WindowsPowerSource.cs` + `NotifyIsland.Core/BatteryAlertLogic.cs` |
 | Timer / stopwatch | `NotifyIsland.Core/IslandTimerLogic.cs` + `OverlayMachine` SetTimer/Tick |
+| Digital clock (FontAudio) | `DigitalClockGlyphs` + `DigitalClockView` + `Assets/Icons/FontAudio/` |
 | Outline icons | `IslandIcons.cs`, `Assets/Icons/README.md` |
 | UI overlay | `OverlayWindow.axaml` + `.axaml.cs` |
 | Settings JSON | `NotifyIsland.Core/AppSettings.cs` → `%LOCALAPPDATA%/NotifyIsland/settings.json` |

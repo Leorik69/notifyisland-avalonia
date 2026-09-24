@@ -36,6 +36,13 @@
                    FontWeight="SemiBold"
                    Foreground="#FFFFFF"
                    Text="00:00" />
+        <!-- FontAudio digital segments (HH:mm[:ss]); toggled vs ClockText via DigitalClockEnabled -->
+        <StackPanel x:Name="DigitalClockRow"
+                    Orientation="Horizontal"
+                    Spacing="1"
+                    VerticalAlignment="Center"
+                    IsVisible="False"
+                    IsHitTestVisible="False" />
         <TextBlock x:Name="DateText"
                    VerticalAlignment="Center"
                    FontFamily="Segoe UI Variable, Inter, Segoe UI"

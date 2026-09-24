@@ -89,6 +89,12 @@ public sealed class AppSettings
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public DateFormat DateFormat { get; set; } = DateFormat.DayMonth;
 
+    /// <summary>FontAudio 7-segment digital clock glyphs instead of text HH:mm. Default ON.</summary>
+    public bool DigitalClockEnabled { get; set; } = true;
+
+    /// <summary>Show seconds (HH:mm:ss) on digital/text clock in collapsed Idle. Default OFF (narrow pill).</summary>
+    public bool ShowClockSeconds { get; set; } = false;
+
     /// <summary>Stock theme or Custom. Stock Apply overwrites palette/font/anim/icons/date.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ThemePreset ThemePreset { get; set; } = ThemePreset.Custom;
@@ -274,6 +280,8 @@ public sealed class AppSettings
         target.WeatherLocationMode = WeatherLocationMode;
         target.WeatherLocationName = string.IsNullOrWhiteSpace(WeatherLocationName) ? "Москва" : WeatherLocationName.Trim();
         target.DateFormat = DateFormat;
+        target.DigitalClockEnabled = DigitalClockEnabled;
+        target.ShowClockSeconds = ShowClockSeconds;
         target.ThemePreset = ThemePreset;
         target.WeatherSide = WeatherSide;
         target.ZOrderMode = ZOrderMode;

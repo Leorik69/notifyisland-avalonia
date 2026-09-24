@@ -217,6 +217,8 @@ public partial class SettingsWindow : Window
         SelectByTag(IconPackBox, _draft.IconPack);
         SelectByTag(FontFamilyBox, _draft.FontFamily);
         SelectByTag(DateFormatBox, _draft.DateFormat.ToString());
+        DigitalClockBox.IsChecked = _draft.DigitalClockEnabled;
+        ShowClockSecondsBox.IsChecked = _draft.ShowClockSeconds;
         SelectByTag(ThemePresetBox, _draft.ThemePreset.ToString());
         SelectByTag(WeatherLocationModeBox, _draft.WeatherLocationMode.ToString());
         WeatherLocationNameBox.Text = _draft.WeatherLocationName;
@@ -311,6 +313,8 @@ public partial class SettingsWindow : Window
         SelectByTag(AppearStyleBox, s.AppearStyle.ToString());
         SelectByTag(DismissStyleBox, s.DismissStyle.ToString());
         SelectByTag(DateFormatBox, s.DateFormat.ToString());
+        DigitalClockBox.IsChecked = s.DigitalClockEnabled;
+        ShowClockSecondsBox.IsChecked = s.ShowClockSeconds;
         SelectByTag(SoundPackBox, s.SoundPack.ToString());
         UpdatePreview();
     }
@@ -396,6 +400,8 @@ public partial class SettingsWindow : Window
 
         if (Enum.TryParse<DateFormat>(SelectedTag(DateFormatBox), true, out var df))
             _draft.DateFormat = df;
+        _draft.DigitalClockEnabled = DigitalClockBox.IsChecked == true;
+        _draft.ShowClockSeconds = ShowClockSecondsBox.IsChecked == true;
         if (Enum.TryParse<ThemePreset>(SelectedTag(ThemePresetBox), true, out var tp))
             _draft.ThemePreset = tp;
         if (Enum.TryParse<WeatherLocationMode>(SelectedTag(WeatherLocationModeBox), true, out var wlm))

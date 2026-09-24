@@ -11,6 +11,7 @@
 | **Meteocons Flat** | **MIT** | **вендор** | `Assets/Icons/MeteoconsFlat/` |
 | **Meteocons Line** | **MIT** | **вендор** | `Assets/Icons/MeteoconsLine/` |
 | **Meteocons Monochrome** | **MIT** | **вендор** | `Assets/Icons/MeteoconsMonochrome/` |
+| **FontAudio** (digital) | **CC BY 4.0** (@fefanto) | **вендор** | `Assets/Icons/FontAudio/` |
 | Phosphor / Fluent / Heroicons | MIT | research only | не вендорятся |
 
 Сводка лицензий: [`Assets/Icons/NOTICE`](../Assets/Icons/NOTICE).
@@ -64,6 +65,19 @@ CDN (справочно): `https://cdn.meteocons.com/latest/svg/{fill|flat|line|
 Meteocons применяется только к `weather-*`; остальные ключи (clock, notify, …) при выборе Meteocons → IslandIcons.
 
 Настройки → **Иконки** переключает пакет.
+
+
+## FontAudio digital clock (1.9.1+)
+
+Сегментные цифры для свёрнутых часов (не общий icon pack в настройках «Иконки»):
+
+| Key | Glyph |
+|---|---|
+| digital0…digital9 | digits |
+| digital-colon | `:` |
+| digital-dot | `.` |
+
+Источник: Iconify `fad` / [FontAudio](https://github.com/fefanto/fontaudio), лицензия **CC BY 4.0**. См. `Assets/Icons/FontAudio/ATTRIBUTION.md`.
 
 ## Не делаем
 

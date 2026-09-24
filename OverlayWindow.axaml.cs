@@ -48,6 +48,8 @@ public partial class OverlayWindow : Window
     private WinFormsTray? _winTray;
     private int _lastTrayUnread = -1;
     private Color _pillFill = Color.Parse("#080808");
+    private IBrush _clockBrush = Avalonia.Media.Brushes.White;
+    private double _clockDigitSize = 12;
     private double _idleFillA = 1.0;
     private readonly ScaleTransform _pillScale = new(1, 1);
     private readonly TransformGroup _pillTransforms = new();
@@ -210,6 +212,7 @@ public partial class OverlayWindow : Window
         var family = IslandFonts.Resolve(_settings.FontFamily);
         ClockText.FontSize = fs;
         ClockText.FontFamily = family;
+        _clockDigitSize = fs;
         DateText.FontSize = Math.Max(10, fs - 1);
         DateText.FontFamily = family;
         WeatherTempText.FontSize = fs;
@@ -469,7 +472,8 @@ public partial class OverlayWindow : Window
             (byte)Math.Min(255, accent.G + 30),
             (byte)Math.Min(255, accent.B + 20));
 
-        ClockText.Foreground = new SolidColorBrush(text);
+        _clockBrush = new SolidColorBrush(text);
+        ClockText.Foreground = _clockBrush;
         DateText.Foreground = new SolidColorBrush(textSec);
         WeatherTempText.Foreground = new SolidColorBrush(textSec);
         OverlayTitle.Foreground = new SolidColorBrush(text);
@@ -506,22 +510,28 @@ public partial class OverlayWindow : Window
         // Reorder: clock+date vs weather — Left = weather before clock
         var row = CollapsedRow;
         var clockText = ClockText;
+        var digital = DigitalClockRow;
         var dateText = DateText;
         var weather = MinimalWeather;
+        var battery = MinimalBattery;
         var dot = UnreadDot;
         row.Children.Clear();
         if (_settings.WeatherSide == WeatherSide.Left)
         {
             row.Children.Add(weather);
             row.Children.Add(clockText);
+            row.Children.Add(digital);
             row.Children.Add(dateText);
+            row.Children.Add(battery);
             row.Children.Add(dot);
         }
         else
         {
             row.Children.Add(clockText);
+            row.Children.Add(digital);
             row.Children.Add(dateText);
             row.Children.Add(weather);
+            row.Children.Add(battery);
             row.Children.Add(dot);
         }
     }
@@ -854,7 +864,20 @@ public partial class OverlayWindow : Window
     private void TickClock()
     {
         var now = DateTime.Now;
-        ClockText.Text = now.ToString("HH:mm", CultureInfo.InvariantCulture);
+        var showSeconds = _settings.ShowClockSeconds;
+        var formatted = DigitalClockGlyphs.FormatTime(now, showSeconds);
+        ClockText.Text = formatted;
+
+        var digitalOn = _settings.DigitalClockEnabled;
+        ClockText.IsVisible = !digitalOn;
+        DigitalClockRow.IsVisible = digitalOn;
+        if (digitalOn)
+        {
+            // Subtle colon blink once per second (lit on even seconds).
+            var colonLit = (now.Second % 2) == 0;
+            DigitalClockView.Apply(DigitalClockRow, formatted, _clockDigitSize, _clockBrush, colonLit);
+        }
+
         var dateFmt = _settings.DateFormat;
         if (dateFmt == DateFormat.Off)
         {
@@ -879,6 +902,11 @@ public partial class OverlayWindow : Window
             && _lastPower is { HasBattery: true }
             && snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed;
         var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge, batteryChip);
+        if (snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed)
+        {
+            if (_settings.ShowClockSeconds)
+                w += DigitalClockGlyphs.SecondsExtraCollapsedW;
+        }
 
         // If idle breath is morphing width, measure from the settled base so we don't spuriously morph.
         var fromW = _breathActive && _breathBaseW > 0

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.1 — FontAudio digital segment clock
+
+### Added
+- **Digital clock** on Idle/Collapsed overlay: FontAudio (`fad`) 7-segment SVGs `HH:mm` (optional `HH:mm:ss`).
+- Vendored icons: `digital0`…`digital9`, `digital-colon`, `digital-dot` under `Assets/Icons/FontAudio/` (CC BY 4.0, @fefanto). Offline — no Iconify at runtime.
+- Settings → **Островок**: «Цифровые часы (FontAudio)» (`DigitalClockEnabled`, default **ON**); «Показывать секунды» (`ShowClockSeconds`, default OFF).
+- Subtle colon opacity blink once per second; glyphs tint with theme text color (`currentColor`).
+- Core helper `DigitalClockGlyphs` + UI `DigitalClockView`; xUnit mapping tests.
+
+### Changed
+- Version **1.9.1**. Text clock remains as fallback when digital toggle is OFF. Date chip unchanged. No clipped clock glyph.
+
+### Note
+- SMTC, battery, timer, clicks-only, idle breath preserved. No hover-expand. Attribution: `Assets/Icons/FontAudio/ATTRIBUTION.md`.
+
 ## 1.9.0 — Timer / stopwatch in the capsule
 
 ### Added

@@ -46,6 +46,8 @@ public class AppSettingsTests
         Assert.True(s.AnimPulseEnabled);
         Assert.True(s.AnimBreathEnabled);
         Assert.Equal(DateFormat.DayMonth, s.DateFormat);
+        Assert.True(s.DigitalClockEnabled);
+        Assert.False(s.ShowClockSeconds);
         Assert.Equal(ThemePreset.Custom, s.ThemePreset);
         Assert.Equal(WeatherLocationMode.Windows, s.WeatherLocationMode);
         Assert.Equal("Москва", s.WeatherLocationName);
@@ -101,6 +103,8 @@ public class AppSettingsTests
             AppearStyle = NotifyAppearStyle.Pop,
             DismissStyle = NotifyDismissStyle.Glitch,
             DateFormat = DateFormat.Numeric,
+            DigitalClockEnabled = false,
+            ShowClockSeconds = true,
             ThemePreset = ThemePreset.Ocean,
             WeatherLocationMode = WeatherLocationMode.Manual,
             WeatherLocationName = "Санкт-Петербург",
@@ -157,6 +161,8 @@ public class AppSettingsTests
         Assert.Equal(NotifyAppearStyle.Pop, back.AppearStyle);
         Assert.Equal(NotifyDismissStyle.Glitch, back.DismissStyle);
         Assert.Equal(DateFormat.Numeric, back.DateFormat);
+        Assert.False(back.DigitalClockEnabled);
+        Assert.True(back.ShowClockSeconds);
         Assert.Equal(ThemePreset.Ocean, back.ThemePreset);
         Assert.Equal(WeatherLocationMode.Manual, back.WeatherLocationMode);
         Assert.Equal("Санкт-Петербург", back.WeatherLocationName);
@@ -218,6 +224,8 @@ public class AppSettingsTests
             AppearStyle = NotifyAppearStyle.SlideDown,
             DismissStyle = NotifyDismissStyle.SlideUp,
             DateFormat = DateFormat.FullShort,
+            DigitalClockEnabled = false,
+            ShowClockSeconds = true,
             ThemePreset = ThemePreset.NothingDark,
             WeatherLocationMode = WeatherLocationMode.Manual,
             WeatherLocationName = "Казань",
@@ -247,6 +255,8 @@ public class AppSettingsTests
         Assert.Equal(NotifyAppearStyle.SlideDown, b.AppearStyle);
         Assert.Equal(NotifyDismissStyle.SlideUp, b.DismissStyle);
         Assert.Equal(DateFormat.FullShort, b.DateFormat);
+        Assert.False(b.DigitalClockEnabled);
+        Assert.True(b.ShowClockSeconds);
         Assert.Equal(ThemePreset.NothingDark, b.ThemePreset);
         Assert.Equal(WeatherLocationMode.Manual, b.WeatherLocationMode);
         Assert.Equal("Казань", b.WeatherLocationName);

@@ -105,6 +105,12 @@
               <ComboBoxItem Tag="Numeric" Content="24.09"/>
               <ComboBoxItem Tag="FullShort" Content="ср, 24 сен"/>
             </ComboBox>
+            <CheckBox x:Name="DigitalClockBox" Content="Цифровые часы (FontAudio)" Margin="0,12,0,0"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Сегментные цифры FontAudio (CC BY 4.0, @fefanto). Выкл — обычный текстовый HH:mm. Старая иконка часов не используется."/>
+            <CheckBox x:Name="ShowClockSecondsBox" Content="Показывать секунды"/>
+            <TextBlock Classes="mutedNote"
+                       Text="По умолчанию выкл в свёрнутом (узкая капсула). Вкл — HH:mm:ss и мигающее двоеточие."/>
             <TextBlock Classes="mutedNote"
                        Text="Иконка часов убрана — вместо неё дата (обновляется с таймером часов). Позиция только через «Расположение» (край + смещение X/Y)."/>
           </StackPanel>
