@@ -19,7 +19,9 @@
 | Timer / charging-style alerts (progress/timer/error) | есть |
 | Compact ↔ expanded morph (width-only) | есть (явный timer morph) |
 | Top-center capsule | Edge=Top + Offset |
-| Fullscreen-safe / no-activate overlay | Win32 no-activate + z-order |
+| Fullscreen-safe / no-activate overlay | Win32 no-activate + z-order + **hide on fullscreen (1.10.0)** |
+| Hover expand + click pin | **есть (1.10.0)** |
+| Seconds strip (FontAudio digital-dot) | **есть (1.10.0)** |
 | Weather (Windows-only) | есть |
 | Tray | WinForms NotifyIcon |
 | Settings tabs | есть |
@@ -143,8 +145,8 @@ FSM: `OverlayMachine` / `OverlayKind`.
 2. Вертикальный режим (Orientation=Vertical или Auto на Left/Right): ширина = `CollapsedH`, морф по **высоте** (длинная ось).
 3. CornerRadius = `min(Width,Height) / 2` (пиксель-капсула).
 4. Notify инкрементит `UnreadCount`; `Clear` сбрасывает; `Collapse` **сохраняет** unread.
-5. Клик (движение ≤ **12 px**) по Idle/Collapsed → `ms-actioncenter:`.
-6. Right-click → быстрое меню (Demo / Погода / Свернуть / **Настройки…** / Выход). Полные настройки — только в окне Settings (§7).
+5. Idle/Collapsed: **одинарный клик** → pin/unpin (`ClickPinEnabled`); **двойной клик** → `ms-actioncenter:`; Esc → unpin. (1.10.0; раньше single = Action Center.)
+6. Right-click → быстрое меню (Центр уведомлений / Demo / Погода / Свернуть / **Настройки…** / Выход). Полные настройки — только в окне Settings (§7).
 7. CycleNext/Prev (API) **не** инкрементит unread (Notification slot = demo seed). UI-свайпов нет.
 
 ---
@@ -153,14 +155,19 @@ FSM: `OverlayMachine` / `OverlayKind`.
 
 | Константа | Значение | Смысл |
 |---|---:|---|
-| `ClickMaxPx` | **12** | ≤12 px → click (Action Center на Idle/Collapsed) |
+| `ClickMaxPx` | **12** | ≤12 px → click (pin на Idle/Collapsed; double → Action Center) |
+| `HoverExpandDelayMs` | **250** | hover → peek |
+| `HoverCollapseGraceMs` | **500** | leave grace |
+| `IdlePeekExtraW` | **20** | extra width while peek/pin |
 | (legacy) `SwipeFirePx` / `SwipeRubberMs` | 48 / 180 | **не используются** UI; оставлены для совместимости |
 
 - Свайп L/R/U/D **не** циклит слоты и **не** expand/collapse.
 - `CycleNext` / `CyclePrev` остаются в `OverlayMachine` для API / unit-тестов / demo.
-- ПКМ → контекстное меню; Media Prev/Play/Next — отдельные кнопки; F9–F11 demos — клавиатура.
+- ПКМ → контекстное меню; Media Prev/Play/Next — отдельные кнопки; F9–F12 demos — клавиатура.
+- Hover-peek / click-pin: Core `HoverPinMachine` (1.10.0). Без свайпов.
+- Fullscreen: `HideOnFullscreen` → hide via `Win32Overlay.IsFullscreenOrBusy`; optional click-through.
 
-### Idle breath (усилен 1.8.1)
+### Idle breath (усилен 1.8.1; soften 1.10.0)
 | Токен | Значение |
 |---|---:|
 | `BreathPeriodMs` | **2600** |
@@ -168,7 +175,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | `BreathWidthAmpPx` | **±7** |
 | `BreathGlowAmp` | **0.14** |
 
-Только Idle/Collapsed при `AnimBreathEnabled` (default ON). Стоп на notification/media/battery/expanded.
+Только Idle/Collapsed при `AnimBreathEnabled` (default ON). Стоп на notification/media/battery/expanded. Soften (~25%) на hover-peek; пауза при pin.
 
 ---
 
@@ -272,7 +279,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 - Геометрия окна Settings persist: `SettingsWindowX/Y/Width/Height` (отдельно от OffsetX/Y островка); default ~**520×640**.
 - UI: Avalonia **`TabControl`** по категориям (тёмная тема `#1C1C1E`), не один длинный scroll-pile. Низ окна — DockPanel: Отмена / Применить / OK.
 - Вкладки (RU):
-  1. **Островок** — `IslandVisible` + **`DateFormat`** (Off|DayMonth|WeekdayShort|WeekdayDay|Numeric|FullShort; default DayMonth). Иконка часов убрана.
+  1. **Островок** — `IslandVisible` + **`DateFormat`** + digital clock + **hover/pin/fullscreen** (1.10.0). Иконка часов убрана.
   2. **Погода** — `WeatherEnabled`, `WeatherSide`, **`WeatherLocationMode`** (Windows|Manual), `WeatherLocationName`, lat/lon + пресеты городов. Заметка: температура из Windows; при Manual — выбранное имя на expanded/tooltip. Без third-party HTTP.
   3. **Расположение** — `Edge` (Top/Bottom/Left/Right), `OffsetX`/`OffsetY`, `Orientation` (Auto|Horizontal|Vertical)
   4. **Тема** — `ThemePreset`: NothingDark | AppleQuiet | Ocean | Custom. Сток Apply перезаписывает палитру/шрифт/анимации/иконки/дату/звук; расхождение → Custom; кнопка «Перейти в кастом».

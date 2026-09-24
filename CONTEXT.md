@@ -4,7 +4,7 @@
 
 ## Что это
 **NotifyIsland** — плавающая капсула (Dynamic Island–style) для **Windows 11** на **Avalonia / .NET 8**.  
-Показывает часы, непрочитанные, уведомления, прогресс, медиа, таймер, **погоду**; клик открывает Action Center; свайпы в стиле Xiaomi переключают виджеты.
+Показывает часы, непрочитанные, уведомления, прогресс, медиа, таймер, **погоду**; hover-peek + click-pin; двойной клик / меню — Action Center; полноэкранное скрытие; **без свайпов**.
 
 Репозиторий: https://github.com/Leorik69/notifyisland-avalonia  
 Ветка разработки: `fix/win11-stability-build` · PR: https://github.com/Leorik69/notifyisland-avalonia/pull/8
@@ -22,13 +22,15 @@
 | Battery / charging | `WindowsPowerSource.cs` + `NotifyIsland.Core/BatteryAlertLogic.cs` |
 | Timer / stopwatch | `NotifyIsland.Core/IslandTimerLogic.cs` + `OverlayMachine` SetTimer/Tick |
 | Digital clock (FontAudio) | `DigitalClockGlyphs` + `DigitalClockView` + `Assets/Icons/FontAudio/` |
+| Seconds strip (digital-dot) | `SecondsStripLogic` + `SecondsStripView` |
 | Outline icons | `IslandIcons.cs`, `Assets/Icons/README.md` |
 | UI overlay | `OverlayWindow.axaml` + `.axaml.cs` |
 | Settings JSON | `NotifyIsland.Core/AppSettings.cs` → `%LOCALAPPDATA%/NotifyIsland/settings.json` |
 | Layout helpers | `NotifyIsland.Core/IslandLayout.cs` |
 | Settings UI | `SettingsWindow.axaml(.cs)` — отдельный Window |
 | Tray | `TrayService.cs` + `Assets/tray*.png` |
-| Z-order | `Win32Overlay.ApplyZOrder` |
+| Z-order / fullscreen | `Win32Overlay.ApplyZOrder` / `IsFullscreenOrBusy` |
+| Hover + pin | `NotifyIsland.Core/HoverPinMachine.cs` |
 | Sounds | `IslandSounds.cs` + `Assets/Sounds/{nothing,ios,system}/` (packs; SystemSounds fallback) |
 | Как собирать | этот файл + `README.md` |
 
@@ -75,11 +77,11 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 ## Функционал: есть / убрать / добавить
 Кратко (детали — в GUIDELINES §5 / §10):
 
-**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); idle breath; tray + Settings window; WeatherSide; Edge+Offset; Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; **timer/stopwatch 1.9.0**; demo; tests+CI.
+**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); **hover expand + click pin 1.10.0**; **hide on fullscreen 1.10.0**; idle breath; tray + Settings window; WeatherSide; Edge+Offset; Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; timer/stopwatch; FontAudio digital clock; demo; tests+CI.
 
 **Убрать/не раздувать:** demo как продукт; Open-Meteo; Xiaomi pull-down / swipe gestures; detached second island.
 
-**Добавить позже:** timer hover-expand polish; deeper CsWinRT geolocation; file shelf / clipboard / launcher.
+**Добавить позже:** deeper CsWinRT geolocation; file shelf / clipboard / launcher.
 
 ## Погода — откуда данные?
 **Не Open-Meteo.** Конвейер Windows-only: WinRT geolocation (когда доступен) → Bing Weather / Widgets local cache → on-disk cache → `LocalStubWeather` (Sandbox). См. GUIDELINES §10.
@@ -99,9 +101,14 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 
 ## Ввод (клики)
 Жесты свайпа **убраны** (1.8.1). `ClickMaxPx=12` — GUIDELINES §3b / OverlayTokens. `CycleNext`/`CyclePrev` остаются в FSM для тестов/API.
+- Idle/Collapsed: **одинарный клик** = pin/unpin; **двойной клик** = Action Center; Esc = unpin.
+- Hover (~250 ms) → peek (секунды + ширина); leave → grace ~500 мс.
+
+## Fullscreen
+`HideOnFullscreen` (default ON): `SHQueryUserNotificationState` + monitor-cover → Hide; restore on leave. Optional click-through if hide off.
 
 ## Idle breath
-`BreathScaleAmp=0.04`, `BreathWidthAmpPx=7`, `BreathGlowAmp=0.14`, `BreathPeriodMs=2600` — только Idle/Collapsed при `AnimBreathEnabled`.
+`BreathScaleAmp=0.04`, `BreathWidthAmpPx=7`, `BreathGlowAmp=0.14`, `BreathPeriodMs=2600` — только Idle/Collapsed при `AnimBreathEnabled`. Soften on hover-peek; pause while pinned.
 
 ## Как подключать контекст в инструментах
 1. **Cursor / Copilot / любой агент:** открыть репо → прочитать `CONTEXT.md`, затем `docs/ISLAND_GUIDELINES.md`, затем `OverlayTokens.cs`.

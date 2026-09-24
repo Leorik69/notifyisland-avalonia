@@ -62,6 +62,13 @@ public partial class OverlayWindow : Window
     private double _breathBaseW;
     private double _breathBaseH;
     private bool _hoverWired;
+    private readonly HoverPinMachine _hoverPin = new();
+    private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromMilliseconds(OverlayTokens.FullscreenPollMs) };
+    private bool _hiddenByFullscreen;
+    private bool _clickThroughActive;
+    private bool _pointerOverPill;
+    private DateTime _lastPillClickUtc = DateTime.MinValue;
+    private bool _peekSecondsActive;
 
     // Explicit width/height morph (Avalonia Window Width Transitions are unreliable).
     private readonly DispatcherTimer _morphTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
@@ -110,6 +117,7 @@ public partial class OverlayWindow : Window
 
         EnableMorphTransitions();
         WirePointerClicks();
+        ConfigureHoverPinFromSettings();
         SeedIcons();
         ApplyWeatherSide();
         ApplyPalette();
@@ -166,8 +174,10 @@ public partial class OverlayWindow : Window
             _machine.Tick(200);
             var after = _machine.Snapshot().Kind;
             if (before != after) OnKindChanged(before, after);
+            var hoverChanged = TickHoverPin(200);
             Paint();
-            if (before != after) ApplySize();
+            UpdateSecondsStrip();
+            if (before != after || hoverChanged) ApplySize();
             var unread = _machine.UnreadCount;
             if (unread != _lastTrayUnread)
             {
@@ -187,9 +197,11 @@ public partial class OverlayWindow : Window
         };
         _weatherTimer.Tick += (_, _) => _ = RefreshWeatherAsync();
 
+        _fullscreenTimer.Tick += (_, _) => PollFullscreen();
         _clock.Start();
         _tick.Start();
         _weatherTimer.Start();
+        _fullscreenTimer.Start();
         TickClock();
         ApplySize();
         Paint();
@@ -261,14 +273,22 @@ public partial class OverlayWindow : Window
         _hoverWired = true;
         Pill.PointerEntered += (_, _) =>
         {
-            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#55FFFFFF"));
+            _pointerOverPill = true;
+            Pill.BorderBrush = new SolidColorBrush(Color.Parse(
+                _hoverPin.IsPinned ? "#88FFFFFF" : "#55FFFFFF"));
             Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, Math.Min(1.0, _idleFillA + 0.06)));
             IslandSounds.Play(IslandSoundKind.Hover, _settings);
+            OnPillHoverEnter();
         };
         Pill.PointerExited += (_, _) =>
         {
-            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#28FFFFFF"));
-            ApplyOpacity();
+            _pointerOverPill = false;
+            if (!_hoverPin.IsPinned)
+            {
+                Pill.BorderBrush = new SolidColorBrush(Color.Parse("#28FFFFFF"));
+                ApplyOpacity();
+            }
+            OnPillHoverLeave();
         };
     }
 
@@ -381,6 +401,9 @@ public partial class OverlayWindow : Window
     private void SyncBreathing(bool shouldBreath)
     {
         var breathSpeed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimIdleBreath);
+        // Pause idle breath while click-pinned; hover-peek softens amplitude in OnBreathTick.
+        if (_hoverPin.IsPinned)
+            shouldBreath = false;
         if (!shouldBreath || !_settings.AnimBreathEnabled || !AnimationTiming.IsEnabled(breathSpeed))
         {
             StopBreathing();
@@ -434,16 +457,18 @@ public partial class OverlayWindow : Window
         _breathPhase += (Math.PI * 2.0) * (33.0 / Math.Max(1, period));
         if (_breathPhase > Math.PI * 2.0) _breathPhase -= Math.PI * 2.0;
         var wave = Math.Sin(_breathPhase);
+        // Soften while hover-peek (not pinned — pinned pauses breath entirely).
+        var soft = _hoverPin.SoftenBreath && !_hoverPin.IsPinned ? 0.25 : 1.0;
         // Visible idle life: scale ~1.0↔1.04 (+ slight X bias), width ±7px, fill glow pulse.
-        var sy = 1.0 + OverlayTokens.BreathScaleAmp * wave;
-        var sx = sy + OverlayTokens.BreathScaleXExtra * wave;
+        var sy = 1.0 + OverlayTokens.BreathScaleAmp * soft * wave;
+        var sx = sy + OverlayTokens.BreathScaleXExtra * soft * wave;
         _pillScale.ScaleX = sx;
         _pillScale.ScaleY = sy;
-        var w = Math.Max(40, _breathBaseW + OverlayTokens.BreathWidthAmpPx * wave);
+        var w = Math.Max(40, _breathBaseW + OverlayTokens.BreathWidthAmpPx * soft * wave);
         Width = w;
         Pill.Width = w;
         Pill.CornerRadius = new CornerRadius(Math.Min(w, Pill.Height > 0 ? Pill.Height : _breathBaseH) / 2);
-        var glow = Math.Clamp(_idleFillA + OverlayTokens.BreathGlowAmp * wave, 0.35, 1.0);
+        var glow = Math.Clamp(_idleFillA + OverlayTokens.BreathGlowAmp * soft * wave, 0.35, 1.0);
         Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, glow));
         // Soft border shimmer synced with breath
         var borderA = 0.16 + 0.14 * (0.5 + 0.5 * wave);
@@ -589,7 +614,7 @@ public partial class OverlayWindow : Window
         {
             var kind = _machine.Snapshot().Kind;
             if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
-                TrayService.OpenActionCenter();
+                HandleIdlePillClick();
             else if (kind == OverlayKind.Timer)
             {
                 // Click keeps timer visible with controls (already expanded overlay).
@@ -615,6 +640,7 @@ public partial class OverlayWindow : Window
     private void OpenContextMenu()
     {
         var menu = new ContextMenu();
+        menu.Items.Add(Menu("Центр уведомлений", TrayService.OpenActionCenter));
         menu.Items.Add(Menu("Demo F9", () => { if (_demoOn) StopDemo(); else StartDemo(); }));
         menu.Items.Add(Menu("Демо зарядки F10", DemoChargePill));
         menu.Items.Add(Menu("Демо низкий заряд F11", DemoLowBattery));
@@ -705,6 +731,14 @@ public partial class OverlayWindow : Window
         ApplyOpacity();
         ApplyTypography();
         ApplyAnimationSettings();
+        ConfigureHoverPinFromSettings();
+        _hiddenByFullscreen = false;
+        if (_clickThroughActive)
+        {
+            _clickThroughActive = false;
+            Win32Overlay.ApplyClickThrough(this, false);
+        }
+        PollFullscreen();
         _lastWeatherIconKey = ""; // force weather icon reload for new pack
         SeedIcons();
         ApplyIslandVisibility();
@@ -830,6 +864,14 @@ public partial class OverlayWindow : Window
         }
         else if (e.Key == Key.Escape)
         {
+            if (_hoverPin.IsContentExpanded)
+            {
+                _hoverPin.EscapeOrUnpin();
+                SyncBreathingAfterHover();
+                ApplySize(); Paint();
+                e.Handled = true;
+                return;
+            }
             var before = _machine.Snapshot().Kind;
             _machine.Dispatch(OverlayCommand.Collapse);
             OnKindChanged(before, _machine.Snapshot().Kind);
@@ -864,7 +906,8 @@ public partial class OverlayWindow : Window
     private void TickClock()
     {
         var now = DateTime.Now;
-        var showSeconds = _settings.ShowClockSeconds;
+        var showSeconds = _settings.ShowClockSeconds || _hoverPin.IsContentExpanded;
+        _peekSecondsActive = showSeconds && !_settings.ShowClockSeconds && _hoverPin.IsContentExpanded;
         var formatted = DigitalClockGlyphs.FormatTime(now, showSeconds);
         ClockText.Text = formatted;
 
@@ -893,6 +936,7 @@ public partial class OverlayWindow : Window
         var kind = _machine.Snapshot().Kind;
         if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
             CollapsedRow.IsVisible = true;
+        UpdateSecondsStrip();
     }
 
     private void ApplySize()
@@ -905,8 +949,12 @@ public partial class OverlayWindow : Window
         var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge, batteryChip);
         if (snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed)
         {
-            if (_settings.ShowClockSeconds)
+            var peek = _hoverPin.IsContentExpanded;
+            var showSeconds = _settings.ShowClockSeconds || peek;
+            if (showSeconds)
                 w += DigitalClockGlyphs.SecondsExtraCollapsedW;
+            if (peek)
+                w += OverlayTokens.IdlePeekExtraW;
         }
 
         // If idle breath is morphing width, measure from the settled base so we don't spuriously morph.
@@ -1235,7 +1283,8 @@ public partial class OverlayWindow : Window
         var kind = snap.Kind;
         var p = snap.Payload;
         var overlayOn = kind is OverlayKind.Notification or OverlayKind.Progress or OverlayKind.Media
-            or OverlayKind.Timer or OverlayKind.Error or OverlayKind.Expanded or OverlayKind.Weather;
+            or OverlayKind.Timer or OverlayKind.Error or OverlayKind.Expanded or OverlayKind.Weather
+            or OverlayKind.Battery;
 
         OverlayPanel.IsVisible = overlayOn;
         CollapsedRow.IsVisible = !overlayOn;
@@ -1348,7 +1397,15 @@ public partial class OverlayWindow : Window
 
         SyncBreathing(!overlayOn);
 
-        ToolTip.SetTip(this, kind == OverlayKind.Idle ? "NotifyIsland" : OverlayTitle.Text);
+        var tip = kind switch
+        {
+            OverlayKind.Idle or OverlayKind.Collapsed when _hoverPin.IsPinned =>
+                "Закреплено · клик — открепить · Esc · двойной клик — Центр уведомлений",
+            OverlayKind.Idle or OverlayKind.Collapsed =>
+                "Клик — закрепить · двойной клик — Центр уведомлений",
+            _ => OverlayTitle.Text
+        };
+        ToolTip.SetTip(this, tip);
     }
 
     private void SetKindIcon(OverlayKind kind)
@@ -1702,5 +1759,226 @@ public partial class OverlayWindow : Window
     }
 
     private void OnTimerCancel(object? sender, RoutedEventArgs e) => CancelTimer();
+
+    /// <summary>
+    /// FontAudio digital-dot seconds strip along bottom of Idle/Collapsed (incl. hover/pin peek).
+    /// Hidden while expanded overlay kinds show OverlayProgress / panel.
+    /// </summary>
+    private void UpdateSecondsStrip()
+    {
+        try
+        {
+            var kind = _machine.Snapshot().Kind;
+            var idle = kind is OverlayKind.Idle or OverlayKind.Collapsed;
+            var show = idle && _settings.ShowSecondsStrip && _settings.IslandVisible && !_hiddenByFullscreen;
+            if (!show)
+            {
+                SecondsStrip.IsVisible = false;
+                return;
+            }
+
+            var pillW = Pill.Width > 0 ? Pill.Width : Width;
+            if (pillW <= 0) pillW = OverlayTokens.CollapsedW;
+            var slots = SecondsStripLogic.SlotCountForWidth(pillW, SecondsStripView.DotWidth + 1.5);
+            var lit = SecondsStripLogic.LitCount(DateTime.Now, slots);
+            // Prefer accent; fall back to primary text
+            var brush = new SolidColorBrush(ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex));
+            var ok = SecondsStripView.Apply(SecondsStrip, slots, lit, brush);
+            SecondsStrip.IsVisible = ok;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("UpdateSecondsStrip failed", ex);
+            try { SecondsStrip.IsVisible = false; } catch { /* ignore */ }
+        }
+    }
+
+    private void ConfigureHoverPinFromSettings()
+
+    {
+        _hoverPin.Configure(
+            _settings.HoverExpandEnabled,
+            _settings.ClickPinEnabled,
+            _settings.HoverExpandDelayMs,
+            _settings.HoverCollapseGraceMs);
+        SyncBreathingAfterHover();
+    }
+
+    private bool TickHoverPin(int deltaMs)
+    {
+        var kind = _machine.Snapshot().Kind;
+        if (kind is not (OverlayKind.Idle or OverlayKind.Collapsed))
+        {
+            if (_hoverPin.Phase != HoverPinPhase.Collapsed)
+            {
+                _hoverPin.ResetToCollapsed();
+                return true;
+            }
+            return false;
+        }
+        var changed = _hoverPin.Tick(deltaMs);
+        if (changed)
+        {
+            SyncBreathingAfterHover();
+            TickClock();
+        }
+        return changed;
+    }
+
+    private void OnPillHoverEnter()
+    {
+        var kind = _machine.Snapshot().Kind;
+        if (kind is not (OverlayKind.Idle or OverlayKind.Collapsed)) return;
+        var before = _hoverPin.IsContentExpanded;
+        _hoverPin.PointerEnter();
+        if (_hoverPin.IsContentExpanded != before || _hoverPin.Phase == HoverPinPhase.HoverPending)
+            SyncBreathingAfterHover();
+    }
+
+    private void OnPillHoverLeave()
+    {
+        var before = _hoverPin.IsContentExpanded;
+        _hoverPin.PointerLeave();
+        if (_hoverPin.IsContentExpanded != before)
+        {
+            SyncBreathingAfterHover();
+            ApplySize();
+            Paint();
+            TickClock();
+        }
+    }
+
+    private void SyncBreathingAfterHover()
+    {
+        var snap = _machine.Snapshot();
+        var overlayOn = IsOverlayKind(snap.Kind);
+        SyncBreathing(!overlayOn);
+        if (_hoverPin.IsPinned)
+            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#88FFFFFF"));
+    }
+
+    /// <summary>
+    /// Idle/Collapsed click: single → pin/unpin; double (≤400 ms) → Action Center.
+    /// When ClickPinEnabled is off, single click opens Action Center (compat).
+    /// </summary>
+    private void HandleIdlePillClick()
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _lastPillClickUtc).TotalMilliseconds < 400)
+        {
+            _lastPillClickUtc = DateTime.MinValue;
+            TrayService.OpenActionCenter();
+            return;
+        }
+        _lastPillClickUtc = now;
+
+        if (!_settings.ClickPinEnabled)
+        {
+            TrayService.OpenActionCenter();
+            return;
+        }
+
+        var wasPinned = _hoverPin.IsPinned;
+        _hoverPin.ClickTogglePin();
+        if (!wasPinned && _hoverPin.IsPinned)
+            IslandSounds.Play(IslandSoundKind.Expand, _settings);
+        else if (wasPinned && !_hoverPin.IsPinned)
+            IslandSounds.Play(IslandSoundKind.Collapse, _settings);
+
+        // If we unpinned but pointer is still over, restart hover peek promptly.
+        if (!_hoverPin.IsPinned && _pointerOverPill && _settings.HoverExpandEnabled)
+            _hoverPin.PointerEnter();
+
+        SyncBreathingAfterHover();
+        TickClock();
+        ApplySize();
+        Paint();
+    }
+
+    /// <summary>
+    /// Hide (preferred) or click-through while exclusive/fullscreen. Fail-soft.
+    /// Does not mutate IslandVisible setting — restores when leaving fullscreen.
+    /// </summary>
+    private void PollFullscreen()
+    {
+        try
+        {
+            if (!_settings.IslandVisible)
+            {
+                // User hid island — do not fight; clear transient fullscreen flags.
+                if (_clickThroughActive)
+                {
+                    _clickThroughActive = false;
+                    Win32Overlay.ApplyClickThrough(this, false);
+                }
+                _hiddenByFullscreen = false;
+                return;
+            }
+
+            var fs = Win32Overlay.IsFullscreenOrBusy();
+            if (fs)
+            {
+                if (_settings.HideOnFullscreen)
+                {
+                    if (!_hiddenByFullscreen)
+                    {
+                        _hiddenByFullscreen = true;
+                        if (_clickThroughActive)
+                        {
+                            _clickThroughActive = false;
+                            Win32Overlay.ApplyClickThrough(this, false);
+                        }
+                        Opacity = 0;
+                        IsHitTestVisible = false;
+                        Hide();
+                        AppLog.Info("Fullscreen detected — island hidden");
+                    }
+                }
+                else if (_settings.ClickThroughOnFullscreen)
+                {
+                    if (!_clickThroughActive)
+                    {
+                        _clickThroughActive = true;
+                        Win32Overlay.ApplyClickThrough(this, true);
+                        AppLog.Info("Fullscreen detected — click-through");
+                    }
+                    if (_hiddenByFullscreen)
+                    {
+                        _hiddenByFullscreen = false;
+                        Show();
+                        Opacity = 1;
+                        IsHitTestVisible = true;
+                        Win32Overlay.ApplyNoActivate(this);
+                        Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
+                        PlaceIsland();
+                    }
+                }
+            }
+            else
+            {
+                if (_hiddenByFullscreen)
+                {
+                    _hiddenByFullscreen = false;
+                    Show();
+                    Opacity = 1;
+                    IsHitTestVisible = true;
+                    Win32Overlay.ApplyNoActivate(this);
+                    Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
+                    PlaceIsland();
+                    AppLog.Info("Left fullscreen — island restored");
+                }
+                if (_clickThroughActive)
+                {
+                    _clickThroughActive = false;
+                    Win32Overlay.ApplyClickThrough(this, false);
+                    Win32Overlay.ApplyNoActivate(this);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("PollFullscreen failed", ex);
+        }
+    }
 }
 

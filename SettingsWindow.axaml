@@ -110,7 +110,23 @@
                        Text="Сегментные цифры FontAudio (CC BY 4.0, @fefanto). Выкл — обычный текстовый HH:mm. Старая иконка часов не используется."/>
             <CheckBox x:Name="ShowClockSecondsBox" Content="Показывать секунды"/>
             <TextBlock Classes="mutedNote"
-                       Text="По умолчанию выкл в свёрнутом (узкая капсула). Вкл — HH:mm:ss и мигающее двоеточие."/>
+                       Text="По умолчанию выкл в свёрнутом (узкая капсула). Вкл — HH:mm:ss и мигающее двоеточие. При наведении секунды показываются временно даже если выкл."/>
+            <CheckBox x:Name="ShowSecondsStripBox" Content="Секундная полоска (digital-dot)"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Тонкий ряд FontAudio digital-dot по нижнему краю капсулы — прогресс секунд в текущей минуте. Дополняет часы, не заменяет."/>
+            <CheckBox x:Name="HoverExpandBox" Content="Раскрывать при наведении" Margin="0,12,0,0"/>
+            <TextBlock Classes="fieldLabel" Text="Задержка наведения (мс)"/>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Slider x:Name="HoverDelaySlider" Width="220" Minimum="0" Maximum="1000" TickFrequency="50"/>
+              <TextBlock x:Name="HoverDelayLabel" Text="250" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+            </StackPanel>
+            <CheckBox x:Name="ClickPinBox" Content="Клик закрепляет раскрытие"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Одинарный клик — закрепить/открепить. Двойной клик — Центр уведомлений. Esc — открепить. Без свайпов."/>
+            <CheckBox x:Name="HideOnFullscreenBox" Content="Скрывать в полноэкранном режиме" Margin="0,12,0,0"/>
+            <CheckBox x:Name="ClickThroughFullscreenBox" Content="Click-through вместо скрытия (если скрытие выкл)"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Предпочтительно скрывать. Click-through — запасной вариант, когда HideOnFullscreen выкл."/>
             <TextBlock Classes="mutedNote"
                        Text="Иконка часов убрана — вместо неё дата (обновляется с таймером часов). Позиция только через «Расположение» (край + смещение X/Y)."/>
           </StackPanel>
@@ -377,7 +393,7 @@
             <CheckBox x:Name="AnimPulseEnabledBox" Content="Pulse непрочитанных" Margin="0,12,0,2"/>
             <CheckBox x:Name="AnimBreathEnabledBox" Content="Дыхание в простое"/>
             <TextBlock Classes="mutedNote"
-                       Text="Мягкий пульс масштаба/ширины/свечения, когда островок свёрнут (Idle). Выкл при уведомлении/медиа."/>
+                       Text="Мягкий пульс масштаба/ширины/свечения, когда островок свёрнут (Idle). Ослабевает при hover-peek, пауза при pin; выкл при уведомлении/медиа."/>
 
             <TextBlock Classes="fieldLabel" Text="Морф / появление (inflate)"/>
             <ComboBox x:Name="AnimMorphInflateBox" Width="260">

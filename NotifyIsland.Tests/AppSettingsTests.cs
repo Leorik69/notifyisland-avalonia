@@ -48,6 +48,13 @@ public class AppSettingsTests
         Assert.Equal(DateFormat.DayMonth, s.DateFormat);
         Assert.True(s.DigitalClockEnabled);
         Assert.False(s.ShowClockSeconds);
+        Assert.True(s.ShowSecondsStrip);
+        Assert.True(s.HoverExpandEnabled);
+        Assert.Equal(OverlayTokens.HoverExpandDelayMs, s.HoverExpandDelayMs);
+        Assert.Equal(OverlayTokens.HoverCollapseGraceMs, s.HoverCollapseGraceMs);
+        Assert.True(s.ClickPinEnabled);
+        Assert.True(s.HideOnFullscreen);
+        Assert.False(s.ClickThroughOnFullscreen);
         Assert.Equal(ThemePreset.Custom, s.ThemePreset);
         Assert.Equal(WeatherLocationMode.Windows, s.WeatherLocationMode);
         Assert.Equal("Москва", s.WeatherLocationName);
@@ -105,6 +112,13 @@ public class AppSettingsTests
             DateFormat = DateFormat.Numeric,
             DigitalClockEnabled = false,
             ShowClockSeconds = true,
+            ShowSecondsStrip = false,
+            HoverExpandEnabled = false,
+            HoverExpandDelayMs = 100,
+            HoverCollapseGraceMs = 300,
+            ClickPinEnabled = false,
+            HideOnFullscreen = false,
+            ClickThroughOnFullscreen = true,
             ThemePreset = ThemePreset.Ocean,
             WeatherLocationMode = WeatherLocationMode.Manual,
             WeatherLocationName = "Санкт-Петербург",
@@ -163,6 +177,13 @@ public class AppSettingsTests
         Assert.Equal(DateFormat.Numeric, back.DateFormat);
         Assert.False(back.DigitalClockEnabled);
         Assert.True(back.ShowClockSeconds);
+        Assert.False(back.ShowSecondsStrip);
+        Assert.False(back.HoverExpandEnabled);
+        Assert.Equal(100, back.HoverExpandDelayMs);
+        Assert.Equal(300, back.HoverCollapseGraceMs);
+        Assert.False(back.ClickPinEnabled);
+        Assert.False(back.HideOnFullscreen);
+        Assert.True(back.ClickThroughOnFullscreen);
         Assert.Equal(ThemePreset.Ocean, back.ThemePreset);
         Assert.Equal(WeatherLocationMode.Manual, back.WeatherLocationMode);
         Assert.Equal("Санкт-Петербург", back.WeatherLocationName);
@@ -176,13 +197,15 @@ public class AppSettingsTests
     [Fact]
     public void Normalize_ClampsOpacityAndVolume()
     {
-        var s = new AppSettings { Opacity = 0.1, SoundVolume = 2.0, SoundVolHover = 3.0, FontSize = 99, LowBatteryPercent = 99 };
+        var s = new AppSettings { Opacity = 0.1, SoundVolume = 2.0, SoundVolHover = 3.0, FontSize = 99, LowBatteryPercent = 99, HoverExpandDelayMs = 9999, HoverCollapseGraceMs = -5 };
         s.Normalize();
         Assert.Equal(0.35, s.Opacity);
         Assert.Equal(1.0, s.SoundVolume);
         Assert.Equal(1.0, s.SoundVolHover);
         Assert.Equal(18, s.FontSize);
         Assert.Equal(50, s.LowBatteryPercent);
+        Assert.Equal(2000, s.HoverExpandDelayMs);
+        Assert.Equal(0, s.HoverCollapseGraceMs);
     }
 
     [Fact]
@@ -226,6 +249,12 @@ public class AppSettingsTests
             DateFormat = DateFormat.FullShort,
             DigitalClockEnabled = false,
             ShowClockSeconds = true,
+            ShowSecondsStrip = false,
+            HoverExpandEnabled = false,
+            HoverExpandDelayMs = 80,
+            ClickPinEnabled = false,
+            HideOnFullscreen = false,
+            ClickThroughOnFullscreen = true,
             ThemePreset = ThemePreset.NothingDark,
             WeatherLocationMode = WeatherLocationMode.Manual,
             WeatherLocationName = "Казань",
@@ -257,6 +286,12 @@ public class AppSettingsTests
         Assert.Equal(DateFormat.FullShort, b.DateFormat);
         Assert.False(b.DigitalClockEnabled);
         Assert.True(b.ShowClockSeconds);
+        Assert.False(b.ShowSecondsStrip);
+        Assert.False(b.HoverExpandEnabled);
+        Assert.Equal(80, b.HoverExpandDelayMs);
+        Assert.False(b.ClickPinEnabled);
+        Assert.False(b.HideOnFullscreen);
+        Assert.True(b.ClickThroughOnFullscreen);
         Assert.Equal(ThemePreset.NothingDark, b.ThemePreset);
         Assert.Equal(WeatherLocationMode.Manual, b.WeatherLocationMode);
         Assert.Equal("Казань", b.WeatherLocationName);

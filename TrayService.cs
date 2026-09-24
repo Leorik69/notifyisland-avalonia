@@ -11,7 +11,8 @@ namespace NotifyIsland;
 
 /// <summary>
 /// System tray (notify area): outline IslandIcons-style tray.png / tray-unread.png.
-/// Left-click: show/hide island. Right-click: NativeMenu. Double-click: Action Center.
+/// Left-click: show/hide island. Right-click: NativeMenu. Double-click / menu: Action Center.
+/// Pill single-click pins; pill double-click opens Action Center (see OverlayWindow).
 /// </summary>
 internal sealed class TrayService : IDisposable
 {
@@ -73,8 +74,12 @@ internal sealed class TrayService : IDisposable
                 d.Shutdown();
         };
 
+        var actionCenter = new NativeMenuItem("Центр уведомлений");
+        actionCenter.Click += (_, _) => OpenActionCenter();
+
         var menu = new NativeMenu();
         menu.Add(settings);
+        menu.Add(actionCenter);
         menu.Add(_toggleIsland);
         menu.Add(_toggleDemo);
         menu.Add(_toggleWeather);

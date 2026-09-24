@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.10.0 — Hover expand + click pin + hide on fullscreen
+
+### Added
+- **Hover expand**: hover Idle/Collapsed ~250 ms → peek richer idle (digital clock + seconds, date, weather/battery chips as enabled); leave → collapse after ~500 ms grace (re-enter cancels).
+- **Click pin**: single click toggles pinned expanded Idle; survives pointer leave until click again or **Esc**.
+- **Action Center**: pill **double-click** + tray/context menu «Центр уведомлений» (single click no longer opens AC).
+- **Hide on fullscreen**: `SHQueryUserNotificationState` (D3D fullscreen / busy / presentation) + monitor-covering check; hide overlay (preferred). Optional `ClickThroughOnFullscreen` when hide is off. Fail-soft.
+- Settings → **Островок**: `HoverExpandEnabled` (ON), hover delay ms, `ClickPinEnabled` (ON), `HideOnFullscreen` (ON), click-through secondary.
+- **Seconds strip**: FontAudio `digital-dot` row along bottom inside edge of Idle/Collapsed (hover/pin too) — minute progress 0→59. Settings «Секундная полоска (digital-dot)» (`ShowSecondsStrip`, default ON). Core `SecondsStripLogic` + UI `SecondsStripView`.
+- Core: `HoverPinMachine` + xUnit state-machine tests. Tokens: `HoverExpandDelayMs`, `HoverCollapseGraceMs`, `IdlePeekExtraW`, `FullscreenPollMs`.
+
+### Changed
+- Version **1.10.0**. Idle breath softens on hover-peek, pauses while pinned. FontAudio HH:mm clock + digital-dot strip / timer / SMTC / battery / clicks-only preserved — **no swipes**.
+
+### Note
+- No file shelf / clipboard / launcher.
+
 ## 1.9.1 — FontAudio digital segment clock
 
 ### Added

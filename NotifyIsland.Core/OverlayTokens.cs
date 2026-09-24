@@ -57,6 +57,15 @@ public static class OverlayTokens
     /// Icon DIP matched to island FontSize.
     /// Clock/weather: FontSize × 1.0; kind glyph: FontSize × 0.92 (clamped 9–20).
     /// </summary>
+    /// <summary>Hover → peek delay (ms) before richer idle content.</summary>
+    public const int HoverExpandDelayMs = 250;
+    /// <summary>Pointer-leave grace before collapsing hover peek (ms).</summary>
+    public const int HoverCollapseGraceMs = 500;
+    /// <summary>Extra collapsed width while hover-peek / pinned (beyond seconds).</summary>
+    public const double IdlePeekExtraW = 20;
+    /// <summary>Fullscreen poll interval (ms).</summary>
+    public const int FullscreenPollMs = 500;
+
     public static double IconDip(double fontSize, double factor = IconFontFactorCollapsed)
     {
         var fs = fontSize <= 0 ? 12 : fontSize;

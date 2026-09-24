@@ -70,7 +70,11 @@ internal sealed class WinFormsTray : IDisposable
                 Dispatcher.UIThread.Post(() => d.Shutdown());
         };
 
+        var actionCenter = new ToolStripMenuItem("Центр уведомлений");
+        actionCenter.Click += (_, _) => OpenActionCenter();
+
         menu.Items.Add(settings);
+        menu.Items.Add(actionCenter);
         menu.Items.Add(_toggleIsland);
         menu.Items.Add(_toggleDemo);
         menu.Items.Add(_toggleWeather);

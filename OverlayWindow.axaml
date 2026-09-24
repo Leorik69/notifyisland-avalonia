@@ -224,6 +224,17 @@
                    Text="" />
       </DockPanel>
 
+      <!-- FontAudio digital-dot seconds strip (Idle/Collapsed); complementary to HH:mm[:ss] -->
+      <StackPanel x:Name="SecondsStrip"
+                  Orientation="Horizontal"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Bottom"
+                  Margin="10,0,10,2"
+                  Spacing="1.5"
+                  Height="8"
+                  IsVisible="False"
+                  IsHitTestVisible="False" />
+
       <ProgressBar x:Name="OverlayProgress"
                    Height="2"
                    Minimum="0" Maximum="100"

@@ -95,6 +95,30 @@ public sealed class AppSettings
     /// <summary>Show seconds (HH:mm:ss) on digital/text clock in collapsed Idle. Default OFF (narrow pill).</summary>
     public bool ShowClockSeconds { get; set; } = false;
 
+    /// <summary>FontAudio digital-dot seconds progress strip at capsule bottom. Default ON.</summary>
+    public bool ShowSecondsStrip { get; set; } = true;
+
+    /// <summary>Hover over Idle/Collapsed expands to richer peek after delay. Default ON.</summary>
+    public bool HoverExpandEnabled { get; set; } = true;
+
+    /// <summary>Hover delay before peek (ms). Default 250.</summary>
+    public int HoverExpandDelayMs { get; set; } = OverlayTokens.HoverExpandDelayMs;
+
+    /// <summary>Pointer-leave grace before collapsing peek (ms). Default 500.</summary>
+    public int HoverCollapseGraceMs { get; set; } = OverlayTokens.HoverCollapseGraceMs;
+
+    /// <summary>Single click toggles pinned expanded Idle. Default ON.</summary>
+    public bool ClickPinEnabled { get; set; } = true;
+
+    /// <summary>Hide island while exclusive/fullscreen foreground. Default ON.</summary>
+    public bool HideOnFullscreen { get; set; } = true;
+
+    /// <summary>
+    /// When HideOnFullscreen is off: make overlay click-through during fullscreen.
+    /// Secondary; default OFF. Prefer hide.
+    /// </summary>
+    public bool ClickThroughOnFullscreen { get; set; } = false;
+
     /// <summary>Stock theme or Custom. Stock Apply overwrites palette/font/anim/icons/date.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ThemePreset ThemePreset { get; set; } = ThemePreset.Custom;
@@ -282,6 +306,13 @@ public sealed class AppSettings
         target.DateFormat = DateFormat;
         target.DigitalClockEnabled = DigitalClockEnabled;
         target.ShowClockSeconds = ShowClockSeconds;
+        target.ShowSecondsStrip = ShowSecondsStrip;
+        target.HoverExpandEnabled = HoverExpandEnabled;
+        target.HoverExpandDelayMs = Math.Clamp(HoverExpandDelayMs, 0, 2000);
+        target.HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 3000);
+        target.ClickPinEnabled = ClickPinEnabled;
+        target.HideOnFullscreen = HideOnFullscreen;
+        target.ClickThroughOnFullscreen = ClickThroughOnFullscreen;
         target.ThemePreset = ThemePreset;
         target.WeatherSide = WeatherSide;
         target.ZOrderMode = ZOrderMode;
@@ -353,6 +384,8 @@ public sealed class AppSettings
         LowBatteryPercent = BatteryAlertLogic.ClampLowPercent(
             LowBatteryPercent <= 0 ? BatteryAlertLogic.DefaultLowPercent : LowBatteryPercent);
         TimerDefaultMinutes = IslandTimerLogic.ClampPresetMinutes(TimerDefaultMinutes);
+        HoverExpandDelayMs = Math.Clamp(HoverExpandDelayMs, 0, 2000);
+        HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 3000);
     }
 
     /// <summary>Accept #RGB / #RRGGBB / #AARRGGBB; fallback on parse failure.</summary>

@@ -69,6 +69,11 @@ public partial class SettingsWindow : Window
             if (e.Property == Slider.ValueProperty)
                 TimerDefaultLabel.Text = $"{(int)TimerDefaultSlider.Value}";
         };
+        HoverDelaySlider.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == Slider.ValueProperty)
+                HoverDelayLabel.Text = $"{(int)HoverDelaySlider.Value}";
+        };
     }
 
     private void WirePalettePreview()
@@ -219,6 +224,13 @@ public partial class SettingsWindow : Window
         SelectByTag(DateFormatBox, _draft.DateFormat.ToString());
         DigitalClockBox.IsChecked = _draft.DigitalClockEnabled;
         ShowClockSecondsBox.IsChecked = _draft.ShowClockSeconds;
+        ShowSecondsStripBox.IsChecked = _draft.ShowSecondsStrip;
+        HoverExpandBox.IsChecked = _draft.HoverExpandEnabled;
+        HoverDelaySlider.Value = Math.Clamp(_draft.HoverExpandDelayMs, 0, 1000);
+        HoverDelayLabel.Text = $"{(int)HoverDelaySlider.Value}";
+        ClickPinBox.IsChecked = _draft.ClickPinEnabled;
+        HideOnFullscreenBox.IsChecked = _draft.HideOnFullscreen;
+        ClickThroughFullscreenBox.IsChecked = _draft.ClickThroughOnFullscreen;
         SelectByTag(ThemePresetBox, _draft.ThemePreset.ToString());
         SelectByTag(WeatherLocationModeBox, _draft.WeatherLocationMode.ToString());
         WeatherLocationNameBox.Text = _draft.WeatherLocationName;
@@ -402,6 +414,12 @@ public partial class SettingsWindow : Window
             _draft.DateFormat = df;
         _draft.DigitalClockEnabled = DigitalClockBox.IsChecked == true;
         _draft.ShowClockSeconds = ShowClockSecondsBox.IsChecked == true;
+        _draft.HoverExpandEnabled = HoverExpandBox.IsChecked == true;
+        _draft.HoverExpandDelayMs = (int)Math.Clamp(HoverDelaySlider.Value, 0, 1000);
+        _draft.HoverCollapseGraceMs = OverlayTokens.HoverCollapseGraceMs;
+        _draft.ClickPinEnabled = ClickPinBox.IsChecked == true;
+        _draft.HideOnFullscreen = HideOnFullscreenBox.IsChecked == true;
+        _draft.ClickThroughOnFullscreen = ClickThroughFullscreenBox.IsChecked == true;
         if (Enum.TryParse<ThemePreset>(SelectedTag(ThemePresetBox), true, out var tp))
             _draft.ThemePreset = tp;
         if (Enum.TryParse<WeatherLocationMode>(SelectedTag(WeatherLocationModeBox), true, out var wlm))
