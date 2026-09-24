@@ -23,12 +23,28 @@
           ClipToBounds="False"
           RenderTransformOrigin="50%,50%">
     <Grid>
-      <!-- Collapsed: time + optional date + optional weather + unread dot (no clock icon) -->
+      <!-- Collapsed: visible ‹/› chevrons + clock/date/weather + unread dot.
+           When clipboard cycle is active (≥2 items), clock is hidden and the
+           preview + nav hint take its place; chevrons appear as clickable
+           cycle-prev / cycle-next buttons on the edges. -->
       <StackPanel x:Name="CollapsedRow"
                   Orientation="Horizontal"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   Spacing="6">
+        <Button x:Name="CyclePrevButton"
+                Classes="cycleChevron"
+                VerticalAlignment="Center"
+                Padding="6,0"
+                FontSize="14"
+                FontWeight="SemiBold"
+                Foreground="#9CC4FF"
+                Background="Transparent"
+                BorderThickness="0"
+                Cursor="Hand"
+                IsVisible="False"
+                Click="OnCyclePrevClick"
+                Content="‹" />
         <TextBlock x:Name="ClockText"
                    VerticalAlignment="Center"
                    FontFamily="Segoe UI Variable, Inter, Segoe UI"
@@ -53,7 +69,20 @@
                    FontWeight="Medium"
                    Foreground="#888890"
                    IsVisible="False"
-                   Text="‹ 1/3 ›" />
+                   Text="1/3" />
+        <Button x:Name="CycleNextButton"
+                Classes="cycleChevron"
+                VerticalAlignment="Center"
+                Padding="6,0"
+                FontSize="14"
+                FontWeight="SemiBold"
+                Foreground="#9CC4FF"
+                Background="Transparent"
+                BorderThickness="0"
+                Cursor="Hand"
+                IsVisible="False"
+                Click="OnCycleNextClick"
+                Content="›" />
         <!-- FontAudio digital segments (HH:mm[:ss]); toggled vs ClockText via DigitalClockEnabled -->
         <StackPanel x:Name="DigitalClockRow"
                     Orientation="Horizontal"
