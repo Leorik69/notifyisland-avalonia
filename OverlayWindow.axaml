@@ -107,6 +107,15 @@
                    FontWeight="Medium"
                    Foreground="#C8C8CC"
                    Text="24 сен" />
+        <TextBlock x:Name="PeekFullDateText"
+                   VerticalAlignment="Center"
+                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                   FontSize="11"
+                   FontWeight="Medium"
+                   Foreground="#888890"
+                   IsVisible="False"
+                   TextTrimming="CharacterEllipsis"
+                   MaxWidth="200" />
         <StackPanel x:Name="MinimalWeather"
                     Orientation="Horizontal"
                     Spacing="4"
@@ -146,6 +155,18 @@
                 Opacity="0"
                 IsHitTestVisible="False"
                 BoxShadow="0 0 12 4 #E05CB6FF" />
+        <Border x:Name="PinnedBadge"
+                IsVisible="False"
+                CornerRadius="4"
+                Background="#28FFFFFF"
+                Padding="4,1"
+                VerticalAlignment="Center">
+          <TextBlock Text="закреп"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="9"
+                     FontWeight="SemiBold"
+                     Foreground="#C8C8CC" />
+        </Border>
       </StackPanel>
 
       <!-- Expanded single-row: icon | title/subtitle | badge | (system-stats expanded when SystemStats kind) -->

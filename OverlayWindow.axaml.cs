@@ -69,6 +69,7 @@ public partial class OverlayWindow : Window
     private bool _pointerOverPill;
     private DateTime _lastPillClickUtc = DateTime.MinValue;
     private bool _peekSecondsActive;
+    private DispatcherTimer? _peekAutoHide;
 
     // Explicit width/height morph (Avalonia Window Width Transitions are unreliable).
     private readonly DispatcherTimer _morphTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
@@ -156,7 +157,7 @@ public partial class OverlayWindow : Window
             AppLog.Warn("WinFormsTray ctor failed — falling back to Avalonia TrayService", ex);
             try
             {
-                _tray ??= new TrayService(this);
+                _tray ??= new TrayService(this, _clipboardHistory);
                 _tray.RefreshIcon(_machine.UnreadCount);
             }
             catch (Exception ex2)
@@ -181,7 +182,7 @@ public partial class OverlayWindow : Window
             {
                 try
                 {
-                    _tray ??= new TrayService(this);
+                    _tray ??= new TrayService(this, _clipboardHistory);
                     _tray.RefreshIcon(_machine.UnreadCount);
                 }
                 catch (Exception ex)
@@ -1407,6 +1408,9 @@ var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orie
             _ => OverlayTitle.Text
         };
         ToolTip.SetTip(this, tip);
+
+        // PinnedBadge only makes sense on Idle/Collapsed — overlays already have their own affordances.
+        PinnedBadge.IsVisible = kind is OverlayKind.Idle or OverlayKind.Collapsed && _hoverPin.IsPinned;
     }
 
     private void SetKindIcon(OverlayKind kind)
@@ -1940,17 +1944,65 @@ var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orie
             if (_hoverPin.Phase != HoverPinPhase.Collapsed)
             {
                 _hoverPin.ResetToCollapsed();
+                HidePeekFullDate();
                 return true;
             }
             return false;
         }
+        var wasExpanded = _hoverPin.IsContentExpanded;
         var changed = _hoverPin.Tick(deltaMs);
+        var isExpanded = _hoverPin.IsContentExpanded;
+        if (isExpanded && !wasExpanded)
+            ShowPeekFullDate();
+        else if (!isExpanded && wasExpanded)
+            HidePeekFullDate();
         if (changed)
         {
             ApplyPinnedBorderVisual();
             TickClock();
         }
-        return changed;
+        return changed || (!wasExpanded && isExpanded) || (wasExpanded && !isExpanded);
+    }
+
+    private void ShowPeekFullDate()
+    {
+        PeekFullDateText.Text = DateFormatHelper.Format(DateTime.Now, DateFormat.FullShort);
+        PeekFullDateText.IsVisible = true;
+        StartPeekAutoHide();
+    }
+
+    private void HidePeekFullDate()
+    {
+        PeekFullDateText.IsVisible = false;
+        _peekAutoHide?.Stop();
+    }
+
+    private void StartPeekAutoHide()
+    {
+        if (_hoverPin.IsPinned) return;
+        _peekAutoHide ??= new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(OverlayTokens.PeekAutoHideMs)
+        };
+        _peekAutoHide.Tick -= OnPeekAutoHide;
+        _peekAutoHide.Tick += OnPeekAutoHide;
+        _peekAutoHide.Start();
+    }
+
+    private void OnPeekAutoHide(object? sender, EventArgs e)
+    {
+        if (_hoverPin.IsPinned)
+        {
+            _peekAutoHide?.Stop();
+            return;
+        }
+        _peekAutoHide?.Stop();
+        // Simulate pointer leaving so the hover-pin machine collapses on its own.
+        _hoverPin.PointerLeave();
+        PeekFullDateText.IsVisible = false;
+        ApplySize();
+        Paint();
+        TickClock();
     }
 
     private void OnPillHoverEnter()
@@ -1959,6 +2011,8 @@ var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orie
         if (kind is not (OverlayKind.Idle or OverlayKind.Collapsed)) return;
         var before = _hoverPin.IsContentExpanded;
         _hoverPin.PointerEnter();
+        if (_hoverPin.IsContentExpanded && !_hoverPin.IsPinned)
+            StartPeekAutoHide();
         if (_hoverPin.IsContentExpanded != before || _hoverPin.Phase == HoverPinPhase.HoverPending)
             ApplyPinnedBorderVisual();
     }

@@ -114,4 +114,16 @@ public static class OverlayTokens
     public const int    FirstAppearWobbleMs  = MorphMs / 2;
     /// <summary>Horizontal wobble amplitude (DIP) on first appear.</summary>
     public const double FirstAppearWobblePx  = 1.0;
+
+    // -- Hover-peek (1.12.0) -----------------------------------------------
+    /// <summary>Idle time before an un-pinned hover-peek auto-hides (ms).</summary>
+    public const int    PeekAutoHideMs          = 1_200;
+    /// <summary>Duration of the peek width morph (ms).</summary>
+    public const int    PeekMorphMs             = 200;
+    /// <summary>Extra pill width for the full-date row during peek (DIP).</summary>
+    public const double PeekExtraFullDateW      = 120.0;
+
+    // -- Tray menu (1.12.0) -------------------------------------------------
+    /// <summary>Maximum entries surfaced in the tray clipboard submenu.</summary>
+    public const int    TrayClipboardSubmenuItems = 5;
 }
