@@ -148,7 +148,7 @@ public sealed class OverlayMachine
     {
         Kind = _kind,
         Payload = Clone(_payload),
-        Width = WidthFor(_kind, _weatherEnabled),
+        Width = WidthFor(_kind, _weatherEnabled, statsMetricCount: StatsMetricCount),
         Height = HeightFor(_kind),
         NotifyMsLeft = Math.Max(0, _notifyMs),
         UnreadCount = _unreadCount,
@@ -247,7 +247,6 @@ public sealed class OverlayMachine
                     _returnTo = _kind == OverlayKind.Collapsed ? OverlayKind.Idle : _kind;
                 _kind = OverlayKind.SystemStats;
                 Apply(data);
-                _payload.AutoCollapse = data.AutoCollapse;   // authoritative; set after Apply
                 _statsIdleMs = 0.0;
                 break;
             case OverlayCommand.SetClipboard:
@@ -311,7 +310,7 @@ public sealed class OverlayMachine
         var dt = Math.Max(0, deltaMs);
         if (_kind == OverlayKind.SystemStats)
         {
-            _statsIdleMs += deltaMs;
+            _statsIdleMs += dt;
             if (_payload.AutoCollapse && _statsIdleMs >= OverlayTokens.StatsAutoCollapseMs)
             {
                 _kind = OverlayKind.Idle;

@@ -101,5 +101,20 @@ public class AdaptiveStatsLayoutTests
         Assert.NotNull(outSnap.Payload.SystemStats);
         Assert.Equal(42.5, outSnap.Payload.SystemStats!.CpuPercent);
         Assert.Equal(4096L, outSnap.Payload.SystemStats.RamTotalBytes);
+        Assert.False(outSnap.Payload.AutoCollapse);
+    }
+
+    [Fact]
+    public void StatsPillWidth_WidthForArmFollowsMetricCount()
+    {
+        var m = new OverlayMachine { StatsMetricCount = 4 };
+        m.Dispatch(OverlayCommand.SetSystemStats, new OverlayPayload
+        {
+            SystemStats = new SystemSnapshot { CpuPercent = 10, RamTotalBytes = 1024 },
+            AutoCollapse = false
+        });
+        var snap = m.Snapshot();
+        Assert.Equal(OverlayKind.SystemStats, snap.Kind);
+        Assert.Equal(StatsLayout.StatsPillWidth(4), snap.Width);
     }
 }
