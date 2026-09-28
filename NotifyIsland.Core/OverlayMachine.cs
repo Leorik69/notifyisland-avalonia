@@ -94,7 +94,7 @@ public sealed class OverlayPayload
     public IReadOnlyList<string> ClipboardCyclePreviews { get; set; } = Array.Empty<string>();
     /// <summary>Live machine metrics; null when System Stats is disabled or sampling failed.</summary>
     public SystemSnapshot? SystemStats { get; set; }
-    /// <summary>Mirrors AppSettings.SystemStatsAutoCollapse. Assigned after Apply so it is authoritative.</summary>
+    /// <summary>Mirrors AppSettings.SystemStatsAutoCollapse. Gates the Tick auto-collapse for the SystemStats kind.</summary>
     public bool AutoCollapse { get; set; } = true;
 }
 
