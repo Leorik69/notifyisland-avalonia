@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Xunit;
 
@@ -58,5 +59,47 @@ public class AdaptiveStatsLayoutTests
         {
             Assert.True(widths[i] >= widths[i - 1], $"count {i} narrower than {i - 1}");
         }
+    }
+
+    [Fact]
+    public void SystemStats_AutoCollapseFlagRespected()
+    {
+        var m = new OverlayMachine();
+        var snap = new SystemSnapshot { CpuPercent = 20, RamTotalBytes = 1024, CapturedAt = DateTimeOffset.UtcNow };
+
+        // AutoCollapse on > collapses back to Idle after the token interval.
+        m.Dispatch(OverlayCommand.SetSystemStats, new OverlayPayload
+        {
+            SystemStats = snap,
+            AutoCollapse = true
+        });
+        Assert.Equal(OverlayKind.SystemStats, m.Snapshot().Kind);
+        m.Tick(OverlayTokens.StatsAutoCollapseMs + 1);
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
+
+        // AutoCollapse off > stays expanded.
+        m.Dispatch(OverlayCommand.SetSystemStats, new OverlayPayload
+        {
+            SystemStats = snap,
+            AutoCollapse = false
+        });
+        m.Tick(OverlayTokens.StatsAutoCollapseMs + 1);
+        Assert.Equal(OverlayKind.SystemStats, m.Snapshot().Kind);
+    }
+
+    [Fact]
+    public void SystemStats_SetCommand_CarriesSnapshotThroughToSnapshot()
+    {
+        var m = new OverlayMachine();
+        var snap = new SystemSnapshot { CpuPercent = 42.5, RamTotalBytes = 4096, CapturedAt = DateTimeOffset.UtcNow };
+        m.Dispatch(OverlayCommand.SetSystemStats, new OverlayPayload
+        {
+            SystemStats = snap,
+            AutoCollapse = false
+        });
+        var outSnap = m.Snapshot();
+        Assert.NotNull(outSnap.Payload.SystemStats);
+        Assert.Equal(42.5, outSnap.Payload.SystemStats!.CpuPercent);
+        Assert.Equal(4096L, outSnap.Payload.SystemStats.RamTotalBytes);
     }
 }

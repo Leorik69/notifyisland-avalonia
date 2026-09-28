@@ -16,7 +16,8 @@ public enum OverlayKind
     Error,
     Weather,
     Battery,
-    Clipboard
+    Clipboard,
+    SystemStats
 }
 
 public enum OverlayCommand
@@ -38,7 +39,8 @@ public enum OverlayCommand
     SetClipboard,
     SetClipboardCycle,
     CycleClipboardNext,
-    CycleClipboardPrev
+    CycleClipboardPrev,
+    SetSystemStats
 }
 
 /// <summary>Discriminator for the latest clipboard item the island is showing.</summary>
@@ -90,6 +92,10 @@ public sealed class OverlayPayload
     public string ClipboardCyclePreview { get; set; } = "";
     /// <summary>Per-item previews for the cycle browser (newest first). Empty when not cycling.</summary>
     public IReadOnlyList<string> ClipboardCyclePreviews { get; set; } = Array.Empty<string>();
+    /// <summary>Live machine metrics; null when System Stats is disabled or sampling failed.</summary>
+    public SystemSnapshot? SystemStats { get; set; }
+    /// <summary>Mirrors AppSettings.SystemStatsAutoCollapse. Assigned after Apply so it is authoritative.</summary>
+    public bool AutoCollapse { get; set; } = true;
 }
 
 public sealed class OverlaySnapshot
@@ -117,6 +123,7 @@ public sealed class OverlayMachine
     private OverlayPayload _lastWeather = WeatherCodes.MockMoscow();
     private List<string> _cyclePreviews = new();
     private int _cycleIndex = -1;
+    private double _statsIdleMs;
 
     public int NotifyDurationMs
     {
@@ -131,6 +138,9 @@ public sealed class OverlayMachine
         get => _weatherEnabled;
         set => _weatherEnabled = value;
     }
+
+    /// <summary>How many metric slots the collapsed pill shows. 0 hides the row. Set by the Av layer.</summary>
+    public int StatsMetricCount { get; set; }
 
     public OverlayPayload LastWeather => Clone(_lastWeather);
 
@@ -231,6 +241,15 @@ public sealed class OverlayMachine
                 _notifyMs = NotifyDurationMs > 0 ? Math.Min(NotifyDurationMs, BatteryAlertLogic.ChargePillMs) : BatteryAlertLogic.ChargePillMs;
                 // Charge pill is transient — do not bump unread.
                 break;
+            case OverlayCommand.SetSystemStats:
+                if (data.SystemStats is null) break;
+                if (_kind != OverlayKind.SystemStats)
+                    _returnTo = _kind == OverlayKind.Collapsed ? OverlayKind.Idle : _kind;
+                _kind = OverlayKind.SystemStats;
+                Apply(data);
+                _payload.AutoCollapse = data.AutoCollapse;   // authoritative; set after Apply
+                _statsIdleMs = 0.0;
+                break;
             case OverlayCommand.SetClipboard:
                 // Defensive: ignore empty payloads rather than blanking the pill.
                 if (data.ClipboardItemKind == ClipboardItemKind.None)
@@ -290,6 +309,15 @@ public sealed class OverlayMachine
     public OverlaySnapshot Tick(int deltaMs)
     {
         var dt = Math.Max(0, deltaMs);
+        if (_kind == OverlayKind.SystemStats)
+        {
+            _statsIdleMs += deltaMs;
+            if (_payload.AutoCollapse && _statsIdleMs >= OverlayTokens.StatsAutoCollapseMs)
+            {
+                _kind = OverlayKind.Idle;
+                _statsIdleMs = 0.0;
+            }
+        }
         if (_kind is OverlayKind.Notification or OverlayKind.Battery or OverlayKind.Clipboard)
         {
             _notifyMs -= dt;
@@ -490,7 +518,8 @@ public sealed class OverlayMachine
         _payload.ClipboardCycleCount = data.ClipboardCycleCount;
         _payload.ClipboardCyclePreview = data.ClipboardCyclePreview;
         _payload.ClipboardCyclePreviews = data.ClipboardCyclePreviews;
-        _payload.ClipboardCapturedAt = data.ClipboardCapturedAt;
+        _payload.SystemStats = data.SystemStats;
+        _payload.AutoCollapse = data.AutoCollapse;
     }
 
     public static OverlayPayload Sanitize(OverlayPayload raw)
@@ -565,7 +594,11 @@ public sealed class OverlayMachine
             ClipboardCycleIndex = raw.ClipboardCycleIndex,
             ClipboardCycleCount = raw.ClipboardCycleCount,
             ClipboardCyclePreview = raw.ClipboardCyclePreview,
-            ClipboardCyclePreviews = raw.ClipboardCyclePreviews
+            ClipboardCyclePreviews = raw.ClipboardCyclePreviews,
+            SystemStats = raw.SystemStats is { CpuPercent: var cpu } && double.IsFinite(cpu)
+                ? raw.SystemStats with { CpuPercent = Math.Round(Math.Clamp(cpu, 0, 100), 1) }
+                : null,
+            AutoCollapse = raw.AutoCollapse
         };
     }
 
@@ -582,11 +615,16 @@ public sealed class OverlayMachine
         ClipboardCycleIndex = p.ClipboardCycleIndex,
         ClipboardCycleCount = p.ClipboardCycleCount,
         ClipboardCyclePreview = p.ClipboardCyclePreview,
-        ClipboardCyclePreviews = p.ClipboardCyclePreviews
+        ClipboardCyclePreviews = p.ClipboardCyclePreviews,
+        SystemStats = p.SystemStats,
+        AutoCollapse = p.AutoCollapse
     };
 
-    public static double WidthFor(OverlayKind kind, bool weatherEnabled = false, bool batteryChip = false, int cycleCount = 0)
+    public static double WidthFor(OverlayKind kind, bool weatherEnabled = false,
+                                  bool batteryChip = false, int statsMetricCount = 0)
     {
+        if (kind == OverlayKind.SystemStats)
+            return StatsLayout.StatsPillWidth(statsMetricCount);
         var w = kind switch
         {
             OverlayKind.Expanded => 340,
@@ -606,9 +644,6 @@ public sealed class OverlayMachine
         {
             if (batteryChip)
                 w += OverlayTokens.CollapsedBatteryExtraW;
-            // Clipboard cycle preview replaces the clock — pill needs to fit preview + nav hint.
-            if (cycleCount > 1)
-                w = Math.Max(w, 280);
             return w;
         }
         return Math.Clamp(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
