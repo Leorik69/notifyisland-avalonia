@@ -68,4 +68,40 @@ public static class OverlayTokens
         if (dip > 20) dip = 20;
         return Math.Round(dip, 1);
     }
+
+    // -- System monitor: sampling (1.12.0) -----------------------------------
+    /// <summary>Default sampling period (ms).</summary>
+    public const int    StatsRefreshMs            = 1000;
+    /// <summary>Settings combo floor; AppSettings.Normalize() clamps to it.</summary>
+    public const int    StatsRefreshMinMs        = 500;
+    /// <summary>Settings combo ceiling; AppSettings.Normalize() clamps to it.</summary>
+    public const int    StatsRefreshMaxMs        = 2000;
+    /// <summary>Ignore timer ticks closer together than this (ms).</summary>
+    public const int    StatsMinSampleIntervalMs  = 100;
+    /// <summary>Rebuild the Process[] cache on this cadence (ms).</summary>
+    public const int    StatsProcessCacheMs       = 30_000;
+    /// <summary>Percent-change floor below which a CPU reading is reused.</summary>
+    public const double StatsDebouncePercent      = 0.5;
+    /// <summary>Byte/sec-change floor below which a network reading is reused.</summary>
+    public const long   StatsNetRateFloorBps      = 4_096;
+
+    // -- System monitor: layout ----------------------------------------------
+    /// <summary>Narrowest pill that still shows one metric slot.</summary>
+    public const double StatsMinPillW             = 280.0;
+    /// <summary>Px added to the collapsed width per visible metric slot.</summary>
+    public const double StatsMetricSlotW          = 56.0;
+    /// <summary>Gap kept between the pill and the screen edge (DIP).</summary>
+    public const double StatsScreenMarginPx       = 48.0;
+    /// <summary>At or above this available width, show CPU + RAM.</summary>
+    public const double StatsShowTwoMetricsW      = 380.0;
+    /// <summary>At or above this available width, also show Battery.</summary>
+    public const double StatsShowThreeMetricsW    = 480.0;
+    /// <summary>At or above this available width, also show Net.</summary>
+    public const double StatsShowAllMetricsW      = 620.0;
+    /// <summary>Idle time before the SystemStats kind self-collapses (ms).</summary>
+    public const int    StatsAutoCollapseMs       = 30_000;
+
+    // -- Settings (1.12.0) --------------------------------------------------
+    /// <summary>Below this many sidebar sections, hide the search box.</summary>
+    public const int    SettingsSearchMinSections = 4;
 }
