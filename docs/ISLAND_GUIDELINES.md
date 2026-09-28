@@ -115,6 +115,10 @@
 | Swipe rubber-band | **180 мс** | CubicOut | |
 | Icon crossfade | **240 мс** | CubicOut | |
 | Icon DIP | — | — | `FontSize × 1.0` (clock/weather), `FontSize × 0.92` (kind) |
+| ClickPop (chevron/cycle ack) | **210 мс** (= MorphMs/2) | CubicEaseOut | 1.0 → 1.08 → 1.0, never below 1 |
+| First-appear wobble | **210 мс** (= MorphMs/2) | sine | ±1 DIP translate X |
+| Peek auto-hide | **1200 мс** | — | un-pinned peek collapses |
+| Peek width morph | **200 мс** | SoftOut | +120 DIP for the full-date row |
 
 Запрещено:
 - менять высоту капсулы при notify (не «расти вверх»);
@@ -180,7 +184,17 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | Font | Segoe UI Variable / Segoe UI, title SemiBold 12, clock 12, badge 10 |
 | Unread dot | 7×7, BoxShadow glow, opacity transition |
 
-### 4b. Иконки (единый pack)
+### 4b. Layout thresholds (system stats 1.12.0)
+
+| Параметр | Значение | Пояснение |
+|---|---:|---|
+| Stats metric slot | **56 DIP** | px per visible metric |
+| Stats row thresholds | **280 / 380 / 480 / 620 DIP** | 0 / CPU / +RAM / +Battery / +Net |
+| Stats screen margin | **48 DIP** | gap kept between pill and screen edge |
+
+Код: `OverlayTokens.StatsMinPillW` / `StatsMetricSlotW` / `StatsScreenMarginPx` / `StatsShowTwoMetricsW` / `StatsShowThreeMetricsW` / `StatsShowAllMetricsW` + `NotifyIsland.Core/StatsLayout.cs`.
+
+### 4c. Иконки (единый pack)
 
 - Файл: `IslandIcons.cs` + заметка `Assets/Icons/README.md`.
 - Язык: **outline**, stroke **`IconStroke = 1.75`**, round caps/joins, design space 24×24.
@@ -288,6 +302,9 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
   7. **Анимации** — speed + appear/dismiss + pulse
   8. **Звуки** — packs + volumes
   9. **Иконки** — IslandIcons / Tabler / Lucide / Meteocons
+  10. **Буфер обмена** — toggle, max items, click action
+  11. **Монитор** — toggle, refresh interval, auto-collapse, virtual interfaces
+  12. **О приложении** — version, repo, import/export
 - Все `x:Name` контролов сохранены — `LoadUi` / `ReadUi` / `WireVolumeLabels` без ломки.
 
 ### Theme presets (1.6.0)

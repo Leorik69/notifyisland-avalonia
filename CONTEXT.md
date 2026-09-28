@@ -22,6 +22,7 @@
 | Battery / charging | `WindowsPowerSource.cs` + `NotifyIsland.Core/BatteryAlertLogic.cs` |
 | Timer / stopwatch | `NotifyIsland.Core/IslandTimerLogic.cs` + `OverlayMachine` SetTimer/Tick |
 | Clipboard history | `NotifyIsland.Core/ClipboardHistory.cs` + `WindowsClipboardSource.cs` |
+| System monitor | `NotifyIsland.Core/{SystemSnapshot,StatsDebounce,StatsLayout,SystemMonitorMachine}.cs` + `WindowsSystemMonitorSource.cs` |
 | Digital clock (FontAudio) | `DigitalClockGlyphs` + `DigitalClockView` + `Assets/Icons/FontAudio/` |
 | Seconds strip (digital-dot) | `SecondsStripLogic` + `SecondsStripView` |
 | Outline icons | `IslandIcons.cs`, `Assets/Icons/README.md` |

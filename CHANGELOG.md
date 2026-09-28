@@ -16,6 +16,18 @@
 - Image / rich-text clipboard formats intentionally out of scope for v1 (per docs/research-modules.md §Clipboard v1.1).
 - Tests: 14 new in `ClipboardHistoryTests` (capacity, de-dup, ignore-None, pop/clear, payload preview, Russian plural, equality). Total: 165/165 pass.
 
+### Added — System monitor (1.12.0)
+- Live CPU%, RAM, battery% and network throughput in the collapsed pill, sampled locally every 500–2000 ms.
+- Adaptive metric row: 1–4 slots by monitor width, drop order Net > Battery > RAM > CPU.
+- Expanded `SystemStats` kind with a full readout; click the row to open, click again to return.
+- Settings section «Монитор» (toggle, interval, auto-collapse, virtual interfaces) and «О приложении» (version, repo, import/export).
+- Tray menu gained a «Буфер обмена» submenu with the last 5 items, click to re-copy.
+- Hover-peek now shows the full date, weather and unread badge, and auto-hides.
+
+### Changed
+- `ClickPop` acknowledgement on cycle/chevron clicks. Distinct from the existing `PopScale`, which is unchanged.
+- Hover-peek width morphs to fit the full-date row.
+
 ## 1.11.0 — Settings icon sidebar
 
 ### Added
