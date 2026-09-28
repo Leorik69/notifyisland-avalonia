@@ -384,4 +384,46 @@ public class AppSettingsTests
             }
         }
     }
+
+    [Fact]
+    public void Normalize_ClampsSystemStatsRefreshMs()
+    {
+        var low = new AppSettings { SystemStatsRefreshMs = 10 };
+        low.Normalize();
+        Assert.Equal(OverlayTokens.StatsRefreshMinMs, low.SystemStatsRefreshMs);
+
+        var high = new AppSettings { SystemStatsRefreshMs = 99_999 };
+        high.Normalize();
+        Assert.Equal(OverlayTokens.StatsRefreshMaxMs, high.SystemStatsRefreshMs);
+
+        var mid = new AppSettings { SystemStatsRefreshMs = 750 };
+        mid.Normalize();
+        Assert.Equal(750, mid.SystemStatsRefreshMs);
+    }
+
+    [Fact]
+    public void Default_StatsKeys_AreTrue()
+    {
+        var s = new AppSettings();
+        s.Normalize();
+        Assert.True(s.SystemStatsEnabled);
+        Assert.True(s.SystemStatsAutoCollapse);
+        Assert.True(s.SystemStatsAllInterfaces);
+        Assert.True(s.SettingsSearchEnabled);
+    }
+
+    [Fact]
+    public void Defaults_StatsKeys_AreTrueForExistingInstalls()
+    {
+        // A settings.json written before 1.12.0 has none of the new keys.
+        var json = "{\"fontSize\":14,\"dateFormat\":\"DayMonth\"}";
+        // FromJson is the real load path (camelCase policy + enum converter + Normalize).
+        var s = AppSettings.FromJson(json)!;
+        s.Normalize();
+        Assert.True(s.SystemStatsEnabled);
+        Assert.True(s.SystemStatsAutoCollapse);
+        Assert.True(s.SystemStatsAllInterfaces);
+        Assert.True(s.SettingsSearchEnabled);
+        Assert.Equal(14, s.FontSize);
+    }
 }

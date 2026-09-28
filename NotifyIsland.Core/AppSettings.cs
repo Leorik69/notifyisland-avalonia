@@ -242,6 +242,21 @@ public sealed class AppSettings
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public NotifyDismissStyle DismissStyle { get; set; } = NotifyDismissStyle.Ragged;
 
+    /// <summary>Show live CPU / RAM / battery / network in the collapsed pill.</summary>
+    public bool SystemStatsEnabled { get; set; } = true;
+
+    /// <summary>Sampling period in ms. Clamped to [StatsRefreshMinMs, StatsRefreshMaxMs] by Normalize().</summary>
+    public int SystemStatsRefreshMs { get; set; } = OverlayTokens.StatsRefreshMs;
+
+    /// <summary>Self-collapse the SystemStats kind back to Idle after StatsAutoCollapseMs.</summary>
+    public bool SystemStatsAutoCollapse { get; set; } = true;
+
+    /// <summary>Count virtual / tunnel / loopback network interfaces in the net metric.</summary>
+    public bool SystemStatsAllInterfaces { get; set; } = true;
+
+    /// <summary>Show the sidebar search box when there are enough sections to filter.</summary>
+    public bool SettingsSearchEnabled { get; set; } = true;
+
     /// <summary>Persisted Settings window geometry (separate from island OffsetX/Y).</summary>
     public int? SettingsWindowX { get; set; }
     public int? SettingsWindowY { get; set; }
@@ -367,6 +382,11 @@ public sealed class AppSettings
         target.AnimPulseEnabled = AnimPulseEnabled;
         target.AppearStyle = AppearStyle;
         target.DismissStyle = DismissStyle;
+        target.SystemStatsEnabled = SystemStatsEnabled;
+        target.SystemStatsRefreshMs = SystemStatsRefreshMs;
+        target.SystemStatsAutoCollapse = SystemStatsAutoCollapse;
+        target.SystemStatsAllInterfaces = SystemStatsAllInterfaces;
+        target.SettingsSearchEnabled = SettingsSearchEnabled;
         target.SettingsWindowX = SettingsWindowX;
         target.SettingsWindowY = SettingsWindowY;
         target.SettingsWindowWidth = SettingsWindowWidth;
@@ -403,6 +423,8 @@ public sealed class AppSettings
         TimerDefaultMinutes = IslandTimerLogic.ClampPresetMinutes(TimerDefaultMinutes);
         HoverExpandDelayMs = Math.Clamp(HoverExpandDelayMs, 0, 2000);
         HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 3000);
+        SystemStatsRefreshMs = Math.Clamp(SystemStatsRefreshMs,
+            OverlayTokens.StatsRefreshMinMs, OverlayTokens.StatsRefreshMaxMs);
     }
 
     /// <summary>Accept #RGB / #RRGGBB / #AARRGGBB; fallback on parse failure.</summary>
