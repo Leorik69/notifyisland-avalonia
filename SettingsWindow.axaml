@@ -104,6 +104,10 @@
           <TextBlock DockPanel.Dock="Top" Text="Настройки"
                      FontSize="12" FontWeight="SemiBold"
                      Foreground="#888890" Margin="18,14,12,6"/>
+          <TextBox x:Name="SettingsSearchBox" DockPanel.Dock="Top"
+                   Classes="navSearch"
+                   Watermark="Поиск раздела"
+                   Margin="12,8,12,4" />
           <ListBox x:Name="NavList" Classes="navRail"
                    SelectionMode="Single"
                    SelectionChanged="OnNavSelectionChanged">
@@ -165,6 +169,18 @@
             <StackPanel Orientation="Horizontal" Spacing="10">
               <Image x:Name="NavIcon_clipboard" Width="18" Height="18" Classes="navIcon"/>
               <TextBlock Text="Буфер обмена" VerticalAlignment="Center"/>
+            </StackPanel>
+          </ListBoxItem>
+          <ListBoxItem Tag="system">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Image x:Name="NavIcon_system" Width="18" Height="18" Classes="navIcon"/>
+              <TextBlock Text="Монитор" VerticalAlignment="Center"/>
+            </StackPanel>
+          </ListBoxItem>
+          <ListBoxItem Tag="about">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Image x:Name="NavIcon_about" Width="18" Height="18" Classes="navIcon"/>
+              <TextBlock Text="О приложении" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
           </ListBox>
@@ -616,6 +632,45 @@
                 </ComboBox>
                 <TextBlock Classes="mutedNote"
                            Text="v1 не вставляет в чужое окно автоматически — пользователь жмёт Ctrl+V сам. Это сохраняет focus у целевого приложения."/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+        <ScrollViewer x:Name="Panel_system" Classes="tabBody" IsVisible="False">
+          <StackPanel Spacing="12">
+            <Border Classes="settingsCard">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle" Text="Монитор"/>
+                <TextBlock Classes="mutedNote"
+                           Text="Отображает нагрузку CPU и памяти прямо в капсуле. Данные берутся из системных счётчиков Windows и обновляются с выбранным интервалом."/>
+                <CheckBox x:Name="SystemStatsEnabledBox" Content="Показывать нагрузку в капсуле"/>
+                <TextBlock Classes="fieldLabel" Text="Интервал обновления"/>
+                <ComboBox x:Name="SystemStatsRefreshBox" Width="200">
+                  <ComboBoxItem Tag="500" Content="500 мс"/>
+                  <ComboBoxItem Tag="1000" Content="1 с"/>
+                  <ComboBoxItem Tag="2000" Content="2 с"/>
+                </ComboBox>
+                <CheckBox x:Name="SystemStatsAutoCollapseBox" Content="Сворачивать через 30 с"/>
+                <CheckBox x:Name="SystemStatsAllInterfacesBox" Content="Считать все сетевые интерфейсы"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+        <ScrollViewer x:Name="Panel_about" Classes="tabBody" IsVisible="False">
+          <StackPanel Spacing="12">
+            <Border Classes="settingsCard">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle" Text="О приложении"/>
+                <TextBlock x:Name="AboutVersionText" Classes="mutedNote" Text="NotifyIsland 1.12.0"/>
+                <TextBlock x:Name="AboutRuntimeText" Classes="mutedNote" Text=".NET 8 / Avalonia 11"/>
+                <TextBlock x:Name="AboutRepoText" Classes="mutedNote"
+                           Text="https://github.com/Leorik69/notifyisland-avalonia"/>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button x:Name="AboutExportButton" Content="Экспорт настроек" Click="OnExportSettings"/>
+                  <Button x:Name="AboutImportButton" Content="Импорт настроек" Click="OnImportSettings"/>
+                  <Button x:Name="AboutUpdateButton" Content="Проверить обновления" IsEnabled="False"/>
+                </StackPanel>
+                <TextBlock Classes="mutedNote" Text="Импорт перезапишет настройки: сначала сохраните копию."/>
               </StackPanel>
             </Border>
           </StackPanel>

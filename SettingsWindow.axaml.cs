@@ -1,12 +1,15 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Svg.Skia;
+using Avalonia.Threading;
 
 namespace NotifyIsland;
 
@@ -39,6 +42,7 @@ public partial class SettingsWindow : Window
         _onStartStopwatch = onStartStopwatch;
         InitializeComponent();
         WireNav();
+        SettingsSearchBox.TextChanged += OnSettingsSearchChanged;
         RestoreGeometry();
         LoadUi();
         WireVolumeLabels();
@@ -216,6 +220,14 @@ public partial class SettingsWindow : Window
         ClipboardEnabledBox.IsChecked = _draft.ClipboardEnabled;
         SelectByTag(ClipboardMaxItemsBox, _draft.ClipboardMaxItems.ToString(CultureInfo.InvariantCulture));
         SelectByTag(ClipboardClickActionBox, _draft.ClipboardClickAction.ToString());
+        SystemStatsEnabledBox.IsChecked = _draft.SystemStatsEnabled;
+        SelectByTag(SystemStatsRefreshBox, _draft.SystemStatsRefreshMs.ToString(CultureInfo.InvariantCulture));
+        SystemStatsAutoCollapseBox.IsChecked = _draft.SystemStatsAutoCollapse;
+        SystemStatsAllInterfacesBox.IsChecked = _draft.SystemStatsAllInterfaces;
+        AboutVersionText.Text = $"NotifyIsland {typeof(AppSettings).Assembly.GetName().Version?.ToString(3) ?? "1.12.0"}";
+        AboutRuntimeText.Text = $"{System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription} · Avalonia 11";
+        AboutRepoText.Text = "https://github.com/Leorik69/notifyisland-avalonia";
+        SettingsSearchBox.IsVisible = NavEntries.Length >= OverlayTokens.SettingsSearchMinSections;
         SelectByTag(AnimSpeedBox, _draft.AnimationSpeed.ToString());
         SelectByTag(AppearStyleBox, _draft.AppearStyle.ToString());
         SelectByTag(DismissStyleBox, _draft.DismissStyle.ToString());
@@ -401,6 +413,12 @@ public partial class SettingsWindow : Window
             _draft.ClipboardMaxItems = cm;
         if (Enum.TryParse<ClipboardClickAction>(SelectedTag(ClipboardClickActionBox), true, out var ca))
             _draft.ClipboardClickAction = ca;
+        _draft.SystemStatsEnabled = SystemStatsEnabledBox.IsChecked == true;
+        if (int.TryParse(SelectedTag(SystemStatsRefreshBox), NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out var statsMs))
+            _draft.SystemStatsRefreshMs = statsMs;
+        _draft.SystemStatsAutoCollapse = SystemStatsAutoCollapseBox.IsChecked == true;
+        _draft.SystemStatsAllInterfaces = SystemStatsAllInterfacesBox.IsChecked == true;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimSpeedBox), true, out var anim))
             _draft.AnimationSpeed = anim;
         if (Enum.TryParse<NotifyAppearStyle>(SelectedTag(AppearStyleBox), true, out var ap))
@@ -501,6 +519,8 @@ public partial class SettingsWindow : Window
         ("sound", "volume-2"),
         ("icons", "shapes"),
         ("clipboard", "clipboard"),
+        ("system", "activity"),
+        ("about", "info"),
     ];
 
     private void WireNav()
@@ -567,6 +587,71 @@ public partial class SettingsWindow : Window
         foreach (var c in candidates)
             if (File.Exists(c)) return c;
         return null;
+    }
+
+    private void OnSettingsSearchChanged(object? sender, TextChangedEventArgs e)
+    {
+        var q = SettingsSearchBox.Text?.Trim() ?? "";
+        foreach (var item in NavList.Items.OfType<ListBoxItem>())
+        {
+            string? label = null;
+            if (item.Content is StackPanel sp)
+                label = sp.Children.OfType<TextBlock>().FirstOrDefault()?.Text;
+            item.IsVisible = q.Length == 0
+                || (label?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false);
+        }
+    }
+
+    private void OnExportSettings(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var window = GetTopLevel(this);
+        if (window is null) return;
+        var path = new Avalonia.Platform.Storage.FilePickerSaveOptions
+        {
+            SuggestedFileName = "notifyisland-settings.json",
+            DefaultExtension = "json"
+        };
+        window.StorageProvider.SaveFilePickerAsync(path).ContinueWith(t =>
+        {
+            if (t.Status != TaskStatus.RanToCompletion || t.Result is null) return;
+            using var stream = t.Result.OpenWriteAsync().GetAwaiter().GetResult();
+            using var writer = new StreamWriter(stream);
+            writer.Write(System.Text.Json.JsonSerializer.Serialize(_draft,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        });
+    }
+
+    private void OnImportSettings(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var window = GetTopLevel(this);
+        if (window is null) return;
+        window.StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+        {
+            AllowMultiple = false,
+            FileTypeFilter = new[] { new Avalonia.Platform.Storage.FilePickerFileType("JSON")
+                { Patterns = new[] { "*.json" } } }
+        }).ContinueWith(t =>
+        {
+            if (t.Status != TaskStatus.RanToCompletion || t.Result is null || t.Result.Count == 0) return;
+            using var stream = t.Result[0].OpenReadAsync().GetAwaiter().GetResult();
+            using var reader = new StreamReader(stream);
+            var json = reader.ReadToEnd();
+            try
+            {
+                var loaded = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json);
+                if (loaded is null) return;
+                loaded.Normalize();
+                Dispatcher.UIThread.Post(() =>
+                {
+                    loaded.CopyTo(_draft);
+                    LoadUi();
+                });
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("settings import failed", ex);
+            }
+        });
     }
 
 }
