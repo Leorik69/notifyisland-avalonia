@@ -148,7 +148,7 @@ public partial class OverlayWindow : Window
         // Prefer WinForms NotifyIcon (visible on Win11 Sandbox); Avalonia TrayIcon as fallback.
         try
         {
-            _winTray ??= new WinFormsTray(this);
+            _winTray ??= new WinFormsTray(this, _clipboardHistory);
             _winTray.RefreshIcon(_machine.UnreadCount);
             AppLog.Warn("Using WinFormsTray as primary tray");
         }
