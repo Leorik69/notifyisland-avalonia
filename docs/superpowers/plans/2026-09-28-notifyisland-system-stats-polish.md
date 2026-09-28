@@ -300,11 +300,9 @@ public class AdaptiveStatsLayoutTests
     [Fact]
     public void NeverDropsCpu()
     {
+        // SlotOrder[0] is CPU and is never dropped; the rest drop from the right.
         Assert.Equal(StatsMetricSlot.Cpu, StatsLayout.SlotOrder[0]);
-        for (var count = 1; count <= 4; count++)
-        {
-            Assert.Equal(StatsMetricSlot.Cpu, StatsLayout.SlotOrder[count - 1]);
-        }
+        Assert.Equal(4, StatsLayout.SlotOrder.Count);
     }
 
     [Fact]
