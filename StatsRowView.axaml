@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="NotifyIsland.StatsRowView">
+  <!-- One row of the System Stats surface. Two visual shapes, matching the two shapes the
+       panel used before rows became dynamic:
+         pair    — label left (FontSize 11, #8A8A92), value right (FontSize 12, #C8C8CC)
+         caption — one centred line (FontSize 10, #8A8A92), used by the Date row
+       The heights here feed StatsLayout.StatsHeightFor, so do not change the font sizes. -->
+  <Grid ColumnDefinitions="*,Auto">
+    <TextBlock x:Name="LabelBlock"
+               Grid.Column="0"
+               FontSize="11"
+               Foreground="#8A8A92"
+               VerticalAlignment="Center" />
+    <TextBlock x:Name="ValueBlock"
+               Grid.Column="1"
+               FontSize="12"
+               Foreground="#C8C8CC"
+               TextAlignment="Right"
+               VerticalAlignment="Center"
+               Text="—" />
+    <TextBlock x:Name="CaptionBlock"
+               Grid.Column="0"
+               Grid.ColumnSpan="2"
+               FontSize="10"
+               Foreground="#8A8A92"
+               TextAlignment="Center"
+               VerticalAlignment="Center"
+               Margin="0,2,0,0"
+               IsVisible="False" />
+  </Grid>
+</UserControl>

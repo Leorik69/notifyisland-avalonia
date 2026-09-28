@@ -108,6 +108,8 @@ public static class OverlayTokens
     // + StatsFullDate 13 (FontSize 10) + Margin top 2              = 15
     // + panel Margin 6 + 6                                        = 12
     // = 107 → 108 (rounded up to a clean value, no clipping).
+    // Since 1.12.2 the height is computed per row count — use StatsLayout.StatsHeightFor(rowCount),
+    // which reproduces this exact 108 for the default 5 rows. Kept for callers/tests that pin the default.
     public const double StatsExpandedH = 108.0;
     /// <summary>Fixed width of the expanded System Stats pill (DIP).</summary>
     public const double StatsExpandedW = 300.0;

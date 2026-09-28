@@ -654,6 +654,40 @@
                 <CheckBox x:Name="SystemStatsAllInterfacesBox" Content="Считать все сетевые интерфейсы"/>
               </StackPanel>
             </Border>
+
+            <Border x:Name="StatsRowsCard" Classes="settingsCard">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle" Text="Состав панели"/>
+                <TextBlock Classes="mutedNote"
+                           Margin="0,0,0,4"
+                           Text="Выберите готовый набор строк или свой. В своём наборе каждая строка включается галочкой, а стрелки меняют порядок — панель показывает строки именно в этом порядке."/>
+                <TextBlock Classes="fieldLabel" Text="Набор строк"/>
+                <ComboBox x:Name="StatsRowsPresetBox" Width="360"
+                          HorizontalAlignment="Left"
+                          SelectionChanged="OnStatsRowsPresetChanged">
+                  <ComboBoxItem Tag="Full" Content="Полностью — CPU, память, батарея, сеть, дата"/>
+                  <ComboBoxItem Tag="Brief" Content="Кратко — CPU и батарея"/>
+                  <ComboBoxItem Tag="Custom" Content="Свой набор"/>
+                </ComboBox>
+
+                <TextBlock x:Name="StatsRowsEditorLabel" Classes="fieldLabel"
+                           Margin="0,14,0,0" Text="Строки панели"/>
+                <StackPanel x:Name="StatsRowsEditor" Spacing="4"/>
+                <TextBlock x:Name="StatsRowsEditorNote" Classes="mutedNote"
+                           Text="Снятая галочка не удаляет строку, а прячет её — стрелки двигают и скрытые строки тоже. Готовый набор задаёт и состав, и порядок сам, поэтому свой порядок имеет смысл только с «Своим набором». Без «Применить» выбор остаётся черновиком."/>
+
+                <TextBlock Classes="fieldLabel" Text="Как это выглядит"/>
+                <Border Background="#080808" BorderBrush="#2C2C2E" BorderThickness="1"
+                        CornerRadius="10" Padding="10,6"
+                        HorizontalAlignment="Left" MinWidth="240">
+                  <StackPanel>
+                    <StackPanel x:Name="StatsPreviewPanel" Spacing="4"/>
+                    <TextBlock x:Name="StatsPreviewHint" Classes="mutedNote" Margin="0,8,0,0"
+                               Text="Здесь показаны строки и их порядок. Значения подставляет монитор в реальном времени."/>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Border>
           </StackPanel>
         </ScrollViewer>
         <ScrollViewer x:Name="Panel_about" Classes="tabBody" IsVisible="False">

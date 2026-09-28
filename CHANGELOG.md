@@ -2,6 +2,18 @@
 
 ## Unreleased — Idle breath removed + Clipboard history (1.12.0-preview)
 
+### Added — System monitor customisation (1.12.1)
+Builds on the «System monitor rework (1.12.1)» block below: the panel is no longer a fixed four-row readout, the user picks what it shows and in which order.
+- `NotifyIsland.Core/StatsLayout.cs` — new `StatsRow` (`Cpu`, `Memory`, `Battery`, `Network`, `Date`) and `StatsPreset` (`Brief`, `Full`, `Off`, `Custom`), plus `ResolveRows(preset, custom)`, `StatsHeightFor(rowCount)`, `StatsLayout.ShouldCollapseStatsSurface(...)`, `LabelFor` / `NameFor` / `IsCaptionRow`.
+- Новые ключи `AppSettings.StatsRowsPreset` (default `Full`) и `AppSettings.StatsRows` (упорядоченный список, default — все пять). Оба приводятся к согласованному виду в `Normalize()` и пишутся читаемыми строками, не ординалами.
+- Три пресета в UI: **Полностью** (CPU, Память, Батарея, Сеть, дата — 5 строк), **Кратко** (CPU + Батарея — 2 строки), **Свой набор** (ручной выбор). Значение `Off` есть в Core, но в UI не предлагается: единственный выключатель — чекбокс «Показывать системный монитор», чтобы в одной панели не было двух конкурирующих «выключить».
+- Секция «Монитор»: комбо пресета, редактор строк (чекбокс на строку + кнопки ↑/↓, показывается только для «Свой набора») и **статичное живое превью** на настоящем контроле `StatsRowView` и настоящем `StatsHeightFor` — мок не может разойтись с реальной пилюлей. Снятый чекбокс откладывает строку, не теряя её позицию.
+- Панель монитора строится динамически в порядке из настроек; высота пилюли считается от числа строк (`StatsHeightFor`) — те же 108 DIP для дефолтных 5 строк и 48 DIP для «Кратко». Ширина остаётся 300 DIP.
+- Новый пункт ПКМ по пилюле **«Настроить монитор…»** — открывает окно настроек сразу на разделе «Монитор» (в том числе если окно уже видно: переключает раздел и поднимает окно). Обычное «Настройки…» текущий раздел не меняет. Добавлен разделитель, группирующий Свернуть / Настройки… / Выход.
+- Выключение монитора больше не трогает список строк пользователя; пустой набор строк теперь сворачивает поверхность, а не оставляет пустую пилюлю 108 DIP.
+- `OverlayTokens.StatsExpandedH` и `StatsLayout.StatsPillWidth` — теперь legacy-якоря, на которые ссылаются только тесты; истина о высоте — `StatsHeightFor`.
+- Без изменений: цикл кликов по зонам ⅓/⅓/⅓ буфера обмена, шевроны, пин/анпин одиночным кликом, открытие по наведению и закрытие по уходу.
+
 ### Changed — System monitor rework (1.12.1)
 Supersedes the 1.12.0 «Added — System monitor» section below: the inline metric row and click-to-open behaviour described there no longer exist.
 - Метрики монитора больше не встроены в свёрнутую пилюлю: Idle показывает только часы и дату.

@@ -267,6 +267,22 @@ public sealed class AppSettings
     /// <summary>Count virtual / tunnel / loopback network interfaces in the net metric.</summary>
     public bool SystemStatsAllInterfaces { get; set; } = true;
 
+    /// <summary>
+    /// Which row set the System Stats surface renders. Independent of <see cref="SystemStatsEnabled"/>,
+    /// which is the on/off switch for the surface as a whole; this picks the rows.
+    /// Not named <c>StatsPreset</c> to avoid colliding with the enum type in code that references both.
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public StatsPreset StatsRowsPreset { get; set; } = StatsPreset.Full;
+
+    /// <summary>
+    /// Ordered set of visible System Stats rows. Authoritative only when
+    /// <see cref="StatsRowsPreset"/> is <see cref="StatsPreset.Custom"/>; for the other presets
+    /// Normalize() rewrites it to the preset's canonical set. Defaults to the Full set.
+    /// </summary>
+    public List<StatsRow> StatsRows { get; set; } =
+        new List<StatsRow>(StatsLayout.FullRows);
+
     /// <summary>Show the sidebar search box when there are enough sections to filter.</summary>
     public bool SettingsSearchEnabled { get; set; } = true;
 
@@ -401,6 +417,8 @@ public sealed class AppSettings
         target.SystemStatsRefreshMs = SystemStatsRefreshMs;
         target.SystemStatsHoverPeek = SystemStatsHoverPeek;
         target.SystemStatsAllInterfaces = SystemStatsAllInterfaces;
+        target.StatsRowsPreset = StatsRowsPreset;
+        target.StatsRows = new List<StatsRow>(StatsRows ?? new List<StatsRow>());
         target.SettingsSearchEnabled = SettingsSearchEnabled;
         target.SettingsWindowX = SettingsWindowX;
         target.SettingsWindowY = SettingsWindowY;
@@ -440,6 +458,15 @@ public sealed class AppSettings
         HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 3000);
         SystemStatsRefreshMs = Math.Clamp(SystemStatsRefreshMs,
             OverlayTokens.StatsRefreshMinMs, OverlayTokens.StatsRefreshMaxMs);
+
+        // System Stats rows. Independent of SystemStatsEnabled: turning the surface off must not
+        // destroy the user's row order, so this runs either way.
+        if (!Enum.IsDefined(typeof(StatsPreset), StatsRowsPreset))
+            StatsRowsPreset = StatsPreset.Full;
+        // A non-custom preset wins outright, so a stale list can never contradict it.
+        // Custom keeps the user's order, filtered to known/unique entries, falling back to Full
+        // rather than leaving an empty (zero-height) panel.
+        StatsRows = new List<StatsRow>(StatsLayout.ResolveRows(StatsRowsPreset, StatsRows));
     }
 
     /// <summary>Accept #RGB / #RRGGBB / #AARRGGBB; fallback on parse failure.</summary>

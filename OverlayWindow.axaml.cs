@@ -176,6 +176,7 @@ public partial class OverlayWindow : Window
             EnsurePowerSource();
             if (_settings.ClipboardEnabled)
                 _clipboardSource?.Start();
+            SyncStatsRows();
             if (_settings.SystemStatsEnabled)
                 _statsMachine?.Start();
             if (_winTray is null && _tray is null)
@@ -616,11 +617,11 @@ public partial class OverlayWindow : Window
         }
         var weatherLabel = _settings.WeatherEnabled ? "Погода выкл" : "Погода вкл";
         menu.Items.Add(Menu(weatherLabel, ToggleWeather));
+        menu.Items.Add(Menu("Настроить монитор…", () => OpenSettings("system")));
+        menu.Items.Add(new Separator());
         menu.Items.Add(Menu("Свернуть", () =>
         {
-            var before = _machine.Snapshot().Kind;
-            _machine.Dispatch(OverlayCommand.Collapse);
-            OnKindChanged(before, _machine.Snapshot().Kind);
+            CollapseFromUi();
             ApplySize(); Paint();
         }));
         menu.Items.Add(Menu("Настройки…", OpenSettings));
@@ -629,12 +630,20 @@ public partial class OverlayWindow : Window
         menu.Open(Pill);
     }
 
-    public void OpenSettings()
+    public void OpenSettings() => OpenSettings(null);
+
+    /// <summary>
+    /// Opens the settings window, optionally navigating it to <paramref name="section"/>
+    /// (a sidebar nav tag, e.g. "system" for «Монитор»). A null section keeps whatever
+    /// section the window is on — including when it is already visible.
+    /// </summary>
+    public void OpenSettings(string? section)
     {
         try
         {
             if (_settingsWindow is { IsVisible: true })
             {
+                if (section is not null) _settingsWindow.SelectSection(section);
                 _settingsWindow.Activate();
                 _settingsWindow.Topmost = true;
                 _settingsWindow.Topmost = false;
@@ -642,7 +651,7 @@ public partial class OverlayWindow : Window
             }
 
             _settingsWindow = new SettingsWindow(_settings, ApplySettingsFromUi, DemoChargePill,
-                StartCountdownMinutes, StartStopwatchFromSettings);
+                StartCountdownMinutes, StartStopwatchFromSettings, section);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Show();
         }
@@ -708,6 +717,16 @@ public partial class OverlayWindow : Window
         if (_settings.SystemStatsEnabled) _statsMachine?.Start(); else _statsMachine?.Stop();
         _statsMachine?.SetInterval(TimeSpan.FromMilliseconds(_settings.SystemStatsRefreshMs));
         _statsMachine?.SetIncludeAllInterfaces(_settings.SystemStatsAllInterfaces);
+        // Row set may have changed under an open surface — rebuild it and refresh the
+        // values into the new rows before the size is recomputed from the row count.
+        SyncStatsRows();
+        // Empty surface while it is the current kind → collapse through the same route the
+        // «Свернуть» menu item uses, instead of leaving an empty pill-sized island behind.
+        if (StatsLayout.ShouldCollapseStatsSurface(
+                _machine.Snapshot().Kind, _settings.SystemStatsEnabled, _statsRowKinds.Count))
+            CollapseFromUi();
+        if (_machine.Snapshot().Kind == OverlayKind.SystemStats && _lastStats is { } cur)
+            ApplyStatsValues(cur);
         ApplySize();
         Paint();
         _tray?.RefreshLabels();
@@ -773,6 +792,18 @@ public partial class OverlayWindow : Window
         _winTray?.RefreshLabels();
         if (_settings.WeatherEnabled)
             _ = RefreshWeatherAsync();
+    }
+
+    /// <summary>
+    /// The single UI-side collapse route (context menu «Свернуть», an empty stats surface):
+    /// dispatch <see cref="OverlayCommand.Collapse"/> and tell the window the kind changed.
+    /// Callers are responsible for <see cref="ApplySize"/>/<see cref="Paint"/> afterwards.
+    /// </summary>
+    private void CollapseFromUi()
+    {
+        var before = _machine.Snapshot().Kind;
+        _machine.Dispatch(OverlayCommand.Collapse);
+        OnKindChanged(before, _machine.Snapshot().Kind);
     }
 
     private void OnKindChanged(OverlayKind before, OverlayKind after)
@@ -946,7 +977,8 @@ public partial class OverlayWindow : Window
         var batteryChip = _settings.ShowBatteryInCollapsed
             && _lastPower is { HasBattery: true }
             && snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed;
-var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge, batteryChip, _machine.StatsMetricCount);
+var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation,
+            _settings.Edge, batteryChip, _machine.StatsMetricCount, _machine.StatsRowCount);
         if (snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed)
         {
             var peek = _hoverPin.IsContentExpanded;
@@ -1269,14 +1301,17 @@ var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orie
         var p = snap.Payload;
         var overlayOn = IsOverlayKind(kind);
 
-        // SystemStats renders in its own 108 DIP slot (SystemStatsPanel), not the single-row overlay.
+        // SystemStats renders in its own dynamic-height slot (SystemStatsPanel), not the
+        // single-row overlay.
         OverlayPanel.IsVisible = overlayOn && kind != OverlayKind.SystemStats;
         CollapsedRow.IsVisible = !overlayOn;
 
         // 1.12.1: panel visibility follows the FSM kind immediately (Paint runs on the same
         // UI turn as the command that changed the kind). It must NOT wait for the next
         // SystemStatsRefreshMs sampling tick, otherwise the panel appears 0-2 s late on hover.
-        var statsVisible = kind == OverlayKind.SystemStats && _settings.SystemStatsEnabled;
+        // Preset Off resolves to no rows: show nothing at all rather than an empty pill.
+        var statsVisible =
+            kind == OverlayKind.SystemStats && _settings.SystemStatsEnabled && !StatsSurfaceEmpty;
         SystemStatsPanel.IsVisible = statsVisible;
         if (statsVisible && _lastStats is { } known)
             ApplyStatsValues(known);
@@ -1750,46 +1785,118 @@ var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orie
         });
     }
 
-    /// <summary>Render one SystemSnapshot into the stats value labels. Idempotent.</summary>
+    /// <summary>The rows currently in the panel, in render order (empty until first sync).</summary>
+    private readonly List<StatsRowView> _statsRows = new();
+
+    /// <summary>Row kinds behind <see cref="_statsRows"/>, index-aligned with it.</summary>
+    private readonly List<StatsRow> _statsRowKinds = new();
+
+    /// <summary>
+    /// The row set the settings currently ask for, empty only for preset <c>Off</c>.
+    /// </summary>
+    private IReadOnlyList<StatsRow> ResolvedStatsRows =>
+        StatsLayout.ResolveRows(_settings.StatsRowsPreset, _settings.StatsRows);
+
+    /// <summary>True when the panel has no rows at all (preset Off) — the surface stays hidden.</summary>
+    private bool StatsSurfaceEmpty =>
+        StatsLayout.ShouldCollapseStatsSurface(OverlayKind.SystemStats, enabled: true, _statsRowKinds.Count);
+
+    /// <summary>
+    /// Rebuild the panel from the settings list and push the row count into the machine so
+    /// the pill height follows. Rebuilds only when the resolved set actually changed —
+    /// per-tick work stays in <see cref="ApplyStatsValues"/>.
+    /// </summary>
+    private void SyncStatsRows()
+    {
+        var rows = ResolvedStatsRows;
+        if (!SameRows(rows, _statsRowKinds))
+        {
+            SystemStatsPanel.Children.Clear();
+            _statsRows.Clear();
+            _statsRowKinds.Clear();
+            foreach (var row in rows)
+            {
+                var view = new StatsRowView
+                {
+                    IsCaptionRow = StatsLayout.IsCaptionRow(row),
+                    Label = StatsLayout.LabelFor(row),
+                    Value = "—"
+                };
+                _statsRows.Add(view);
+                _statsRowKinds.Add(row);
+                SystemStatsPanel.Children.Add(view);
+            }
+        }
+        // Height budget always follows the resolved count, so a preset change that keeps the
+        // same rows but the same count also stays correct after a settings edit.
+        _machine.StatsRowCount = rows.Count;
+    }
+
+    private static bool SameRows(IReadOnlyList<StatsRow> a, List<StatsRow> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (var i = 0; i < a.Count; i++)
+            if (a[i] != b[i]) return false;
+        return true;
+    }
+
+    /// <summary>Render one SystemSnapshot into the current stats rows. Idempotent.</summary>
     private void ApplyStatsValues(SystemSnapshot s)
     {
-        StatsCpuValue.Text = $"{s.CpuPercent:F0} %";
-        StatsCpuValue.Foreground = StatsBrushHigh(
-            s.CpuPercent, OverlayTokens.StatsCpuWarn, OverlayTokens.StatsCpuCrit);
-
-        if (s.RamTotalBytes > 0)
+        for (var i = 0; i < _statsRows.Count; i++)
         {
-            var usedGb = s.RamUsedBytes / 1_000_000_000.0;
-            var totalGb = s.RamTotalBytes / 1_000_000_000.0;
-            StatsRamValue.Text = $"{usedGb:F1} / {totalGb:F0} ГБ";
-            StatsRamValue.Foreground = StatsBrushHigh(
-                s.RamPercent, OverlayTokens.StatsRamWarn, OverlayTokens.StatsRamCrit);
-        }
-        else
-        {
-            StatsRamValue.Text = "—";
-            StatsRamValue.Foreground = StatsBrushNormal();
-        }
+            var view = _statsRows[i];
+            switch (_statsRowKinds[i])
+            {
+                case StatsRow.Cpu:
+                    view.Value = $"{s.CpuPercent:F0} %";
+                    view.ValueBrush = StatsBrushHigh(
+                        s.CpuPercent, OverlayTokens.StatsCpuWarn, OverlayTokens.StatsCpuCrit);
+                    break;
 
-        if (s.BatteryPercent is { } bp)
-        {
-            StatsBatteryValue.Text = $"{bp:F0} %{(s.OnAcPower ? " ⚡" : "")}";
-            StatsBatteryValue.Foreground = StatsBrushLow(
-                bp, OverlayTokens.StatsBatteryWarn, OverlayTokens.StatsBatteryCrit);
-        }
-        else
-        {
-            // Desktop / no battery — placeholder stays in the normal colour.
-            StatsBatteryValue.Text = "—";
-            StatsBatteryValue.Foreground = StatsBrushNormal();
-        }
+                case StatsRow.Memory:
+                    if (s.RamTotalBytes > 0)
+                    {
+                        var usedGb = s.RamUsedBytes / 1_000_000_000.0;
+                        var totalGb = s.RamTotalBytes / 1_000_000_000.0;
+                        view.Value = $"{usedGb:F1} / {totalGb:F0} ГБ";
+                        view.ValueBrush = StatsBrushHigh(
+                            s.RamPercent, OverlayTokens.StatsRamWarn, OverlayTokens.StatsRamCrit);
+                    }
+                    else
+                    {
+                        view.Value = "—";
+                        view.ValueBrush = StatsBrushNormal();
+                    }
+                    break;
 
-        // Network never goes critical — one normal-coloured value, down + up.
-        StatsNetValue.Text =
-            $"{FormatNetRate(s.NetDownBytesPerSec, "↓")}  {FormatNetRate(s.NetUpBytesPerSec, "↑")}";
-        StatsNetValue.Foreground = StatsBrushNormal();
+                case StatsRow.Battery:
+                    if (s.BatteryPercent is { } bp)
+                    {
+                        view.Value = $"{bp:F0} %{(s.OnAcPower ? " ⚡" : "")}";
+                        view.ValueBrush = StatsBrushLow(
+                            bp, OverlayTokens.StatsBatteryWarn, OverlayTokens.StatsBatteryCrit);
+                    }
+                    else
+                    {
+                        // Desktop / no battery — placeholder stays in the normal colour.
+                        view.Value = "—";
+                        view.ValueBrush = StatsBrushNormal();
+                    }
+                    break;
 
-        StatsFullDate.Text = DateFormatHelper.Format(DateTime.Now, DateFormat.FullLong);
+                case StatsRow.Network:
+                    // Network never goes critical — one normal-coloured value, down + up.
+                    view.Value =
+                        $"{FormatNetRate(s.NetDownBytesPerSec, "↓")}  {FormatNetRate(s.NetUpBytesPerSec, "↑")}";
+                    view.ValueBrush = StatsBrushNormal();
+                    break;
+
+                case StatsRow.Date:
+                    view.Caption = DateFormatHelper.Format(DateTime.Now, DateFormat.FullLong);
+                    break;
+            }
+        }
     }
 
     private void ApplyPowerSnapshot(PowerStatusSnapshot snap)
@@ -2012,7 +2119,10 @@ var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orie
     {
         if (expanded)
         {
-            if (_settings.SystemStatsHoverPeek && _settings.SystemStatsEnabled)
+            // Preset Off resolves to zero rows: there is nothing to peek at, so don't
+            // dispatch the surface at all (the pill stays collapsed).
+            if (_settings.SystemStatsHoverPeek
+                && !StatsLayout.ShouldCollapseStatsSurface(OverlayKind.SystemStats, _settings.SystemStatsEnabled, _statsRowKinds.Count))
             {
                 _machine.Dispatch(OverlayCommand.SetSystemStats, new OverlayPayload
                 {

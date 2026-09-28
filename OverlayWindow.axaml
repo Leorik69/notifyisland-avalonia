@@ -285,36 +285,16 @@
       </DockPanel>
 
       <!-- System Stats expanded view (1.12.1): own slot in the root Grid so the
-           72 DIP block is never clipped by the single-row overlay layout.
-           Label left, value right; accent colour is applied in OnStatsSnapshot. -->
+           stats block is never clipped by the single-row overlay layout.
+           Rows are built at runtime from the settings list (any subset, any order) —
+           see StatsRowView and SyncStatsRows. Spacing/Margin are the numbers
+           StatsLayout.StatsHeightFor was derived from; do not change them. -->
       <StackPanel x:Name="SystemStatsPanel"
                   Spacing="4"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   IsVisible="False"
-                  Margin="12,6,12,6">
-        <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Grid.Column="0" Text="CPU" FontSize="11" Foreground="#8A8A92" VerticalAlignment="Center" />
-          <TextBlock Grid.Column="1" x:Name="StatsCpuValue" FontSize="12" Foreground="#C8C8CC" VerticalAlignment="Center" Text="—" />
-        </Grid>
-        <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Grid.Column="0" Text="Память" FontSize="11" Foreground="#8A8A92" VerticalAlignment="Center" />
-          <TextBlock Grid.Column="1" x:Name="StatsRamValue" FontSize="12" Foreground="#C8C8CC" VerticalAlignment="Center" Text="—" />
-        </Grid>
-        <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Grid.Column="0" Text="Батарея" FontSize="11" Foreground="#8A8A92" VerticalAlignment="Center" />
-          <TextBlock Grid.Column="1" x:Name="StatsBatteryValue" FontSize="12" Foreground="#C8C8CC" VerticalAlignment="Center" Text="—" />
-        </Grid>
-        <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Grid.Column="0" Text="Сеть" FontSize="11" Foreground="#8A8A92" VerticalAlignment="Center" />
-          <TextBlock Grid.Column="1" x:Name="StatsNetValue" FontSize="12" Foreground="#C8C8CC" VerticalAlignment="Center" Text="—" />
-        </Grid>
-        <TextBlock x:Name="StatsFullDate"
-                   FontSize="10"
-                   Foreground="#8A8A92"
-                   TextAlignment="Center"
-                   Margin="0,2,0,0" />
-      </StackPanel>
+                  Margin="12,6,12,6" />
 
       <!-- FontAudio digital-dot seconds strip (Idle/Collapsed); complementary to HH:mm[:ss] -->
       <StackPanel x:Name="SecondsStrip"

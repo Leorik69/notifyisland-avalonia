@@ -118,7 +118,7 @@
 | ClickPop (chevron/cycle ack) | **210 мс** (= MorphMs/2) | CubicEaseOut | 1.0 → 1.08 → 1.0, never below 1 |
 | First-appear wobble | **210 мс** (= MorphMs/2) | sine | ±1 DIP translate X |
 | Peek expand (Idle → SystemStats) | **250 мс** задержка (`HoverExpandDelayMs`) + MorphMs | Soft | закрывается по уходу курсора + grace 500 мс |
-| SystemStats height morph | **MorphMs = 420 мс** | Soft | 30 → `StatsExpandedH` = 108 DIP |
+| SystemStats height morph | **MorphMs = 420 мс** | Soft | 30 → `StatsHeightFor(rowCount)` (108 DIP при 5 строках, 48 DIP при 2) |
 
 Запрещено:
 - менять высоту капсулы при notify (не «расти вверх»);
@@ -142,16 +142,16 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | `Error` | error colors | expanded |
 | `Expanded` | обзор | expanded |
 | `Weather` | dynamic weather icon · «Ясно · 18° · 0%» | ~360 |
-| `SystemStats` (1.12.1) | четыре подписанные строки CPU / Память / Батарея / Сеть + полная дата | `StatsExpandedW` = 300 |
+| `SystemStats` (1.12.1) | строки CPU / Память / Батарея / Сеть / дата — набор и порядок задаёт пользователь (`AppSettings.StatsRows`) | `StatsExpandedW` = 300 |
 
 Правила:
 1. Горизонтальный режим: высота всегда **`CollapsedH = 30`**, морф только по ширине.
-   **Исключение (1.12.1):** `OverlayKind.SystemStats` — высота `StatsExpandedH = 108` DIP, ширина фиксирована `StatsExpandedW = 300` DIP. Пилюля раскрывается по наведению (`HoverExpandDelayMs = 250 мс`) и сворачивается при уходе курсора (grace `HoverCollapseGraceMs = 500 мс`); автосворачивание по таймеру 30 с и клик-открытие удалены. Метрики в свёрнутом виде не показываются. Подробности — [`docs/superpowers/specs/2026-09-29--notifyisland-system-stats-rework.md`](superpowers/specs/2026-09-29--notifyisland-system-stats-rework.md).
+   **Исключение (1.12.1):** `OverlayKind.SystemStats` — высота считается от числа строк через `StatsLayout.StatsHeightFor(rowCount)` (108 DIP при дефолтных 5 строках, 48 DIP у пресета «Кратко»), ширина фиксирована `StatsExpandedW = 300` DIP. Пилюля раскрывается по наведению (`HoverExpandDelayMs = 250 мс`) и сворачивается при уходе курсора (grace `HoverCollapseGraceMs = 500 мс`); автосворачивание по таймеру 30 с и клик-открытие удалены. Метрики в свёрнутом виде не показываются. Панель строится динамически в порядке `AppSettings.StatsRows`; пустой набор строк сворачивает поверхность (`StatsLayout.ShouldCollapseStatsSurface`). Подробности — [`docs/superpowers/specs/2026-09-29--notifyisland-system-stats-rework.md`](superpowers/specs/2026-09-29--notifyisland-system-stats-rework.md).
 2. Вертикальный режим (Orientation=Vertical или Auto на Left/Right): ширина = `CollapsedH`, морф по **высоте** (длинная ось).
 3. CornerRadius = `min(Width,Height) / 2` (пиксель-капсула).
 4. Notify инкрементит `UnreadCount`; `Clear` сбрасывает; `Collapse` **сохраняет** unread.
 5. Idle/Collapsed: **одинарный клик** → pin/unpin (`ClickPinEnabled`); **двойной клик** → `ms-actioncenter:`; Esc → unpin. (1.10.0; раньше single = Action Center.)
-6. Right-click → быстрое меню (Центр уведомлений / Demo / Погода / Свернуть / **Настройки…** / Выход). Полные настройки — только в окне Settings (§7).
+6. Right-click → быстрое меню (Центр уведомлений / Demo / Погода / **Настроить монитор…** (1.12.1 — открывает окно Settings сразу на разделе «Монитор», даже если окно уже видно) / разделитель / Свернуть / **Настройки…** / Выход). Полные настройки — только в окне Settings (§7).
 7. CycleNext/Prev (API) **не** инкрементит unread (Notification slot = demo seed). UI-свайпов нет.
 
 ---
@@ -190,13 +190,14 @@ FSM: `OverlayMachine` / `OverlayKind`.
 
 | Параметр | Значение | Пояснение |
 |---|---:|---|
-| Stats expanded height | **108 DIP** (`StatsExpandedH`) | 1.12.1: исключение из `CollapsedH = 30`; считается как 4×16 строк + 4×4 Spacing + 13+2 дата + 6+6 Margin ≈ 107 → 108 |
-| Stats expanded width | **300 DIP** (`StatsExpandedW`) | 1.12.1: фиксировано, не инфлируется по числу метрик |
+| Stats expanded height | **считается от числа строк** (`StatsLayout.StatsHeightFor(rowCount)`) | 108 DIP при дефолтных 5 строках, 48 DIP при 2 строках («Кратко»). Истина о высоте — `StatsHeightFor`, а не `StatsExpandedH` |
+| Stats expanded width | **300 DIP** (`StatsExpandedW`) | 1.12.1: фиксировано, не инфлируется по числу строк |
 | CPU warn / crit | **≥70 % / ≥90 %** | цвет значения: accent `#3D9CF0` / error `#E8A0A0` |
 | RAM warn / crit | **≥85 % / ≥95 %** от total | та же раскраска |
 | Battery warn / crit | **≤20 % / ≤10 %** | та же раскраска |
+| (legacy) `OverlayTokens.StatsExpandedH` / `StatsLayout.StatsPillWidth` | 108 / 300 DIP | **не управляют layout** — оставлены как якоря, на них ссылаются только тесты |
 | Stats metric slot | **56 DIP** | 1.12.0, только для расчёта видимых метрик в Idle |
-| Stats row thresholds | **280 / 380 / 480 / 620 DIP** | 1.12.0, пороги `StatsMinPillW` / `StatsShowTwoMetricsW` / `StatsShowThreeMetricsW` / `StatsShowAllMetricsW` |
+| Stats row thresholds | **280 / 380 / 480 / 620 DIP** | 1.12.0, пороги `StatsMinPillW` / `StatsShowTwoMetricsW` / `StatsShowThreeMetricsW` / `StatsShowAllMetricsW` — с 1.12.1 не влияют на ширину |
 | Stats screen margin | **48 DIP** (`StatsScreenMarginPx`) | отступ от края экрана |
 
 Код: `NotifyIsland.Core/OverlayTokens.cs` + `NotifyIsland.Core/StatsLayout.cs`. В 1.12.1 метрики вынесены из свёрнутой пилюли в отдельную поверхность, поэтому `StatsMinPillW` / `StatsShow*MetricsW` / `StatsMetricSlotW` больше не влияют на ширину — `WidthFor(SystemStats)` всегда возвращает `StatsExpandedW`.
@@ -310,7 +311,8 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
   8. **Звуки** — packs + volumes
   9. **Иконки** — IslandIcons / Tabler / Lucide / Meteocons
   10. **Буфер обмена** — toggle, max items, click action
-  11. **Монитор** — toggle, refresh interval, раскрывать при наведении, virtual interfaces (настройка «Сворачивать через 30 с» удалена в 1.12.1)
+  11. **Монитор** — toggle, refresh interval, раскрывать при наведении, virtual interfaces (настройка «Сворачивать через 30 с» удалена в 1.12.1); набор и порядок строк (1.12.1): пресет + редактор строк + статичное превью
+- Ключи набора строк монитора (1.12.1): `AppSettings.StatsRowsPreset` (`Full` / `Brief` / `Custom`; `Off` в Core, но в UI не предлагается — off-switch это чекбокс «Показывать системный монитор») и `AppSettings.StatsRows` (упорядоченный список `StatsRow`). Пишутся читаемыми строками, не ординалами; оба приводятся к согласованному виду в `Normalize()` (ручное `Off` в `settings.json` мигрирует в `Full`). Состояние редактора строк — `NotifyIsland.Core/StatsRowEditState.cs`.
   12. **О приложении** — version, repo, import/export
 - Все `x:Name` контролов сохранены — `LoadUi` / `ReadUi` / `WireVolumeLabels` без ломки.
 
@@ -354,7 +356,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 
 ## 9. Чеклист перед PR
 
-- [ ] Высота капсулы не изменилась (осталась 30). Исключение — `SystemStats` (`StatsExpandedH = 108`, 1.12.1).
+- [ ] Высота капсулы не изменилась (осталась 30). Исключение — `SystemStats` (высота от числа строк, `StatsHeightFor`, 1.12.1).
 - [ ] Morph Width base 420 мс Soft easing (× AnimationSpeed); Appear/Dismiss styles на Notification.
 - [ ] Unread: Notify++, Clear=0, Collapse сохраняет; cycle seed не ++.
 - [ ] Нет Open-Meteo / third-party weather HTTP.

@@ -139,6 +139,12 @@ public sealed class OverlayMachine
     /// <summary>How many metric slots the collapsed pill shows. 0 hides the row. Set by the Av layer.</summary>
     public int StatsMetricCount { get; set; }
 
+    /// <summary>
+    /// How many rows the System Stats surface shows, from the resolved preset.
+    /// 0 means the default 5-row Full panel. Set by the Av layer from AppSettings.
+    /// </summary>
+    public int StatsRowCount { get; set; }
+
     public OverlayPayload LastWeather => Clone(_lastWeather);
 
     public OverlaySnapshot Snapshot() => new()
@@ -146,7 +152,7 @@ public sealed class OverlayMachine
         Kind = _kind,
         Payload = Clone(_payload),
         Width = WidthFor(_kind, _weatherEnabled, statsMetricCount: StatsMetricCount),
-        Height = HeightFor(_kind),
+        Height = HeightFor(_kind, StatsRowCount),
         NotifyMsLeft = Math.Max(0, _notifyMs),
         UnreadCount = _unreadCount,
         WeatherEnabled = _weatherEnabled,
@@ -634,7 +640,13 @@ public sealed class OverlayMachine
         return Math.Clamp(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
     }
 
-    /// <summary>Fixed height for every kind — island only morphs horizontally. SystemStats is the 1.12.1 exception (108 DIP).</summary>
-    public static double HeightFor(OverlayKind kind) =>
-        kind == OverlayKind.SystemStats ? OverlayTokens.StatsExpandedH : OverlayTokens.CollapsedH;
+    /// <summary>
+    /// Fixed height for every kind — island only morphs horizontally. SystemStats is the 1.12.1
+    /// exception: its height follows the resolved row count (<paramref name="statsRowCount"/>,
+    /// 0 or less = the default 5-row Full panel, i.e. OverlayTokens.StatsExpandedH).
+    /// </summary>
+    public static double HeightFor(OverlayKind kind, int statsRowCount = 0) =>
+        kind == OverlayKind.SystemStats
+            ? StatsLayout.StatsHeightFor(statsRowCount)
+            : OverlayTokens.CollapsedH;
 }

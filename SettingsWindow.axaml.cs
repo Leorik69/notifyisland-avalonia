@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -27,11 +28,13 @@ public partial class SettingsWindow : Window
     private readonly Action? _onStartStopwatch;
     private bool _paletteWired;
     private bool _loadingUi;
+    private readonly string? _initialSection;
 
     public SettingsWindow() : this(new AppSettings(), _ => { }) { }
 
     public SettingsWindow(AppSettings live, Action<AppSettings> onApply, Action? onDemoBattery = null,
-        Action<int>? onStartTimer = null, Action? onStartStopwatch = null)
+        Action<int>? onStartTimer = null, Action? onStartStopwatch = null,
+        string? initialSection = null)
     {
         _live = live;
         _draft = new AppSettings();
@@ -41,6 +44,7 @@ public partial class SettingsWindow : Window
         _onStartTimer = onStartTimer;
         _onStartStopwatch = onStartStopwatch;
         InitializeComponent();
+        _initialSection = initialSection;
         WireNav();
         SettingsSearchBox.TextChanged += OnSettingsSearchChanged;
         RestoreGeometry();
@@ -224,6 +228,18 @@ public partial class SettingsWindow : Window
         SelectByTag(SystemStatsRefreshBox, _draft.SystemStatsRefreshMs.ToString(CultureInfo.InvariantCulture));
         SystemStatsHoverPeekBox.IsChecked = _draft.SystemStatsHoverPeek;
         SystemStatsAllInterfacesBox.IsChecked = _draft.SystemStatsAllInterfaces;
+        // The «Выключить монитор» preset is not offered in the UI — SystemStatsEnabled is the one
+        // off switch — so a settings.json carrying it (only reachable by hand-editing) migrates to
+        // the Full preset here, once, instead of showing a selection the user cannot re-pick.
+        if (_draft.StatsRowsPreset == StatsPreset.Off)
+        {
+            _draft.StatsRowsPreset = StatsPreset.Full;
+            _draft.StatsRows = new List<StatsRow>(StatsLayout.FullRows);
+        }
+        SelectByTag(StatsRowsPresetBox, _draft.StatsRowsPreset.ToString());
+        _statsRowEdit = new StatsRowEditState(_draft.StatsRows);
+        _statsRowEditSeeded = true;
+        RenderStatsRowsUi();
         AboutVersionText.Text = $"NotifyIsland {typeof(AppSettings).Assembly.GetName().Version?.ToString(3) ?? "1.12.0"}";
         AboutRuntimeText.Text = $"{System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription} · Avalonia 11";
         AboutRepoText.Text = "https://github.com/Leorik69/notifyisland-avalonia";
@@ -263,6 +279,173 @@ public partial class SettingsWindow : Window
         UpdatePreview();
         }
         finally { _loadingUi = false; }
+    }
+
+    // -- Монитор: набор строк ------------------------------------------------------------
+    // The editor is a plain ordered model (StatsRowEditState) plus two render passes: one that
+    // draws the check/uncheck + up/down lines, one that draws the preview of the surface. Both
+    // are rebuilt from scratch on every change — five rows is cheap, and rebuilding means the
+    // tree can never drift from the model. Preview rows reuse the surface's own StatsRowView, so
+    // what the user sees in Settings is the very control the island renders; only the sampled
+    // values are missing, hence the «—» placeholder.
+
+    private StatsRowEditState _statsRowEdit = new();
+
+    /// <summary>The up/down buttons of the last rendered editor, per row, so focus can follow a move.</summary>
+    private readonly Dictionary<StatsRow, (Avalonia.Controls.Button Up, Avalonia.Controls.Button Down)>
+        _statsRowButtons = new();
+
+    /// <summary>False until the custom editor has been seeded from the draft's row list once.</summary>
+    private bool _statsRowEditSeeded;
+
+    private StatsPreset SelectedStatsPreset =>
+        Enum.TryParse<StatsPreset>(SelectedTag(StatsRowsPresetBox), true, out var p) ? p : StatsPreset.Full;
+
+    private void OnStatsRowsPresetChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingUi) return;
+        // Entering «Свой набор» must start from something sensible. The draft's row list has already
+        // been reconciled with the preset that was active (Normalize() rewrites it), so seeding from
+        // it hands the user that preset's rows as checked — Brief → Свой набор opens with CPU +
+        // батарея on and память / сеть / дата parked below. Seeding happens only on the first
+        // entry, so a look at another preset and back does not throw away edits made since.
+        if (SelectedStatsPreset == StatsPreset.Custom && !_statsRowEditSeeded)
+        {
+            _statsRowEdit = new StatsRowEditState(_draft.StatsRows);
+            _statsRowEditSeeded = true;
+        }
+        RenderStatsRowsUi();
+    }
+
+    private void RenderStatsRowsUi()
+    {
+        var custom = SelectedStatsPreset == StatsPreset.Custom;
+        StatsRowsEditor.IsVisible = custom;
+        StatsRowsEditorLabel.IsVisible = custom;
+        StatsRowsEditorNote.IsVisible = custom;
+        BuildStatsRowEditor();
+        BuildStatsPreview();
+    }
+
+    private void BuildStatsRowEditor()
+    {
+        StatsRowsEditor.Children.Clear();
+        _statsRowButtons.Clear();
+        foreach (var item in _statsRowEdit.Items)
+        {
+            var row = item.Row;
+            var line = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+            line.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
+
+            var check = new Avalonia.Controls.CheckBox
+            {
+                Content = StatsLayout.NameFor(row),
+                Tag = row.ToString(),
+                IsChecked = item.IsVisible,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Opacity = item.IsVisible ? 1.0 : 0.45,
+            };
+            check.IsChecked = item.IsVisible;
+            // Only the preview is rebuilt here: rebuilding the list under the user's cursor would
+            // move keyboard focus off the checkbox they just pressed. Parked rows are dimmed in
+            // place instead, so the model and the visuals stay in step without stealing focus.
+            check.IsCheckedChanged += (_, _) =>
+                OnStatsRowVisibilityChanged(row, check.IsChecked == true, check);
+            Grid.SetColumn(check, 0);
+            line.Children.Add(check);
+
+            var up = MakeStatsRowButton("↑", "Поднять строку выше", enabled: _statsRowEdit.Items[0].Row != row);
+            var down = MakeStatsRowButton("↓", "Опустить строку ниже",
+                enabled: _statsRowEdit.Items[^1].Row != row);
+            up.Click += (_, _) => MoveStatsRow(row, -1);
+            down.Click += (_, _) => MoveStatsRow(row, +1);
+            var buttons = new StackPanel
+            {
+                Orientation = Avalonia.Layout.Orientation.Horizontal,
+                Spacing = 4
+            };
+            buttons.Children.Add(up);
+            buttons.Children.Add(down);
+            _statsRowButtons[row] = (up, down);
+            Grid.SetColumn(buttons, 2);
+            line.Children.Add(buttons);
+
+            StatsRowsEditor.Children.Add(line);
+        }
+    }
+
+    private static Avalonia.Controls.Button MakeStatsRowButton(string glyph, string tip, bool enabled)
+    {
+        var btn = new Avalonia.Controls.Button
+        {
+            Content = glyph,
+            Width = 34,
+            Height = 26,
+            Padding = new Avalonia.Thickness(0, 0, 0, 2),
+            IsEnabled = enabled,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+        };
+        Avalonia.Controls.ToolTip.SetTip(btn, tip);
+        return btn;
+    }
+
+    private void OnStatsRowVisibilityChanged(StatsRow row, bool visible, Avalonia.Controls.CheckBox check)
+    {
+        if (_loadingUi) return;
+        _statsRowEdit = _statsRowEdit.WithVisibility(row, visible);
+        check.Opacity = visible ? 1.0 : 0.45;
+        BuildStatsPreview();
+    }
+
+    /// <summary>Move a row one slot up/down. Focus is restored to the moved row's up button so a
+    /// keyboard user can keep pressing it; the tree is rebuilt because the order itself changed.</summary>
+    private void MoveStatsRow(StatsRow row, int delta)
+    {
+        if (_loadingUi) return;
+        var moved = _statsRowEdit.Move(row, delta);
+        if (ReferenceEquals(moved, _statsRowEdit)) return;   // already at that end
+        _statsRowEdit = moved;
+        RenderStatsRowsUi();
+        FocusStatsRowButton(row, delta);
+    }
+
+    private void FocusStatsRowButton(StatsRow row, int delta)
+    {
+        if (_statsRowButtons.TryGetValue(row, out var pair))
+            (delta < 0 ? pair.Up : pair.Down).Focus();
+    }
+
+    private void BuildStatsPreview()
+    {
+        StatsPreviewPanel.Children.Clear();
+        var rows = _statsRowEdit.ResolveRows(SelectedStatsPreset);
+        if (rows.Count == 0)
+        {
+            StatsPreviewPanel.Children.Add(new TextBlock
+            {
+                Text = "Панель не показывается",
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.Parse("#8A8A92")),
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            });
+            StatsPreviewPanel.Height = double.NaN;
+            return;
+        }
+
+        foreach (var row in rows)
+        {
+            var view = new StatsRowView
+            {
+                IsCaptionRow = StatsLayout.IsCaptionRow(row),
+                Label = StatsLayout.LabelFor(row),
+                Value = "—",
+                Caption = "—",
+            };
+            StatsPreviewPanel.Children.Add(view);
+        }
+        // Show the pill getting taller/shorter with the row count. The 12 DIP subtracted is the
+        // real panel's Margin; the mock has none, so it uses the full inner content box instead.
+        StatsPreviewPanel.Height = Math.Max(0, StatsLayout.StatsHeightFor(rows.Count) - 12);
     }
 
     private void SelectCityPreset(string? name)
@@ -419,6 +602,11 @@ public partial class SettingsWindow : Window
             _draft.SystemStatsRefreshMs = statsMs;
         _draft.SystemStatsHoverPeek = SystemStatsHoverPeekBox.IsChecked == true;
         _draft.SystemStatsAllInterfaces = SystemStatsAllInterfacesBox.IsChecked == true;
+        // Preset first, then the row order — Normalize() reconciles the two (a non-custom preset
+        // overwrites the list), so nothing here tries to keep them consistent by hand.
+        if (Enum.TryParse<StatsPreset>(SelectedTag(StatsRowsPresetBox), true, out var statsPreset))
+            _draft.StatsRowsPreset = statsPreset;
+        _draft.StatsRows = new List<StatsRow>(_statsRowEdit.ToCustomRows());
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimSpeedBox), true, out var anim))
             _draft.AnimationSpeed = anim;
         if (Enum.TryParse<NotifyAppearStyle>(SelectedTag(AppearStyleBox), true, out var ap))
@@ -525,11 +713,31 @@ public partial class SettingsWindow : Window
 
     private void WireNav()
     {
+        var target = FindNavItem(_initialSection);
+        NavList.SelectedItem = target;
         if (NavList.SelectedIndex < 0 && NavList.ItemCount > 0)
             NavList.SelectedIndex = 0;
         ApplyNavSelection();
         TintSelectedNavIcon();
     }
+
+    /// <summary>
+    /// Selects a sidebar section by its nav tag (e.g. "system" for «Монитор»).
+    /// Unknown tags leave the current selection untouched.
+    /// </summary>
+    public void SelectSection(string tag)
+    {
+        if (FindNavItem(tag) is not { } item) return;
+        NavList.SelectedItem = item;
+        ApplyNavSelection();
+        TintSelectedNavIcon();
+    }
+
+    private ListBoxItem? FindNavItem(string? tag) =>
+        string.IsNullOrEmpty(tag)
+            ? null
+            : NavList.Items.OfType<ListBoxItem>().FirstOrDefault(
+                i => string.Equals(i.Tag?.ToString(), tag, StringComparison.Ordinal));
 
     private void OnNavSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
