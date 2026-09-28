@@ -33,9 +33,9 @@ public static class IslandLayout
         IslandOrientation orientation,
         IslandEdge edge,
         bool batteryChip = false,
-        int cycleCount = 0)
+        int statsMetricCount = 0)
     {
-        var longAxis = OverlayMachine.WidthFor(kind, weatherEnabled, batteryChip, cycleCount);
+        var longAxis = OverlayMachine.WidthFor(kind, weatherEnabled, batteryChip, statsMetricCount);
         var shortAxis = OverlayTokens.CollapsedH;
         if (IsVertical(orientation, edge))
             return (shortAxis, longAxis);

@@ -23,7 +23,7 @@
           ClipToBounds="False"
           RenderTransformOrigin="50%,50%">
     <Grid>
-      <!-- Collapsed: visible ‹/› chevrons + clock/date/weather + unread dot.
+      <!-- Collapsed: visible ‹/› chevrons + system-stats metric row + clock/date/weather + unread dot.
            When clipboard cycle is active (≥2 items), clock is hidden and the
            preview + nav hint take its place; chevrons appear as clickable
            cycle-prev / cycle-next buttons on the edges. -->
@@ -32,6 +32,16 @@
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   Spacing="6">
+        <StackPanel x:Name="SystemStatsPanel"
+                    Orientation="Horizontal"
+                    Spacing="6"
+                    VerticalAlignment="Center"
+                    IsVisible="False">
+          <TextBlock x:Name="StatsCpuText"  VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text=""/>
+          <TextBlock x:Name="StatsRamText"  VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text=""/>
+          <TextBlock x:Name="StatsBatteryText" VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text=""/>
+          <TextBlock x:Name="StatsNetText"  VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text=""/>
+        </StackPanel>
         <Button x:Name="CyclePrevButton"
                 Classes="cycleChevron"
                 VerticalAlignment="Center"
@@ -138,7 +148,7 @@
                 BoxShadow="0 0 12 4 #E05CB6FF" />
       </StackPanel>
 
-      <!-- Expanded single-row: icon | title/subtitle | badge -->
+      <!-- Expanded single-row: icon | title/subtitle | badge | (system-stats expanded when SystemStats kind) -->
       <DockPanel x:Name="OverlayPanel"
                  Margin="10,0,10,0"
                  IsVisible="False"
@@ -269,6 +279,12 @@
                    Height="0"
                    FontSize="1"
                    Text="" />
+        <StackPanel x:Name="SystemStatsExpanded" IsVisible="False" Spacing="6" Margin="0,8,0,0">
+          <TextBlock x:Name="StatsExCpuText"     FontSize="12" Text="CPU"/>
+          <TextBlock x:Name="StatsExRamText"     FontSize="12" Text="RAM"/>
+          <TextBlock x:Name="StatsExBatteryText" FontSize="12" Text="Батарея"/>
+          <TextBlock x:Name="StatsExNetText"     FontSize="12" Text="Сеть"/>
+        </StackPanel>
       </DockPanel>
 
       <!-- FontAudio digital-dot seconds strip (Idle/Collapsed); complementary to HH:mm[:ss] -->

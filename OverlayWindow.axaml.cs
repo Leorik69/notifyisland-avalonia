@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -31,6 +32,7 @@ public partial class OverlayWindow : Window
     private byte[]? _lastArtworkBytes;
     private ClipboardHistory _clipboardHistory = new();
     private WindowsClipboardSource? _clipboardSource;
+    private SystemMonitorMachine? _statsMachine;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(1.8) };
@@ -124,6 +126,13 @@ public partial class OverlayWindow : Window
         }
         _pillFill = ParseColor(_settings.ColorCapsuleFill, OverlayTokens.FillHex);
         _idleFillA = _settings.Opacity;
+        _statsMachine = new SystemMonitorMachine(
+            new WindowsSystemMonitorSource(
+                TimeSpan.FromMilliseconds(_settings.SystemStatsRefreshMs)))
+        {
+        };
+        _statsMachine.OnSnapshot += OnStatsSnapshot;
+        _statsMachine.SetIncludeAllInterfaces(_settings.SystemStatsAllInterfaces);
 
         EnableMorphTransitions();
         WirePointerClicks();
@@ -165,6 +174,8 @@ public partial class OverlayWindow : Window
             EnsurePowerSource();
             if (_settings.ClipboardEnabled)
                 _clipboardSource?.Start();
+            if (_settings.SystemStatsEnabled)
+                _statsMachine?.Start();
             if (_winTray is null && _tray is null)
             {
                 try
@@ -177,6 +188,11 @@ public partial class OverlayWindow : Window
                     AppLog.Warn("TrayService Opened init failed", ex);
                 }
             }
+        };
+        Closed += (_, _) =>
+        {
+            _statsMachine?.Dispose();
+            _statsMachine = null;
         };
         KeyDown += OnKey;
         _clock.Tick += (_, _) => TickClock();
@@ -363,7 +379,7 @@ public partial class OverlayWindow : Window
     private static bool IsOverlayKind(OverlayKind kind) =>
         kind is OverlayKind.Notification or OverlayKind.Progress or OverlayKind.Media
             or OverlayKind.Timer or OverlayKind.Error or OverlayKind.Expanded or OverlayKind.Weather
-            or OverlayKind.Battery;
+            or OverlayKind.Battery or OverlayKind.SystemStats;
 
     private void SyncUnreadPulse(bool shouldPulse)
     {
@@ -467,6 +483,7 @@ public partial class OverlayWindow : Window
     {
         // Reorder: clock+date vs weather — Left = weather before clock
         var row = CollapsedRow;
+        var stats = SystemStatsPanel;
         var clockText = ClockText;
         var digital = DigitalClockRow;
         var dateText = DateText;
@@ -477,6 +494,7 @@ public partial class OverlayWindow : Window
         if (_settings.WeatherSide == WeatherSide.Left)
         {
             row.Children.Add(weather);
+            row.Children.Add(stats);
             row.Children.Add(clockText);
             row.Children.Add(digital);
             row.Children.Add(dateText);
@@ -485,6 +503,7 @@ public partial class OverlayWindow : Window
         }
         else
         {
+            row.Children.Add(stats);
             row.Children.Add(clockText);
             row.Children.Add(digital);
             row.Children.Add(dateText);
@@ -547,7 +566,36 @@ public partial class OverlayWindow : Window
         {
             var kind = _machine.Snapshot().Kind;
             if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
+            {
+                var origin = SystemStatsPanel.TranslatePoint(new Point(0, 0), this);
+                if (origin is Point o
+                    && pos.X >= o.X
+                    && pos.X < o.X + SystemStatsPanel.Bounds.Width
+                    && SystemStatsPanel.IsVisible
+                    && _settings.SystemStatsEnabled)
+                {
+                    _machine.Dispatch(OverlayCommand.SetSystemStats, new OverlayPayload
+                    {
+                        SystemStats = _statsMachine?.Snapshot ?? SystemSnapshot.Empty,
+                        AutoCollapse = _settings.SystemStatsAutoCollapse
+                    });
+                    IslandSounds.Play(IslandSoundKind.Expand, _settings);
+                    ApplySize();
+                    Paint();
+                    e.Handled = true;
+                    return;
+                }
                 HandleIdlePillClick(pos.X);
+            }
+            else if (kind == OverlayKind.SystemStats)
+            {
+                _machine.Dispatch(OverlayCommand.Collapse);
+                IslandSounds.Play(IslandSoundKind.Collapse, _settings);
+                ApplySize();
+                Paint();
+                e.Handled = true;
+                return;
+            }
             else if (kind == OverlayKind.Timer)
             {
                 // Click keeps timer visible with controls (already expanded overlay).
@@ -676,6 +724,9 @@ public partial class OverlayWindow : Window
         SeedIcons();
         ApplyIslandVisibility();
         Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
+        if (_settings.SystemStatsEnabled) _statsMachine?.Start(); else _statsMachine?.Stop();
+        _statsMachine?.SetInterval(TimeSpan.FromMilliseconds(_settings.SystemStatsRefreshMs));
+        _statsMachine?.SetIncludeAllInterfaces(_settings.SystemStatsAllInterfaces);
         ApplySize();
         Paint();
         _tray?.RefreshLabels();
@@ -914,7 +965,7 @@ public partial class OverlayWindow : Window
         var batteryChip = _settings.ShowBatteryInCollapsed
             && _lastPower is { HasBattery: true }
             && snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed;
-        var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge, batteryChip, snap.Payload.ClipboardCycleCount);
+var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation, _settings.Edge, batteryChip, _machine.StatsMetricCount);
         if (snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed)
         {
             var peek = _hoverPin.IsContentExpanded;
@@ -1235,9 +1286,7 @@ public partial class OverlayWindow : Window
         var snap = _machine.Snapshot();
         var kind = snap.Kind;
         var p = snap.Payload;
-        var overlayOn = kind is OverlayKind.Notification or OverlayKind.Progress or OverlayKind.Media
-            or OverlayKind.Timer or OverlayKind.Error or OverlayKind.Expanded or OverlayKind.Weather
-            or OverlayKind.Battery;
+        var overlayOn = IsOverlayKind(kind);
 
         OverlayPanel.IsVisible = overlayOn;
         CollapsedRow.IsVisible = !overlayOn;
@@ -1419,6 +1468,7 @@ public partial class OverlayWindow : Window
         OverlayKind.Expanded => "Обзор",
         OverlayKind.Weather => "Погода",
         OverlayKind.Battery => "Зарядка",
+        OverlayKind.SystemStats => "Монитор",
         _ => ""
     };
 
@@ -1618,6 +1668,52 @@ public partial class OverlayWindow : Window
         ClipboardItemKind.MultiFile => $"{e.Paths?.Count ?? 0} файлов",
         _ => ""
     };
+
+    private void OnStatsSnapshot(SystemSnapshot s)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            var kind = _machine.Snapshot().Kind;
+            var overlayOn = IsOverlayKind(kind) && kind != OverlayKind.SystemStats;
+            if (!_settings.SystemStatsEnabled || overlayOn)
+            {
+                SystemStatsPanel.IsVisible = false;
+                if (kind != OverlayKind.SystemStats) SystemStatsExpanded.IsVisible = false;
+                return;
+            }
+
+            var screen = Screens.All.FirstOrDefault(sc => sc.WorkingArea.Contains(new PixelPoint(
+                (int)Position.X, (int)Position.Y)));
+            var available = (screen?.WorkingArea.Width ?? OverlayTokens.StatsShowAllMetricsW)
+                            - OverlayTokens.StatsScreenMarginPx;
+            var count = StatsLayout.VisibleMetricCount(available);
+            _machine.StatsMetricCount = count;
+            SystemStatsPanel.IsVisible = count > 0;
+
+            StatsCpuText.Text     = count > 0 ? $"{s.CpuPercent:F0}%" : "";
+            StatsRamText.Text     = count > 1 && s.RamTotalBytes > 0
+                ? $"{s.RamUsedBytes / 1_000_000_000.0:F1}/{s.RamTotalBytes / 1_000_000_000.0:F0} GB" : "";
+            StatsBatteryText.Text = count > 2 && s.BatteryPercent is { } bp ? $"{bp:F0}%" : "";
+            StatsNetText.Text     = count > 3 && s.NetDownBytesPerSec > 0
+                ? $"v{s.NetDownBytesPerSec / 1_000_000.0:F1}" : "";
+
+            if (_machine.Snapshot().Kind == OverlayKind.SystemStats)
+            {
+                SystemStatsExpanded.IsVisible = true;
+                StatsExCpuText.Text     = $"CPU      {s.CpuPercent:F0}%";
+                StatsExRamText.Text     = s.RamTotalBytes > 0
+                    ? $"RAM      {s.RamUsedBytes / 1_000_000_000.0:F1} / {s.RamTotalBytes / 1_000_000_000.0:F0} GB  ({s.RamPercent:F0}%)"
+                    : "RAM      —";
+                StatsExBatteryText.Text = s.BatteryPercent is { } ebp
+                    ? $"Батарея  {ebp:F0}%{(s.OnAcPower ? "  ⚡" : "")}" : "Батарея  —";
+                StatsExNetText.Text     = $"Сеть     v {s.NetDownBytesPerSec / 1_000_000.0:F1} MB/s   ^ {s.NetUpBytesPerSec / 1_000.0:F0} KB/s";
+            }
+            else
+            {
+                SystemStatsExpanded.IsVisible = false;
+            }
+        });
+    }
 
     private void ApplyPowerSnapshot(PowerStatusSnapshot snap)
     {
