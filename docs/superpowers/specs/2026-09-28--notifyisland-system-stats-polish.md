@@ -1,7 +1,7 @@
 # NotifyIsland 1.12.0 — System Monitor + Polish Suite
 
 **Date:** 2026-09-28
-**Status:** Draft for review (iteration 2 — addresses spec-review findings)
+**Status:** Draft for review (iteration 3 — addresses spec-review findings from iterations 1 and 2)
 **Branch base:** `feature/clipboard-cycle-pill` (which is ahead of `fix/win11-stability-build`)
 **Delivery:** One PR, one branch, six commits
 
@@ -20,7 +20,7 @@ NotifyIsland 1.11.0 already covers: pill overlay, weather, SMTC Now Playing, bat
 
 ### In scope
 - System Monitor: CPU%, RAM used/total, Battery%, Network up/down (bytes/sec)
-- Adaptive collapsed-pill layout that grows/shrinks based on monitor work-area width
+- Adaptive collapsed-pill layout driven by the current monitor's work-area width
 - Four polish items (animations, settings UI, hover-peek, tray menu)
 
 ### Out of scope
@@ -34,15 +34,19 @@ NotifyIsland 1.11.0 already covers: pill overlay, weather, SMTC Now Playing, bat
 - No island mouse-drag (Edge + OffsetX/Y only)
 - No swipe gestures (clicks only)
 - No new NuGet dependency
-- All numeric animation/layout/timing values live in `NotifyIsland.Core/OverlayTokens.cs` and are mirrored in `docs/ISLAND_GUIDELINES.md`. No bare numeric literals in code or prose.
+- All numeric animation / layout / timing values live in `NotifyIsland.Core/OverlayTokens.cs` and are mirrored in `docs/ISLAND_GUIDELINES.md`. No bare numeric literals in code or in this document.
+- **New animation timings (rule 4):** 1.12.0 introduces exactly two new durations, both derived from an existing token rather than invented:
+  - `PopScaleMs = MorphMs / 2` (420 / 2 = 210) — a click-acknowledgement is exactly half the morph it interrupts
+  - `FirstAppearWobbleMs = MorphMs / 2` — same rhythm, reused so the two feel related
+  Both land in `docs/ISLAND_GUIDELINES.md` §2 in commit 6.
 - Git commits use `git -c user.name='Leorik69' -c user.email='leorik69@users.noreply.github.com'`, never `git config`
 - Sandbox deploy publishes to a fresh `Desktop\notifyisland-fresh-<sha>` and kills any old `NotifyIsland.exe` first
 
 ## 3. Architecture
 
-### 3.0 Project split (revised after review)
+### 3.0 Project split
 
-`NotifyIsland.Core` has **no** `UseWindowsForms` and must stay WinRT/WinForms-free. Every existing `Windows*Source.cs` lives at the repo root (the `NotifyIsland.Av` project): `WindowsWeatherSource.cs`, `WindowsPowerSource.cs`, `WindowsClipboardSource.cs`, `WindowsMediaSessionSource.cs`. The new source follows that convention.
+`NotifyIsland.Core` has **no** `UseWindowsForms` and stays WinRT / WinForms-free. Every existing `Windows*Source.cs` lives at the repo root (the `NotifyIsland.Av` project): `WindowsWeatherSource.cs`, `WindowsPowerSource.cs`, `WindowsClipboardSource.cs`, `WindowsMediaSessionSource.cs`. The new source follows that convention.
 
 | File | Project | Rationale |
 |---|---|---|
@@ -61,7 +65,7 @@ public sealed record SystemSnapshot
 {
     public double CpuPercent { get; init; }              // 0..100
     public long   RamUsedBytes { get; init; }           // physical RAM in use
-    public long   RamTotalBytes { get; init; }          // physical RAM installed
+    public long   RamTotalBytes { get; init; }          // physical RAM installed; 0 = unknown
     public double? BatteryPercent { get; init; }        // null on desktops / unknown
     public bool   OnAcPower { get; init; }
     public long   NetUpBytesPerSec { get; init; }
@@ -86,12 +90,16 @@ public interface ISystemMonitorSource : IDisposable
     SystemSnapshot Current { get; }
     void Start();
     void Stop();
-    /// <summary>Re-configures the sampling period without restarting the timer.</summary>
+    /// <summary>Re-configures the sampling period in place, without restarting the timer.</summary>
     void SetInterval(TimeSpan period);
+    /// <summary>Re-configures the network-interface filter in place.</summary>
+    void SetIncludeAllInterfaces(bool includeAll);
 }
 ```
 
-**`NotifyIsland.Core/StatsDebounce.cs`** (new — extracted so tests can reach it; `InternalsVisibleTo` would also work but a public static helper is cleaner and reusable by `DigitalClockView` later)
+**`NotifyIsland.Core/StatsDebounce.cs`**
+
+Extracted so the tests can reach it — `NotifyIsland.Core.csproj` already has `InternalsVisibleTo("NotifyIsland.Tests")`, but a `public static` helper is cleaner and reusable by `DigitalClockView` later.
 
 ```csharp
 public static class StatsDebounce
@@ -100,7 +108,7 @@ public static class StatsDebounce
     public static double Percent(double previous, double next, double thresholdPct)
         => Math.Abs(next - previous) < thresholdPct ? previous : next;
 
-    /// <summary>Rate variant: reuses the previous byte-rate when below the absolute threshold.</summary>
+    /// <summary>Rate variant: reuses the previous byte-rate when below the absolute floor.</summary>
     public static long Rate(long previous, long next, long thresholdBytesPerSec)
         => Math.Abs(next - previous) < thresholdBytesPerSec ? previous : Math.Max(0, next);
 }
@@ -129,9 +137,10 @@ public sealed class SystemMonitorMachine : IDisposable
         OnSnapshot?.Invoke(s);
     }
 
-    public void Start() => _source.Start();
-    public void Stop()  => _source.Stop();
+    public void Start()      => _source.Start();
+    public void Stop()       => _source.Stop();
     public void SetInterval(TimeSpan period) => _source.SetInterval(period);
+    public void SetIncludeAllInterfaces(bool all) => _source.SetIncludeAllInterfaces(all);
 
     public void Dispose()
     {
@@ -142,7 +151,7 @@ public sealed class SystemMonitorMachine : IDisposable
 }
 ```
 
-**First-tick contract:** the first snapshot after `Start()` reports `CpuPercent = 0`, `NetUp/Down = 0`, but carries a real `RamUsedBytes` / `RamTotalBytes` / `BatteryPercent` and a real `CapturedAt`. Rationale: CPU and network are *deltas* and need two samples. This is asserted by a test, not incidental.
+**First-tick contract:** the first snapshot after `Start()` reports `CpuPercent = 0` and `NetUp/Down = 0`, because those two are *deltas* and need two samples. `RamUsedBytes` / `RamTotalBytes` / `BatteryPercent` / `CapturedAt` are real on the first tick. This is asserted by a test, not incidental.
 
 ### 3.2 New Av file
 
@@ -153,13 +162,14 @@ public sealed class WindowsSystemMonitorSource : ISystemMonitorSource
 {
     private readonly System.Threading.Timer _timer;
     private TimeSpan _period;
+    private volatile bool _running;
+    private volatile bool _includeAllInterfaces = true;
 
     private Process[] _cachedProcesses = Array.Empty<Process>();
     private DateTime _lastProcessRefreshUtc;
     private DateTime _lastSampleUtc;
     private long   _lastTotalCpuTicks;
     private long   _lastNetDown, _lastNetUp;
-    private long   _lastRamTotal;
 
     private volatile SystemSnapshot _current = SystemSnapshot.Empty;
     public SystemSnapshot Current => _current;
@@ -171,59 +181,83 @@ public sealed class WindowsSystemMonitorSource : ISystemMonitorSource
         _timer  = new System.Threading.Timer(_ => Sample(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
-    public void Start() => _timer.Change(_period, _period);
-    public void Stop()  => _timer.Change(Timeout.Infinite, Timeout.Infinite);
-    public void SetInterval(TimeSpan period) { _period = period; if (IsRunning) _timer.Change(period, period); }
+    public void Start()
+    {
+        _running = true;
+        _timer.Change(_period, _period);
+    }
+
+    public void Stop()
+    {
+        _running = false;
+        _timer.Change(Timeout.Infinite, Timeout.Infinite);
+    }
+
+    public void SetInterval(TimeSpan period)
+    {
+        _period = period;
+        if (_running) _timer.Change(period, period);
+    }
+
+    public void SetIncludeAllInterfaces(bool all) => _includeAllInterfaces = all;
+
+    public void Dispose()
+    {
+        Stop();
+        _timer.Dispose();
+        DisposeProcessCache();
+    }
 
     private void Sample()
     {
-        try
+        // Each sampler has its own try/catch so one failing metric cannot drop
+        // the other three. See §7.
+        var now = DateTime.UtcNow;
+        var elapsedMs = (now - _lastSampleUtc).TotalMilliseconds;
+        if (_lastSampleUtc != default && elapsedMs < OverlayTokens.StatsMinSampleIntervalMs)
+            return;
+
+        RefreshProcessCacheIfStale(now);
+
+        var totalCpuTicks = TrySample(() => SampleTotalCpuTicks(), 0L);
+        var netDown = TrySample(() => SampleNetBytesReceived(), 0L);
+        var netUp   = TrySample(() => SampleNetBytesSent(),   0L);
+        var (ramUsed, ramTotal) = TrySampleRam();
+
+        double cpuPercent = 0.0;
+        long netDownBps = 0, netUpBps = 0;
+        if (_lastSampleUtc != default)
         {
-            var now = DateTime.UtcNow;
-            var elapsedMs = (now - _lastSampleUtc).TotalMilliseconds;
-            if (_lastSampleUtc != default && elapsedMs < OverlayTokens.StatsMinSampleIntervalMs)
-                return;                                     // guard against burst ticks
-
-            RefreshProcessCacheIfStale(now);
-
-            var totalCpuTicks = SampleTotalCpuTicks();
-            var netDown = SampleNetBytesReceived();
-            var netUp   = SampleNetBytesSent();
-
-            var cpuPercent = 0.0;
-            long netDownBps = 0, netUpBps = 0;
-            if (_lastSampleUtc != default)
-            {
-                var cores = Math.Max(1, Environment.ProcessorCount);
-                cpuPercent = (totalCpuTicks - _lastTotalCpuTicks) * 1000.0 / (elapsedMs * cores);
-                netDownBps = (netDown - _lastNetDown) * 1000 / (long)elapsedMs;
-                netUpBps   = (netUp   - _lastNetUp)   * 1000 / (long)elapsedMs;
-            }
-            _lastTotalCpuTicks = totalCpuTicks;
-            _lastNetDown = netDown; _lastNetUp = netUp;
-            _lastSampleUtc = now;
-
-            var snapshot = new SystemSnapshot
-            {
-                CpuPercent = StatsDebounce.Percent(
-                    _current.CpuPercent, Math.Clamp(cpuPercent, 0, 100), OverlayTokens.StatsDebouncePercent),
-                RamUsedBytes   = SampleRamUsedBytes(),
-                RamTotalBytes  = _lastRamTotal,
-                BatteryPercent = SampleBatteryPercent(),
-                OnAcPower      = SampleOnAcPower(),
-                NetUpBytesPerSec = StatsDebounce.Rate(
-                    _current.NetUpBytesPerSec, netUpBps, OverlayTokens.StatsNetRateFloorBps),
-                NetDownBytesPerSec = StatsDebounce.Rate(
-                    _current.NetDownBytesPerSec, netDownBps, OverlayTokens.StatsNetRateFloorBps),
-                CapturedAt = now,
-            };
-            _current = snapshot;
-            SnapshotChanged?.Invoke(snapshot);
+            var cores = Math.Max(1, Environment.ProcessorCount);
+            cpuPercent = (totalCpuTicks - _lastTotalCpuTicks) * 1000.0 / (elapsedMs * cores);
+            netDownBps = (netDown - _lastNetDown) * 1000 / (long)elapsedMs;
+            netUpBps   = (netUp   - _lastNetUp)   * 1000 / (long)elapsedMs;
         }
-        catch
+        _lastTotalCpuTicks = totalCpuTicks;
+        _lastNetDown = netDown; _lastNetUp = netUp;
+        _lastSampleUtc = now;
+
+        _current = new SystemSnapshot
         {
-            // Fail-soft: keep _current, never throw to the System.Threading.Timer callback.
-        }
+            CpuPercent = StatsDebounce.Percent(
+                _current.CpuPercent, Math.Clamp(cpuPercent, 0, 100), OverlayTokens.StatsDebouncePercent),
+            RamUsedBytes   = ramUsed,
+            RamTotalBytes  = ramTotal,
+            BatteryPercent = TrySampleBatteryPercent(),
+            OnAcPower      = TrySampleOnAc(),
+            NetUpBytesPerSec = StatsDebounce.Rate(
+                _current.NetUpBytesPerSec, netUpBps, OverlayTokens.StatsNetRateFloorBps),
+            NetDownBytesPerSec = StatsDebounce.Rate(
+                _current.NetDownBytesPerSec, netDownBps, OverlayTokens.StatsNetRateFloorBps),
+            CapturedAt = now,
+        };
+        SnapshotChanged?.Invoke(_current);
+    }
+
+    private static T TrySample<T>(Func<T> sampler, T fallback)
+    {
+        try { return sampler(); }
+        catch { return fallback; }
     }
 }
 ```
@@ -231,46 +265,48 @@ public sealed class WindowsSystemMonitorSource : ISystemMonitorSource
 **Physical RAM via `GlobalMemoryStatusEx`** (P/Invoke declared in this Av file, no new package):
 
 ```csharp
-[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-private class MEMORYSTATUSEX
+[StructLayout(LayoutKind.Sequential)]
+private struct MEMORYSTATUSEX
 {
-    public uint dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>();
-    public uint dwMemoryLoad;
-    public ulong ullTotalPhys;
-    public ulong ullAvailPhys;
-    public ulong ullTotalPageFile;
-    public ulong ullAvailPageFile;
-    public ulong ullTotalVirtual;
-    public ulong ullAvailVirtual;
-    public ulong ullAvailExtendedVirtual;
+    public uint   dwLength;
+    public uint   dwMemoryLoad;
+    public ulong  ullTotalPhys;
+    public ulong  ullAvailPhys;
+    public ulong  ullTotalPageFile;
+    public ulong  ullAvailPageFile;
+    public ulong  ullTotalVirtual;
+    public ulong  ullAvailVirtual;
+    public ulong  ullAvailExtendedVirtual;
 }
 
 [DllImport("kernel32.dll", SetLastError = true)]
 [return: MarshalAs(UnmanagedType.Bool)]
-private static extern bool GlobalMemoryStatusEx([In, Out] MEMORYSTATUSEX lpBuffer);
+private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
 
 private static (long Used, long Total) SamplePhysicalRam()
 {
-    var ms = new MEMORYSTATUSEX();
-    if (!GlobalMemoryStatusEx(ms)) return (0, 0);
+    var ms = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() };
+    if (!GlobalMemoryStatusEx(ref ms)) return (0, 0);
     return ((long)(ms.ullTotalPhys - ms.ullAvailPhys), (long)ms.ullTotalPhys);
 }
 ```
 
 `GC.GetGCMemoryInfo()` is **not** used for RAM — it reports the GC heap, not physical memory, and would produce a meaningless ratio.
 
+`RamTotalBytes == 0` means `GlobalMemoryStatusEx` failed; the RAM slot hides itself rather than showing `0/0 GB`.
+
 ### 3.3 Metric sources (all pure-managed, no new packages)
 
 | Metric | Source | Notes |
 |---|---|---|
-| CPU% | `Σ Process.TotalProcessorTime.Ticks` over cached `Process[]` ÷ (elapsed × `Environment.ProcessorCount`) | **Approximate**: processes started after the last cache refresh contribute 0 for up to `OverlayTokens.StatsProcessCacheMs` (30 s). The cache is **rebuilt** (not only pruned) on each refresh, so it does not grow unbounded. |
+| CPU% | `Σ Process.TotalProcessorTime.Ticks` over cached `Process[]` ÷ (elapsed × `Environment.ProcessorCount`) | **Approximate** in two ways. (a) Processes started after the last cache rebuild contribute 0 for up to `OverlayTokens.StatsProcessCacheMs`. (b) A process that *exits* at a cache-rebuild boundary has its accumulated ticks removed from the numerator without changing the elapsed denominator, producing at most one tick of error. Clamped to 0..100 by `Sanitize`. The cache is fully **rebuilt** on each refresh, so it cannot grow unbounded. |
 | RAM used / total | `GlobalMemoryStatusEx` → `ullTotalPhys − ullAvailPhys` / `ullTotalPhys` | True physical RAM. P/Invoke in the Av file. |
-| Battery% | `SystemInformation.PowerStatus` (WinForms) — `Av` only | `null` when `PowerStatus.BatteryLifePercent == 255` (desktop / no battery) |
+| Battery% | `SystemInformation.PowerStatus` (WinForms) — **Av only** | `null` when `PowerStatus.BatteryLifePercent == 255` (desktop / no battery). See §7 for the STA note. |
 | Net down/up | `Σ` over `NetworkInterface.GetAllNetworkInterfaces()` where `OperationalStatus == Up` and the interface passes the filter below; each contributes `GetIPv4Statistics().BytesReceived` / `.BytesSent` deltas | IPv4 only — `GetIPv4Statistics()` is the API surface that ships in-box with .NET 8; IPv6 is not counted. |
 
 **Network interface filter** (`SystemStatsAllInterfaces = false` → "NonVirtual"):
 - **All** (default, `true`): every interface that is `Up`. Includes Wi-Fi, Ethernet, VPN, Hyper-V vNIC, WSL, Tailscale — everything currently carrying traffic.
-- **NonVirtual** (`false`): excludes interfaces whose `NetworkInterfaceType` is `Loopback`, `Tunnel`, or `Unknown`, and excludes any whose `Name` or `Description` matches a virtual-adapter regex (`vEthernet|Hyper-V|VirtualBox|VMware|WSL|Tailscale|Loopback|Tunnel|VPN`).
+- **NonVirtual** (`false`): excludes interfaces whose `NetworkInterfaceType` is `Loopback`, `Tunnel`, or `Unknown`, and excludes any whose `Name` or `Description` matches a virtual-adapter regex (`vEthernet|Hyper-V|VirtualBox|VMware|WSL|Tailscale|Loopback|Tunnel|VPN`, case-insensitive).
 
 ### 3.4 FSM integration
 
@@ -280,21 +316,23 @@ private static (long Used, long Total) SamplePhysicalRam()
 public enum OverlayKind
 {
     // ... existing 11 kinds ...
-    SystemStats              // 12th
+    SystemStats              // 12th, appended
 }
 
 public enum OverlayCommand
 {
     // ... existing 17 commands ...
-    SetSystemStats,          // 18th
+    SetSystemStats,          // 18th, appended
 }
 ```
 
 `OverlayPayload` gains:
 ```csharp
 public SystemSnapshot? SystemStats { get; set; }
-public bool AutoCollapse { get; set; } = true;   // mirrored from AppSettings.SystemStatsAutoCollapse
+public bool AutoCollapse { get; set; } = true;
 ```
+
+**Producer of `AutoCollapse`:** the `OnSnapshot` subscription callback in `MainWindow` reads `AppSettings.SystemStatsAutoCollapse` on every fire and always assigns it onto the outgoing payload, so the setting is never silently `false`. A dedicated FSM test pins this (see §8).
 
 `Sanitize(...)` rounds `CpuPercent` to 1 decimal, clamps byte counters to non-negative, and nulls `SystemStats` when `CpuPercent` is NaN.
 
@@ -307,107 +345,105 @@ case OverlayCommand.SetSystemStats:
     _kind = OverlayKind.SystemStats;
     _payload.AutoCollapse = data.AutoCollapse;
     Apply(data);
-    _statsIdleMs = 0;
+    _statsIdleMs = 0.0;
     break;
 ```
 
-`Tick(deltaMs)` — the auto-collapse is now **gated on the setting**:
+`Tick(deltaMs)` — the auto-collapse is gated on the setting:
 ```csharp
 if (_kind == OverlayKind.SystemStats)
 {
-    _statsIdleMs += dt;
+    _statsIdleMs += deltaMs;                    // _statsIdleMs is double; comparison promotes
     if (_payload.AutoCollapse && _statsIdleMs >= OverlayTokens.StatsAutoCollapseMs)
     {
         _kind = OverlayKind.Idle;
-        _statsIdleMs = 0;
+        _statsIdleMs = 0.0;
     }
 }
 ```
 
-`WidthFor(SystemStats, …)`:
+`WidthFor(SystemStats, …)` — reuses existing tokens, invents no `ClockW` / `DateW`:
 ```csharp
-var w = OverlayTokens.ClockW
-      + OverlayTokens.DateW
-      + visibleMetricCount * OverlayTokens.StatsMetricSlotW;
+var w = OverlayTokens.CollapsedW + visibleMetricCount * OverlayTokens.StatsMetricSlotW;
 return Math.Clamp(w, OverlayTokens.StatsMinPillW, OverlayTokens.ExpandedMaxW);
 ```
-where `visibleMetricCount` is derived from the current monitor's work-area width (see §5.2).
+
+`visibleMetricCount` comes from the threshold mapping in §5.2, which reads the **monitor work area**, not the computed pill width — so there is no feedback loop.
 
 ### 3.5 New tokens (`NotifyIsland.Core/OverlayTokens.cs`)
 
+Type convention follows the existing file: widths and ratios are `double`, durations and counters are `int`, byte-rates are `long`.
+
 ```csharp
 // System monitor — sampling
-public const int    StatsRefreshMs            = 1000;   // default sampling period
-public const int    StatsMinSampleIntervalMs  = 100;    // guard against burst timer ticks
-public const int    StatsProcessCacheMs       = 30_000; // rebuild Process[] cache
-public const double StatsDebouncePercent      = 0.5;    // percent-change floor
-public const long   StatsNetRateFloorBps      = 4_096;  // byte/sec-change floor
+public const int    StatsRefreshMs            = 1000;    // default sampling period
+public const int    StatsRefreshMinMs        = 500;     // Settings combo floor; Normalize() clamps to it
+public const int    StatsRefreshMaxMs        = 2000;    // Settings combo ceiling
+public const int    StatsMinSampleIntervalMs  = 100;     // guard against burst timer ticks
+public const int    StatsProcessCacheMs       = 30_000;  // rebuild Process[] cache
+public const double StatsDebouncePercent      = 0.5;     // percent-change floor
+public const long   StatsNetRateFloorBps      = 4_096;   // byte/sec-change floor
 
-// System monitor — layout
-public const int    StatsMinPillW             = 280;
-public const int    StatsMetricSlotW          = 56;     // px per visible metric
-public const int    StatsShowTwoMetricsW      = 380;    // >= this: CPU + RAM
-public const int    StatsShowThreeMetricsW    = 480;    // >= this: + Battery
-public const int    StatsShowAllMetricsW      = 620;    // >= this: + Net
+// System monitor — layout (double, matching CollapsedW / ExpandedMinW / ExpandedMaxW)
+public const double StatsMinPillW             = 280.0;
+public const double StatsMetricSlotW          = 56.0;    // px per visible metric
+public const double StatsScreenMarginPx       = 48.0;    // gap kept between pill and screen edge
+public const double StatsShowTwoMetricsW      = 380.0;   // >= this: CPU + RAM
+public const double StatsShowThreeMetricsW    = 480.0;   // >= this: + Battery
+public const double StatsShowAllMetricsW      = 620.0;   // >= this: + Net
 public const int    StatsAutoCollapseMs       = 30_000;
 
 // Hover-peek (polish C)
 public const int    PeekAutoHideMs            = 1_200;
 public const int    PeekMorphMs               = 200;
-public const int    PeekExtraFullDateW        = 120;
+public const double PeekExtraFullDateW        = 120.0;
 
-// Animations (polish A)
-public const int    PopScaleMs                = 180;
+// Animations (polish A) — both derived from MorphMs, see §2
+public const int    PopScaleMs                = MorphMs / 2;
 public const double PopScalePeak              = 1.08;
-public const int    FirstAppearWobbleMs       = 220;
+public const int    FirstAppearWobbleMs       = MorphMs / 2;
 public const double FirstAppearWobblePx       = 1.0;
 
 // Tray (polish D)
 public const int    TrayClipboardSubmenuItems = 5;
 ```
 
-Type harmonization: existing width tokens (`CollapsedW`, `ExpandedMinW`) are `int` in this file; the new width tokens above match that type. `StatsDebouncePercent` is `double` because it is a ratio, not a pixel.
-
-All values mirrored into `docs/ISLAND_GUIDELINES.md` §2 and §9 in the same PR.
+All values mirrored into `docs/ISLAND_GUIDELINES.md` §2 and §9 in commit 6.
 
 ### 3.6 AnimationAction additions (polish A wiring)
 
-`AnimationAction` gains two members so the new animations get per-action speed overrides in Settings → Анимации:
+`PopScale` and `FirstAppearWobble` are **appended** to the enum, never inserted mid-sequence:
 
 ```csharp
 public enum AnimationAction
 {
-    MorphInflate,
-    MorphCollapse,
-    UnreadPulse,
-    IdleBreath,          // (enum value retained; no UI path sets it)
-    Hover,
-    SwipeRubber,
-    IconCrossfade,
-    PopScale,            // new
-    FirstAppearWobble    // new
+    // ... existing 6 members, unchanged and in place ...
+    PopScale,            // appended
+    FirstAppearWobble    // appended
 }
 ```
 
-New AppSettings keys `AnimPopScale` and `AnimFirstAppearWobble` (both default `AnimationSpeed.Normal`) are added to `CopyTo` and to the Settings → Анимации per-action list. Both new animations obey `AnimationSpeed = Off` (they collapse to a 1 ms snap, consistent with GUIDELINES §2).
+Appending preserves every existing ordinal, so any legacy numeric encoding in an older `settings.json` keeps resolving. (`IdleBreath` is **not** re-added to the enum — it was removed in PR #10 and stays removed; `AnimIdleBreath` is a legacy `AppSettings` key that no longer has a UI path.)
+
+New `AppSettings` keys `AnimPopScale` and `AnimFirstAppearWobble` (both default `AnimationSpeed.Normal`) are added to `CopyTo` and to the Settings → Анимации per-action list. Both new animations obey `AnimationSpeed = Off` (1 ms snap, no visible motion, consistent with GUIDELINES §2).
 
 ## 4. Data flow
 
 ```
 [System.Threading.Timer, OverlayTokens.StatsRefreshMs]
-  └─ WindowsSystemMonitorSource.Sample()
+  └─ WindowsSystemMonitorSource.Sample()                       [timer thread]
        ├─ Process cache rebuild (every StatsProcessCacheMs)
-       ├─ CPU / RAM / Battery / Net samples
+       ├─ per-metric TrySample(...) — one failure cannot drop the rest
        ├─ StatsDebounce.Percent / StatsDebounce.Rate
-       └─ SnapshotChanged?.Invoke(snapshot)          [timer thread]
-            └─ SystemMonitorMachine.OnSourceSnapshot  [still timer thread]
+       └─ SnapshotChanged?.Invoke(snapshot)                    [timer thread]
+            └─ SystemMonitorMachine.OnSourceSnapshot           [still timer thread]
                  └─ Dispatcher.UIThread.Post(...)
+                      ├─ read AppSettings.SystemStatsAutoCollapse
                       ├─ OverlayMachine.Dispatch(SetSystemStats, payload)
                       └─ ApplySize(); Paint()
-                           └─ SystemStatsPanel renders if kind == SystemStats
 ```
 
-`SystemStatsRefreshMs` is a **live setting**: `SettingsWindow.Apply` calls `SystemMonitorMachine.SetInterval(...)` which forwards to `WindowsSystemMonitorSource.SetInterval`, which calls `_timer.Change(period, period)` in place. No source re-creation, no restart.
+`SystemStatsRefreshMs` and `SystemStatsAllInterfaces` are **live settings**: `SettingsWindow.Apply` calls `SystemMonitorMachine.SetInterval(...)` / `.SetIncludeAllInterfaces(...)`, which forward to the source, which calls `_timer.Change(period, period)` in place. No source re-creation, no restart.
 
 ## 5. UI
 
@@ -420,28 +456,28 @@ New AppSettings keys `AnimPopScale` and `AnimFirstAppearWobble` (both default `A
    clock    date   CPU slot    RAM slot      net slot
 ```
 
-Priority order (dropped **first** when width-constrained): **Net → Battery → RAM → CPU**. CPU is never dropped.
+Drop priority when width-constrained, first dropped to last: **Net → Battery → RAM → CPU**. CPU is never dropped.
 
 ### 5.2 Where "available width" comes from
 
 The pill is a fixed-width capsule — it is never width-constrained by another element. "Available width" therefore means:
 
-1. Query the working-area width of the monitor the pill currently sits on (`IScreen.WorkingArea.Width` via Avalonia `Screens`, in DIPs).
-2. `available = workingAreaW − OverlayTokens.StatsScreenMarginPx` (default 48 px, so the pill never touches the screen edge).
-3. The metrics row is shown only when `available >= StatsMinPillW`; otherwise the row hides entirely and the pill is plain clock + date.
-
-The pill's own width is then computed from the **visible metric count**, which is derived deterministically from `available`:
-
 ```
-count = available >= StatsShowAllMetricsW   ? 4
-      : available >= StatsShowThreeMetricsW ? 3
-      : available >= StatsShowTwoMetricsW   ? 2
-      : 1                                  // CPU only
+available = Screens.All[ScreenFor(this)].WorkingArea.Width   // already DIP-normalised by Avalonia
+          - OverlayTokens.StatsScreenMarginPx;
 ```
 
-This makes the layout a pure function of `available` — no guessing, no feedback loop between pill width and metric count.
+```csharp
+var count = available < OverlayTokens.StatsMinPillW          ? 0   // metrics row hidden entirely
+          : available < OverlayTokens.StatsShowTwoMetricsW   ? 1   // CPU only
+          : available < OverlayTokens.StatsShowThreeMetricsW ? 2   // CPU + RAM
+          : available < OverlayTokens.StatsShowAllMetricsW   ? 3   // + Battery
+          : 4;                                                     // + Net
+```
 
-On a 1920×1080 monitor at 100% DPI: `available ≈ 1872` → all 4 metrics. At 150% DPI: `available ≈ 1248` → all 4. On a 1280×1024 laptop at 150%: `available ≈ 805` → all 4. Below 620 px (rare, e.g. a narrow side-by-side windowed setup) the row starts dropping Net, then Battery, then RAM.
+This makes the layout a pure function of `available` — no feedback loop between pill width and metric count, and no guessing. The pill's own width then follows from `count` via the §3.4 formula.
+
+Worked example moved to `docs/ISLAND_PREVIEW.md`; the arithmetic is intentionally **not** duplicated here.
 
 ### 5.3 Expanded `SystemStats` kind
 
@@ -459,7 +495,7 @@ On a 1920×1080 monitor at 100% DPI: `available ≈ 1872` → all 4 metrics. At 
 
 ### 5.4 Settings — new sections
 
-The sidebar currently has **10** sections (verified against `SettingsWindow.axaml`: island, weather, placement, theme, media, look, anim, sound, icons, clipboard). `docs/ISLAND_GUIDELINES.md` §7 still lists 9 — that doc is corrected to 10 in this PR.
+The sidebar currently has **10** sections (verified against `SettingsWindow.axaml`: island, weather, placement, theme, media, look, anim, sound, icons, clipboard). `docs/ISLAND_GUIDELINES.md` §7 still lists 9 — that doc is corrected in this PR.
 
 Two sections are added:
 
@@ -468,31 +504,31 @@ Two sections are added:
 | Control | Type | Default |
 |---|---|---|
 | Показывать метрики в островке | CheckBox | `true` |
-| Интервал обновления | ComboBox 500 / 1000 / 2000 ms | `1000` |
-| Автоскрытие через 30 с | CheckBox | `true` |
+| Интервал обновления | ComboBox `StatsRefreshMinMs` / `StatsRefreshMs` / `StatsRefreshMaxMs` | `StatsRefreshMs` |
+| Автоскрытие | CheckBox | `true` |
 | Считать виртуальные интерфейсы | CheckBox | `true` |
 
-**«О программе» (12th)** — version, runtime, build timestamp, GitHub URL, `Проверить обновления` button (local-only: compares against the latest tag already present in the repo's release feed, no outbound network — stubbed and disabled for now).
+**«О программе» (12th)** — version, runtime, build timestamp, GitHub URL, `Проверить обновления` button (stubbed and disabled; no outbound network).
 
-Plus a search box at the top of the nav rail (filters sections by name, case-insensitive substring; hidden when fewer than 4 sections), live validation borders on out-of-range numeric inputs, and Export/Import JSON buttons in the bottom bar.
+Plus a search box at the top of the nav rail (filters sections by name, case-insensitive substring; hidden when fewer than 4 sections), live validation borders on out-of-range numeric inputs, and Export / Import JSON buttons in the bottom bar.
 
 `AppSettings` gains:
 ```csharp
 public bool SystemStatsEnabled { get; set; } = true;
-public int  SystemStatsRefreshMs { get; set; } = OverlayTokens.StatsRefreshMs;  // clamp 500..2000
+public int  SystemStatsRefreshMs { get; set; } = OverlayTokens.StatsRefreshMs;
 public bool SystemStatsAutoCollapse { get; set; } = true;
 public bool SystemStatsAllInterfaces { get; set; } = true;
 public bool SettingsSearchEnabled { get; set; } = true;
 ```
 
-All five keys are clamped / defaulted inside `Normalize()` in the same PR — this is new code, not "no additional validation". Existing `settings.json` files that lack these keys deserialize with the property initializers, so all four stats keys default to `true` on upgrade without a migration step. A test pins this.
+All five keys are clamped / defaulted inside `Normalize()` in the same PR — this is new code, not "no additional validation". `Normalize()` clamps `SystemStatsRefreshMs` to `[StatsRefreshMinMs, StatsRefreshMaxMs]`. Existing `settings.json` files that lack these keys deserialize with the property initializers, so all four stats keys default to `true` on upgrade with no migration step. A test pins this.
 
 ## 6. Polish items
 
 ### 6.1 Animations
-- `PopScale` on `CycleNext` / `CyclePrev` / chevron clicks: scale 1.0 → 1.08 → 1.0 over `PopScaleMs`, scaled per-action through `AnimationTiming.ScaleMs(PopScaleMs, settings.AnimPopScale)`.
-- `FirstAppearWobble`: when the pill first appears after being hidden (fullscreen exit, tray toggle), translate X oscillates ±1 px over `FirstAppearWobbleMs`, scaled through `AnimFirstAppearWobble`.
-- New `AnimationEasing.PopScale(t)` in Core, unit-tested for `PopScale(0) == 1.0`, `PopScale(0.5) ≈ 1.08`, `PopScale(1) == 1.0`.
+- `PopScale` on `CycleNext` / `CyclePrev` / chevron clicks: scale 1.0 → `PopScalePeak` → 1.0 over `PopScaleMs`, scaled per-action through `AnimationTiming.ScaleMs(PopScaleMs, settings.AnimPopScale)`.
+- `FirstAppearWobble`: when the pill first appears after being hidden (fullscreen exit, tray toggle), translate X oscillates within `FirstAppearWobblePx` over `FirstAppearWobbleMs`, scaled through `AnimFirstAppearWobble`.
+- New `AnimationEasing.PopScale(t)` in Core, unit-tested at the endpoints and midpoint.
 - Both respect `AnimationSpeed = Off` (1 ms snap, no visible motion).
 
 ### 6.2 Settings UI
@@ -500,11 +536,11 @@ All five keys are clamped / defaulted inside `Normalize()` in the same PR — th
 - Search box on the nav rail.
 - Live validation: red `BorderBrush` on numeric fields whose raw input is out of range before clamping.
 - Export / Import `settings.json` via `SaveFileDialog` / `OpenFileDialog`.
-- `ISLAND_GUIDELINES.md` §7 sidebar list updated from 9 → 12.
+- `ISLAND_GUIDELINES.md` §7 sidebar list corrected to 12.
 
 ### 6.3 Hover-peek
 - Peek body adds full date (`DateFormat.FullShort`), current weather temp when `WeatherEnabled`, and the unread badge when > 0.
-- Auto-hide after `PeekAutoHideMs` (1.2 s) of no pointer movement.
+- Auto-hide after `PeekAutoHideMs` of no pointer movement.
 - Width morphs by `PeekExtraFullDateW` over `PeekMorphMs`.
 - Persistent «Закреплено» badge in the right edge while pinned.
 
@@ -525,18 +561,30 @@ All five keys are clamped / defaulted inside `Normalize()` in the same PR — th
 
 ## 7. Error handling
 
-- Every platform call inside `WindowsSystemMonitorSource.Sample()` is wrapped in a single outer `try/catch`. On exception the previous `_current` snapshot is kept and the timer keeps ticking. The source never throws to its caller.
-- `SystemMonitorMachine.Dispose()` unsubscribes from `SnapshotChanged` and sets `OnSnapshot = null`, so a disposed machine is not reachable from the source.
-- `_current` is declared `volatile` — written on the timer thread, read on the UI thread.
-- `Paint()` treats a null `SystemStats` as "hide the row" — no NRE.
-- `AppSettings.Normalize()` (edited in this PR) clamps `SystemStatsRefreshMs` to 500..2000 and coerces the four bools to their declared defaults when the incoming value is out of the enum/domain. Covered by a dedicated test.
-- Process cache: `RefreshProcessCacheIfStale` disposes exited processes and swallows `InvalidOperationException` (race with process exit). The cache is fully rebuilt each refresh, so it cannot grow unbounded.
-- `NetworkInterface` enumeration can throw on adapters being disabled mid-tick — caught, that adapter contributes 0 for the tick.
-- `GlobalMemoryStatusEx` failure → `(Used, Total) = (0, 0)`, `RamPercent` returns 0 and the RAM slot hides itself rather than showing a misleading `0/0 GB`.
+**Per-metric isolation.** Every platform call is wrapped individually via the `TrySample` helper, so a single failing metric cannot drop the others for that tick. There is no single outer `try/catch` around the whole snapshot initializer.
+
+| Metric | Failure mode | Behaviour |
+|---|---|---|
+| CPU | `Process` access denied on a protected process | that process contributes 0 ticks; total still valid |
+| RAM | `GlobalMemoryStatusEx` returns false | `(0, 0)` → `RamTotalBytes == 0` → RAM slot hides |
+| Battery | WinForms `PowerStatus` throws, or returns a zeroed struct | `BatteryPercent = null` → battery slot hides; other metrics unaffected |
+| Network | adapter disabled mid-enumeration | that adapter contributes 0 for the tick; others still counted |
+
+**Battery / STA note.** `SystemInformation.PowerStatus` is not documented as thread-safe, and WinForms interop expects an initialised application context. `WindowsSystemMonitorSource` warms it on `Start()` via a one-shot `Dispatcher.UIThread.Post(() => _ = SystemInformation.PowerStatus)` before the first timer tick, so the timer callback always runs against a warm context. If `PlatformNotSupportedException` still escapes, `TrySampleBatteryPercent()` swallows it and returns `null`.
+
+**Lifetime.** `SystemMonitorMachine.Dispose()` unsubscribes from `SnapshotChanged` and nulls `OnSnapshot`, so a disposed machine is not reachable from the source. `OverlayWindow` disposes it in its own `Closed` handler.
+
+**Memory visibility.** `_current` is `volatile` — written on the timer thread, read on the UI thread via `Current` / `SystemMonitorMachine.Snapshot`.
+
+**Settings.** `AppSettings.Normalize()` (edited in this PR) clamps `SystemStatsRefreshMs` to `[StatsRefreshMinMs, StatsRefreshMaxMs]`. Covered by a dedicated test.
+
+**Process cache.** `RefreshProcessCacheIfStale` disposes exited processes and swallows `InvalidOperationException` (race with process exit). The cache is fully rebuilt on each refresh, so it cannot grow unbounded.
 
 ## 8. Testing
 
-**`NotifyIsland.Tests/SystemMonitorMachineTests.cs`** (9 tests, fake `ISystemMonitorSource`)
+**Baseline (verified, not assumed):** `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release` on `feature/clipboard-cycle-pill` reports **174 passed, 0 failed** (114 `[Fact]` + 11 `[Theory]` with `InlineData` expansions).
+
+**`NotifyIsland.Tests/SystemMonitorMachineTests.cs`** (11 tests, fake `ISystemMonitorSource`)
 
 | Test | Asserts |
 |---|---|
@@ -545,33 +593,36 @@ All five keys are clamped / defaulted inside `Normalize()` in the same PR — th
 | `Machine_StartDelegatesToSource` | fake records `Start()` |
 | `Machine_StopDelegatesToSource` | fake records `Stop()` |
 | `Machine_SetIntervalDelegatesToSource` | fake records the period |
-| `Machine_FirstSnapshot_IsZeroNotNull` | first fire yields `CpuPercent == 0` with non-null `Snapshot` and real `CapturedAt` |
+| `Machine_SetIncludeAllInterfacesDelegates` | fake records the flag |
+| `Machine_FirstSnapshot_HasZeroCpuButRealRam` | first fire → `CpuPercent == 0`, `RamTotalBytes > 0`, `CapturedAt` set |
 | `Machine_DisposeUnsubscribesFromSource` | after `Dispose()`, a source fire does not raise `OnSnapshot` |
-| `StatsDebounce_Percent_ReusesPreviousBelowThreshold` | 0.4% delta keeps old |
-| `StatsDebounce_Percent_UpdatesAboveThreshold` | 1.0% delta replaces |
-| `StatsDebounce_Rate_ReusesBelowFloor` | small byte-rate delta keeps old |
-| `StatsDebounce_Rate_NeverNegative` | negative input clamps to 0 |
+| `Debounce_Percent_ReusesPreviousBelowThreshold` | sub-threshold delta keeps old |
+| `Debounce_Percent_UpdatesAboveThreshold` | above-threshold delta replaces |
+| `Debounce_Rate_ReusesBelowFloor` | small byte-rate delta keeps old |
+| `Debounce_Rate_NeverNegative` | negative input clamps to 0 |
 
-**`NotifyIsland.Tests/AdaptiveStatsLayoutTests.cs`** (5 tests)
+**`NotifyIsland.Tests/AdaptiveStatsLayoutTests.cs`** (7 tests)
 
 | Test | Asserts |
 |---|---|
-| `Layout_UnderMin_HidesRow` | `available < StatsMinPillW` → metrics hidden |
-| `Layout_380_ShowsCpuRam` | `[Cpu, Ram]` |
-| `Layout_480_ShowsCpuRamBattery` | `[Cpu, Ram, Battery]` |
-| `Layout_620_ShowsAll` | all four |
-| `Layout_NeverDropsCpu` | CPU present at every width ≥ `StatsMinPillW` |
+| `Layout_UnderMin_HidesRow` | `available < StatsMinPillW` → `count == 0` |
+| `Layout_AtMin_ShowsCpuOnly` | `count == 1` |
+| `Layout_380_ShowsCpuRam` | `count == 2` |
+| `Layout_480_ShowsCpuRamBattery` | `count == 3` |
+| `Layout_620_ShowsAll` | `count == 4` |
+| `Layout_NeverDropsCpu` | CPU slot present for every `count >= 1` |
+| `SystemStats_AutoCollapseFlagRespected` | `AutoCollapse = false` → `Tick` past `StatsAutoCollapseMs` stays in `SystemStats`; `AutoCollapse = true` → collapses |
 
-**`NotifyIsland.Tests/AnimationEasingTests.cs`** (populated by polish-A commit, 3 tests)
-- `PopScale_StartsAtOne`, `PopScale_PeaksNearMidpoint`, `PopScale_EndsAtOne`
+**`NotifyIsland.Tests/AnimationEasingTests.cs`** (4 tests, added by polish-A)
+- `PopScale_StartsAtOne`, `PopScale_PeaksNearMidpoint` (≈ `PopScalePeak`), `PopScale_EndsAtOne`
 - `FirstAppearWobble_StaysWithinPx` — |x| ≤ `FirstAppearWobblePx` for all t
 
-**`NotifyIsland.Tests/AppSettingsTests.cs`** (3 new tests appended)
-- `Normalize_ClampsSystemStatsRefreshMs` — 100 → 500, 5000 → 2000
+**`NotifyIsland.Tests/AppSettingsTests.cs`** (3 tests appended)
+- `Normalize_ClampsSystemStatsRefreshMs` — below `StatsRefreshMinMs` clamps up, above `StatsRefreshMaxMs` clamps down
 - `Default_StatsKeys_AreTrue` — fresh `AppSettings` has all four bools `true`
 - `Defaults_StatsKeys_AreTrueForExistingInstalls` — deserialize a hand-written `settings.json` that omits the stats keys into a fresh instance, then `Normalize()`; all four stay `true`
 
-**Totals: 174 existing + 11 + 5 + 3 + 3 = 196 tests, 0 failing.**
+**Totals: 174 existing + 11 + 7 + 4 + 3 = 199 tests, 0 failing.**
 
 **Build:** 0 warnings, 0 errors.
 
@@ -583,13 +634,13 @@ All five keys are clamped / defaulted inside `Normalize()` in the same PR — th
 3. feat(core): OverlayMachine SystemStats kind + SetSystemStats + auto-collapse gating
 4. feat(ui):   SystemStatsPanel in collapsed pill + expanded kind + adaptive layout
 5. polish(ui): animations (PopScale, FirstAppearWobble) + settings sidebar + hover-peek + tray
-6. docs:       GUIDELINES tokens + §7 sidebar list + CONTEXT + CHANGELOG
+6. docs:       GUIDELINES tokens + §7 sidebar list + ISLAND_PREVIEW example + CONTEXT + CHANGELOG
 ```
 
 ## 10. Verification
 
 1. `dotnet build NotifyIsland.Av.csproj -c Release` → 0 warnings, 0 errors
-2. `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release` → **196 passed**
+2. `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release` → **199 passed**
 3. `python3 tools/test_overlay_states.py` → FSM states valid
-4. Manual: run the published build; confirm metrics appear in the collapsed pill; click into `SystemStats`; cycle back to `Idle`; toggle `SystemStatsEnabled` in Settings and confirm the row hides; change `SystemStatsRefreshMs` and confirm the sampling rate changes without a restart.
+4. Manual: run the published build; confirm metrics appear in the collapsed pill; click into `SystemStats`; cycle back to `Idle`; toggle `SystemStatsEnabled` and confirm the row hides; change `SystemStatsRefreshMs` and confirm the sampling rate changes without a restart; uncheck «Считать виртуальные интерфейсы» and confirm the net figure drops.
 5. Sandbox: kill old `NotifyIsland.exe`, publish to `Desktop\notifyisland-fresh-<sha>`, launch.
