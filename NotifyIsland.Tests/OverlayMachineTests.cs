@@ -212,8 +212,6 @@ public class OverlayMachineTests
         Assert.True(OverlayTokens.CollapsedH <= 30);
         Assert.Equal(12, OverlayTokens.ClickMaxPx);
         Assert.Equal(OverlayTokens.ClickMaxPx, OverlayTokens.SwipeClickMaxPx);
-        Assert.Equal(0.04, OverlayTokens.BreathScaleAmp);
-        Assert.Equal(7, OverlayTokens.BreathWidthAmpPx);
     }
 
     [Fact]
@@ -376,6 +374,98 @@ public class OverlayMachineTests
         Assert.Equal(OverlayKind.Timer, m.Snapshot().Kind);
         Assert.InRange(m.Snapshot().Payload.RemainingSeconds, 1.4, 1.6);
         Assert.True(m.Snapshot().Payload.CountUp);
+    }
+
+    [Fact]
+    public void ClipboardCycle_SetPreviews_PopulatesPayload()
+    {
+        var m = new OverlayMachine();
+        var payload = new OverlayPayload
+        {
+            ClipboardCyclePreviews = new[] { "alpha", "beta", "gamma" },
+            ClipboardCycleIndex = 1
+        };
+        m.Dispatch(OverlayCommand.SetClipboardCycle, payload);
+        var snap = m.Snapshot();
+        Assert.Equal(3, snap.Payload.ClipboardCycleCount);
+        Assert.Equal(1, snap.Payload.ClipboardCycleIndex);
+        Assert.Equal("beta", snap.Payload.ClipboardCyclePreview);
+        Assert.Equal("beta", snap.Payload.Title);
+        Assert.Equal("2/3", snap.Payload.Subtitle);
+    }
+
+    [Fact]
+    public void ClipboardCycle_Next_WrapsAround()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetClipboardCycle, new OverlayPayload
+        {
+            ClipboardCyclePreviews = new[] { "a", "b", "c" },
+            ClipboardCycleIndex = 2  // last
+        });
+        m.Dispatch(OverlayCommand.CycleClipboardNext);
+        Assert.Equal(0, m.Snapshot().Payload.ClipboardCycleIndex);
+        Assert.Equal("a", m.Snapshot().Payload.ClipboardCyclePreview);
+    }
+
+    [Fact]
+    public void ClipboardCycle_Prev_WrapsAroundToLast()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetClipboardCycle, new OverlayPayload
+        {
+            ClipboardCyclePreviews = new[] { "a", "b", "c" },
+            ClipboardCycleIndex = 0
+        });
+        m.Dispatch(OverlayCommand.CycleClipboardPrev);
+        Assert.Equal(2, m.Snapshot().Payload.ClipboardCycleIndex);
+        Assert.Equal("c", m.Snapshot().Payload.ClipboardCyclePreview);
+    }
+
+    [Fact]
+    public void ClipboardCycle_NextIncrementsAndUpdatesPreview()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetClipboardCycle, new OverlayPayload
+        {
+            ClipboardCyclePreviews = new[] { "first", "second", "third" },
+            ClipboardCycleIndex = 0
+        });
+        m.Dispatch(OverlayCommand.CycleClipboardNext);
+        Assert.Equal(1, m.Snapshot().Payload.ClipboardCycleIndex);
+        Assert.Equal("second", m.Snapshot().Payload.ClipboardCyclePreview);
+        Assert.Equal("2/3", m.Snapshot().Payload.Subtitle);
+    }
+
+    [Fact]
+    public void ClipboardCycle_NoPreviews_IsNoOp()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetClipboardCycle, new OverlayPayload
+        {
+            ClipboardCyclePreviews = Array.Empty<string>(),
+            ClipboardCycleIndex = 0
+        });
+        // No exception, state stays clean.
+        Assert.Equal(0, m.Snapshot().Payload.ClipboardCycleCount);
+
+        // Subsequent CycleNext on empty list is a no-op too.
+        m.Dispatch(OverlayCommand.CycleClipboardNext);
+        Assert.Equal(-1, m.Snapshot().Payload.ClipboardCycleIndex);
+    }
+
+    [Fact]
+    public void ClipboardCycle_IndexClampsToBounds()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetClipboardCycle, new OverlayPayload
+        {
+            ClipboardCyclePreviews = new[] { "x", "y" },
+            ClipboardCycleIndex = 99  // way out of bounds
+        });
+        // Clamps to last valid index.
+        Assert.Equal(1, m.Snapshot().Payload.ClipboardCycleIndex);
+        Assert.Equal("y", m.Snapshot().Payload.ClipboardCyclePreview);
     }
 }
 

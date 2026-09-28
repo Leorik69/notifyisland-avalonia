@@ -32,3 +32,28 @@ Desktop.ini
 
 ## Logs / local
 *.log
+
+## Legacy 1.3.x localization artifacts
+# 1.11.0 dropped the loc/ JSON layer — settings are now stored in
+# %LOCALAPPDATA%/NotifyIsland/settings.json only. Ignore stray loc/ folders
+# left from 1.3.x checkouts or accidental drag-into-publish copies so they
+# never sneak into a build.
+loc/
+loc/*.json
+
+## Stale release debug bits
+# Setup directories sometimes end up with .NET preview debugger files
+# (coreclr.dll, mscordaccore*.dll, *_cor3.dll). Never source-controlled.
+coreclr.dll
+mscordaccore*.dll
+mscordbi.dll
+PenImc_cor3.dll
+PresentationNative_cor3.dll
+wpfgfx_cor3.dll
+vcruntime140_cor3.dll
+D3DCompiler_47_cor3.dll
+
+## Build artifacts
+# Output of `setup/pack-release.ps1` and `dotnet publish`.
+dist/
+publish/

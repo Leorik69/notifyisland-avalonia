@@ -49,6 +49,17 @@ public enum SoundPack
     Off
 }
 
+/// <summary>What happens when the user clicks the clipboard pill.</summary>
+public enum ClipboardClickAction
+{
+    /// <summary>Collapse the pill. The data is already in the system clipboard; user pastes via Ctrl+V.</summary>
+    Dismiss,
+    /// <summary>Collapse the pill AND clear the system clipboard (paranoid mode).</summary>
+    DismissAndClear,
+    /// <summary>Reserved for v1.1 — auto-paste to the previous foreground window. Disabled in v1.</summary>
+    PasteToLastFocus
+}
+
 
 /// <summary>JSON settings under %LOCALAPPDATA%/NotifyIsland/settings.json.</summary>
 public sealed class AppSettings
@@ -154,6 +165,16 @@ public sealed class AppSettings
 
     public bool SoundEnabled { get; set; } = true;
 
+    /// <summary>Enable Windows clipboard history listener and the overlay pill.</summary>
+    public bool ClipboardEnabled { get; set; } = true;
+
+    /// <summary>Max items kept in clipboard history (1–100). Default 25.</summary>
+    public int ClipboardMaxItems { get; set; } = ClipboardHistory.DefaultMaxItems;
+
+    /// <summary>What happens when the user clicks the clipboard pill.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public ClipboardClickAction ClipboardClickAction { get; set; } = ClipboardClickAction.Dismiss;
+
     /// <summary>WAV pack or System/Off. Default Nothing (original inspired tones).</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public SoundPack SoundPack { get; set; } = SoundPack.Nothing;
@@ -169,7 +190,7 @@ public sealed class AppSettings
     public double SoundVolError { get; set; } = 1.0;
     public double SoundVolHover { get; set; } = 0.35;
 
-    /// <summary>Island morph / pulse / breath speed. Default Normal.</summary>
+    /// <summary>Island morph / pulse speed. Default Normal.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AnimationSpeed AnimationSpeed { get; set; } = AnimationSpeed.Slow;
 
@@ -205,9 +226,6 @@ public sealed class AppSettings
     public AnimationSpeed AnimUnreadPulse { get; set; } = AnimationSpeed.Normal;
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
-    public AnimationSpeed AnimIdleBreath { get; set; } = AnimationSpeed.Normal;
-
-    [JsonConverter(typeof(JsonStringEnumConverter))]
     public AnimationSpeed AnimHover { get; set; } = AnimationSpeed.Normal;
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -215,9 +233,6 @@ public sealed class AppSettings
 
     /// <summary>Enable unread-dot opacity pulse when unread &gt; 0.</summary>
     public bool AnimPulseEnabled { get; set; } = true;
-
-    /// <summary>Enable idle breathing scale on collapsed pill.</summary>
-    public bool AnimBreathEnabled { get; set; } = true;
 
     /// <summary>Notification appear style (Settings → Анимации).</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -324,6 +339,10 @@ public sealed class AppSettings
         target.IslandVisible = IslandVisible;
         target.Opacity = Math.Clamp(Opacity, 0.35, 1.0);
         target.SoundEnabled = SoundEnabled;
+        target.ClipboardEnabled = ClipboardEnabled;
+        target.ClipboardMaxItems = Math.Clamp(ClipboardMaxItems, 1, ClipboardHistory.HardCap);
+        target.ClipboardClickAction = Enum.IsDefined(typeof(ClipboardClickAction), ClipboardClickAction)
+            ? ClipboardClickAction : ClipboardClickAction.Dismiss;
         target.SoundPack = SoundPack;
         target.SoundVolume = Math.Clamp(SoundVolume, 0.0, 1.0);
         target.SoundVolNotify = Math.Clamp(SoundVolNotify, 0.0, 1.0);
@@ -343,11 +362,9 @@ public sealed class AppSettings
         target.AnimMorphInflate = AnimMorphInflate;
         target.AnimMorphCollapse = AnimMorphCollapse;
         target.AnimUnreadPulse = AnimUnreadPulse;
-        target.AnimIdleBreath = AnimIdleBreath;
         target.AnimHover = AnimHover;
         target.AnimSwipeRubber = AnimSwipeRubber;
         target.AnimPulseEnabled = AnimPulseEnabled;
-        target.AnimBreathEnabled = AnimBreathEnabled;
         target.AppearStyle = AppearStyle;
         target.DismissStyle = DismissStyle;
         target.SettingsWindowX = SettingsWindowX;

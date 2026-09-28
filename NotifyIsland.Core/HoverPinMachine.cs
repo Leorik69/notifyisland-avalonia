@@ -41,9 +41,6 @@ public sealed class HoverPinMachine
 
     public bool IsPinned => Phase == HoverPinPhase.Pinned;
 
-    /// <summary>True while hover-peek or pinned — softens/pauses idle breath.</summary>
-    public bool SoftenBreath => IsContentExpanded;
-
     public void Configure(bool hoverEnabled, bool pinEnabled, int hoverDelayMs, int collapseGraceMs)
     {
         HoverExpandEnabled = hoverEnabled;

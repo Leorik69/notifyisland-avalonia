@@ -55,16 +55,16 @@
 
 44. Иконка в трее: левый клик — показать/скрыть островок; правый — меню (настройки, островок, демо, погода, выход); двойной клик — центр уведомлений; точка на иконке при непрочитанных.
 
-45. В простое (часы) островок слегка «дышит» — заметное изменение масштаба (±2.5%).
+45. В простое (часы) островок неподвижен — никакого «дыхания» или pulse (только при непрочитанных).
 
-46. Скорость анимаций в настройках (**Анимации**): медленнее / обычная / быстрее / выкл — действует на морф, pulse и дыхание.
+46. Скорость анимаций в настройках (**Анимации**): медленнее / обычная / быстрее / выкл — действует на морф и pulse.
 
 47. Палитра в **Оформление**: заливка капсулы, акцент, текст основной/вторичный (persist + live Apply).
 
 48. Пакет иконок (stub): IslandIcons + плановые Tabler/Lucide/Phosphor — см. `docs/ICON_PACKS.md`.
 
 ### Целевой стек (кратко)
-Must: Now Playing, timer/progress alerts, compact↔expanded morph, top-center, fullscreen-safe, weather, tray, settings tabs, clicks only, idle breath, animation speed, palette, icon packs.  
+Must: Now Playing, timer/progress alerts, compact↔expanded morph, top-center, fullscreen-safe, weather, tray, settings tabs, clicks only, clipboard history (text + paths), animation speed, palette, icon packs.
 Backlog differentiators: file shelf / clipboard / launcher. Не копируем Apple TM naming; без fake Live Activities без Win API.
 
 
@@ -80,6 +80,6 @@ Backlog differentiators: file shelf / clipboard / launcher. Не копируе�
 - Размер шрифта 10–18 + семейство (System / Space Grotesk / JetBrains Mono)
 - Палитра: свотчи + ColorPicker + превью
 - Пакеты иконок Tabler (MIT) / Lucide (ISC) реально переключаются
-- Вкладка «Анимации»: скорость по действиям + pulse/breath toggles
+- Вкладка «Анимации»: скорость по действиям + pulse toggle
 - Nothing-inspired: только OFL-шрифты и soft clicks; без NType82 / Glyph firmware
 
