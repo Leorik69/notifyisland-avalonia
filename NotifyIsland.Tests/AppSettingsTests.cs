@@ -407,7 +407,7 @@ public class AppSettingsTests
         var s = new AppSettings();
         s.Normalize();
         Assert.True(s.SystemStatsEnabled);
-        Assert.True(s.SystemStatsAutoCollapse);
+        Assert.True(s.SystemStatsHoverPeek);
         Assert.True(s.SystemStatsAllInterfaces);
         Assert.True(s.SettingsSearchEnabled);
     }
@@ -421,9 +421,21 @@ public class AppSettingsTests
         var s = AppSettings.FromJson(json)!;
         s.Normalize();
         Assert.True(s.SystemStatsEnabled);
-        Assert.True(s.SystemStatsAutoCollapse);
+        Assert.True(s.SystemStatsHoverPeek);
         Assert.True(s.SystemStatsAllInterfaces);
         Assert.True(s.SettingsSearchEnabled);
+        Assert.Equal(14, s.FontSize);
+    }
+
+    [Fact]
+    public void Legacy_SystemStatsAutoCollapseKey_IsIgnoredOnLoad()
+    {
+        // 1.12.1 removed the key and its 30 s wall-clock behaviour. Old settings.json files still
+        // carry it; the deserializer must ignore the unknown member instead of throwing.
+        var json = "{\"fontSize\":14,\"systemStatsAutoCollapse\":false,\"systemStatsHoverPeek\":true}";
+        var s = AppSettings.FromJson(json)!;
+        s.Normalize();
+        Assert.True(s.SystemStatsHoverPeek);
         Assert.Equal(14, s.FontSize);
     }
 }

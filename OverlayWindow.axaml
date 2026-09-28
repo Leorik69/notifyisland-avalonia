@@ -23,7 +23,8 @@
           ClipToBounds="False"
           RenderTransformOrigin="50%,50%">
     <Grid>
-      <!-- Collapsed: visible ‹/› chevrons + system-stats metric row + clock/date/weather + unread dot.
+      <!-- Collapsed: visible ‹/› chevrons + clock/date/weather + unread dot.
+           System-stats metrics live in SystemStatsPanel (expanded view only, 1.12.1).
            When clipboard cycle is active (≥2 items), clock is hidden and the
            preview + nav hint take its place; chevrons appear as clickable
            cycle-prev / cycle-next buttons on the edges. -->
@@ -32,16 +33,6 @@
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   Spacing="6">
-        <StackPanel x:Name="SystemStatsPanel"
-                    Orientation="Horizontal"
-                    Spacing="6"
-                    VerticalAlignment="Center"
-                    IsVisible="False">
-          <TextBlock x:Name="StatsCpuText"  VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text=""/>
-          <TextBlock x:Name="StatsRamText"  VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text=""/>
-          <TextBlock x:Name="StatsBatteryText" VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text=""/>
-          <TextBlock x:Name="StatsNetText"  VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text=""/>
-        </StackPanel>
         <Button x:Name="CyclePrevButton"
                 Classes="cycleChevron"
                 VerticalAlignment="Center"
@@ -107,15 +98,6 @@
                    FontWeight="Medium"
                    Foreground="#C8C8CC"
                    Text="24 сен" />
-        <TextBlock x:Name="PeekFullDateText"
-                   VerticalAlignment="Center"
-                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                   FontSize="11"
-                   FontWeight="Medium"
-                   Foreground="#888890"
-                   IsVisible="False"
-                   TextTrimming="CharacterEllipsis"
-                   MaxWidth="200" />
         <StackPanel x:Name="MinimalWeather"
                     Orientation="Horizontal"
                     Spacing="4"
@@ -300,13 +282,39 @@
                    Height="0"
                    FontSize="1"
                    Text="" />
-        <StackPanel x:Name="SystemStatsExpanded" IsVisible="False" Spacing="6" Margin="0,8,0,0">
-          <TextBlock x:Name="StatsExCpuText"     FontSize="12" Text="CPU"/>
-          <TextBlock x:Name="StatsExRamText"     FontSize="12" Text="RAM"/>
-          <TextBlock x:Name="StatsExBatteryText" FontSize="12" Text="Батарея"/>
-          <TextBlock x:Name="StatsExNetText"     FontSize="12" Text="Сеть"/>
-        </StackPanel>
       </DockPanel>
+
+      <!-- System Stats expanded view (1.12.1): own slot in the root Grid so the
+           72 DIP block is never clipped by the single-row overlay layout.
+           Label left, value right; accent colour is applied in OnStatsSnapshot. -->
+      <StackPanel x:Name="SystemStatsPanel"
+                  Spacing="4"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  IsVisible="False"
+                  Margin="12,6,12,6">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Text="CPU" FontSize="11" Foreground="#8A8A92" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" x:Name="StatsCpuValue" FontSize="12" Foreground="#C8C8CC" VerticalAlignment="Center" Text="—" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Text="Память" FontSize="11" Foreground="#8A8A92" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" x:Name="StatsRamValue" FontSize="12" Foreground="#C8C8CC" VerticalAlignment="Center" Text="—" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Text="Батарея" FontSize="11" Foreground="#8A8A92" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" x:Name="StatsBatteryValue" FontSize="12" Foreground="#C8C8CC" VerticalAlignment="Center" Text="—" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Text="Сеть" FontSize="11" Foreground="#8A8A92" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" x:Name="StatsNetValue" FontSize="12" Foreground="#C8C8CC" VerticalAlignment="Center" Text="—" />
+        </Grid>
+        <TextBlock x:Name="StatsFullDate"
+                   FontSize="10"
+                   Foreground="#8A8A92"
+                   TextAlignment="Center"
+                   Margin="0,2,0,0" />
+      </StackPanel>
 
       <!-- FontAudio digital-dot seconds strip (Idle/Collapsed); complementary to HH:mm[:ss] -->
       <StackPanel x:Name="SecondsStrip"

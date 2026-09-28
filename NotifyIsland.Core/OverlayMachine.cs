@@ -94,8 +94,6 @@ public sealed class OverlayPayload
     public IReadOnlyList<string> ClipboardCyclePreviews { get; set; } = Array.Empty<string>();
     /// <summary>Live machine metrics; null when System Stats is disabled or sampling failed.</summary>
     public SystemSnapshot? SystemStats { get; set; }
-    /// <summary>Mirrors AppSettings.SystemStatsAutoCollapse. Gates the Tick auto-collapse for the SystemStats kind.</summary>
-    public bool AutoCollapse { get; set; } = true;
 }
 
 public sealed class OverlaySnapshot
@@ -123,7 +121,6 @@ public sealed class OverlayMachine
     private OverlayPayload _lastWeather = WeatherCodes.MockMoscow();
     private List<string> _cyclePreviews = new();
     private int _cycleIndex = -1;
-    private double _statsIdleMs;
 
     public int NotifyDurationMs
     {
@@ -247,7 +244,6 @@ public sealed class OverlayMachine
                     _returnTo = _kind == OverlayKind.Collapsed ? OverlayKind.Idle : _kind;
                 _kind = OverlayKind.SystemStats;
                 Apply(data);
-                _statsIdleMs = 0.0;
                 break;
             case OverlayCommand.SetClipboard:
                 // Defensive: ignore empty payloads rather than blanking the pill.
@@ -308,15 +304,8 @@ public sealed class OverlayMachine
     public OverlaySnapshot Tick(int deltaMs)
     {
         var dt = Math.Max(0, deltaMs);
-        if (_kind == OverlayKind.SystemStats)
-        {
-            _statsIdleMs += dt;
-            if (_payload.AutoCollapse && _statsIdleMs >= OverlayTokens.StatsAutoCollapseMs)
-            {
-                _kind = OverlayKind.Idle;
-                _statsIdleMs = 0.0;
-            }
-        }
+        // 1.12.1: SystemStats no longer auto-collapses on a wall-clock timer.
+        // Exit is driven by pointer leave (HoverPinMachine grace) or an explicit Collapse.
         if (_kind is OverlayKind.Notification or OverlayKind.Battery or OverlayKind.Clipboard)
         {
             _notifyMs -= dt;
@@ -518,7 +507,6 @@ public sealed class OverlayMachine
         _payload.ClipboardCyclePreview = data.ClipboardCyclePreview;
         _payload.ClipboardCyclePreviews = data.ClipboardCyclePreviews;
         _payload.SystemStats = data.SystemStats;
-        _payload.AutoCollapse = data.AutoCollapse;
     }
 
     public static OverlayPayload Sanitize(OverlayPayload raw)
@@ -596,8 +584,7 @@ public sealed class OverlayMachine
             ClipboardCyclePreviews = raw.ClipboardCyclePreviews,
             SystemStats = raw.SystemStats is { CpuPercent: var cpu } && double.IsFinite(cpu)
                 ? raw.SystemStats with { CpuPercent = Math.Round(Math.Clamp(cpu, 0, 100), 1) }
-                : null,
-            AutoCollapse = raw.AutoCollapse
+                : null
         };
     }
 
@@ -615,15 +602,14 @@ public sealed class OverlayMachine
         ClipboardCycleCount = p.ClipboardCycleCount,
         ClipboardCyclePreview = p.ClipboardCyclePreview,
         ClipboardCyclePreviews = p.ClipboardCyclePreviews,
-        SystemStats = p.SystemStats,
-        AutoCollapse = p.AutoCollapse
+        SystemStats = p.SystemStats
     };
 
     public static double WidthFor(OverlayKind kind, bool weatherEnabled = false,
                                   bool batteryChip = false, int statsMetricCount = 0)
     {
         if (kind == OverlayKind.SystemStats)
-            return StatsLayout.StatsPillWidth(statsMetricCount);
+            return OverlayTokens.StatsExpandedW;
         var w = kind switch
         {
             OverlayKind.Expanded => 340,
@@ -648,6 +634,7 @@ public sealed class OverlayMachine
         return Math.Clamp(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
     }
 
-    /// <summary>Fixed height for every kind — island only morphs horizontally.</summary>
-    public static double HeightFor(OverlayKind kind) => OverlayTokens.CollapsedH;
+    /// <summary>Fixed height for every kind — island only morphs horizontally. SystemStats is the 1.12.1 exception (108 DIP).</summary>
+    public static double HeightFor(OverlayKind kind) =>
+        kind == OverlayKind.SystemStats ? OverlayTokens.StatsExpandedH : OverlayTokens.CollapsedH;
 }

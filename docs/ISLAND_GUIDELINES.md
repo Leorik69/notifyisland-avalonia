@@ -117,8 +117,8 @@
 | Icon DIP | — | — | `FontSize × 1.0` (clock/weather), `FontSize × 0.92` (kind) |
 | ClickPop (chevron/cycle ack) | **210 мс** (= MorphMs/2) | CubicEaseOut | 1.0 → 1.08 → 1.0, never below 1 |
 | First-appear wobble | **210 мс** (= MorphMs/2) | sine | ±1 DIP translate X |
-| Peek auto-hide | **1200 мс** | — | un-pinned peek collapses |
-| Peek width morph | **200 мс** | SoftOut | +120 DIP for the full-date row |
+| Peek expand (Idle → SystemStats) | **250 мс** задержка (`HoverExpandDelayMs`) + MorphMs | Soft | закрывается по уходу курсора + grace 500 мс |
+| SystemStats height morph | **MorphMs = 420 мс** | Soft | 30 → `StatsExpandedH` = 108 DIP |
 
 Запрещено:
 - менять высоту капсулы при notify (не «расти вверх»);
@@ -142,9 +142,11 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | `Error` | error colors | expanded |
 | `Expanded` | обзор | expanded |
 | `Weather` | dynamic weather icon · «Ясно · 18° · 0%» | ~360 |
+| `SystemStats` (1.12.1) | четыре подписанные строки CPU / Память / Батарея / Сеть + полная дата | `StatsExpandedW` = 300 |
 
 Правила:
 1. Горизонтальный режим: высота всегда **`CollapsedH = 30`**, морф только по ширине.
+   **Исключение (1.12.1):** `OverlayKind.SystemStats` — высота `StatsExpandedH = 108` DIP, ширина фиксирована `StatsExpandedW = 300` DIP. Пилюля раскрывается по наведению (`HoverExpandDelayMs = 250 мс`) и сворачивается при уходе курсора (grace `HoverCollapseGraceMs = 500 мс`); автосворачивание по таймеру 30 с и клик-открытие удалены. Метрики в свёрнутом виде не показываются. Подробности — [`docs/superpowers/specs/2026-09-29--notifyisland-system-stats-rework.md`](superpowers/specs/2026-09-29--notifyisland-system-stats-rework.md).
 2. Вертикальный режим (Orientation=Vertical или Auto на Left/Right): ширина = `CollapsedH`, морф по **высоте** (длинная ось).
 3. CornerRadius = `min(Width,Height) / 2` (пиксель-капсула).
 4. Notify инкрементит `UnreadCount`; `Clear` сбрасывает; `Collapse` **сохраняет** unread.
@@ -184,15 +186,20 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | Font | Segoe UI Variable / Segoe UI, title SemiBold 12, clock 12, badge 10 |
 | Unread dot | 7×7, BoxShadow glow, opacity transition |
 
-### 4b. Layout thresholds (system stats 1.12.0)
+### 4b. Layout thresholds (system stats)
 
 | Параметр | Значение | Пояснение |
 |---|---:|---|
-| Stats metric slot | **56 DIP** | px per visible metric |
-| Stats row thresholds | **280 / 380 / 480 / 620 DIP** | 0 / CPU / +RAM / +Battery / +Net |
-| Stats screen margin | **48 DIP** | gap kept between pill and screen edge |
+| Stats expanded height | **108 DIP** (`StatsExpandedH`) | 1.12.1: исключение из `CollapsedH = 30`; считается как 4×16 строк + 4×4 Spacing + 13+2 дата + 6+6 Margin ≈ 107 → 108 |
+| Stats expanded width | **300 DIP** (`StatsExpandedW`) | 1.12.1: фиксировано, не инфлируется по числу метрик |
+| CPU warn / crit | **≥70 % / ≥90 %** | цвет значения: accent `#3D9CF0` / error `#E8A0A0` |
+| RAM warn / crit | **≥85 % / ≥95 %** от total | та же раскраска |
+| Battery warn / crit | **≤20 % / ≤10 %** | та же раскраска |
+| Stats metric slot | **56 DIP** | 1.12.0, только для расчёта видимых метрик в Idle |
+| Stats row thresholds | **280 / 380 / 480 / 620 DIP** | 1.12.0, пороги `StatsMinPillW` / `StatsShowTwoMetricsW` / `StatsShowThreeMetricsW` / `StatsShowAllMetricsW` |
+| Stats screen margin | **48 DIP** (`StatsScreenMarginPx`) | отступ от края экрана |
 
-Код: `OverlayTokens.StatsMinPillW` / `StatsMetricSlotW` / `StatsScreenMarginPx` / `StatsShowTwoMetricsW` / `StatsShowThreeMetricsW` / `StatsShowAllMetricsW` + `NotifyIsland.Core/StatsLayout.cs`.
+Код: `NotifyIsland.Core/OverlayTokens.cs` + `NotifyIsland.Core/StatsLayout.cs`. В 1.12.1 метрики вынесены из свёрнутой пилюли в отдельную поверхность, поэтому `StatsMinPillW` / `StatsShow*MetricsW` / `StatsMetricSlotW` больше не влияют на ширину — `WidthFor(SystemStats)` всегда возвращает `StatsExpandedW`.
 
 ### 4c. Иконки (единый pack)
 
@@ -303,7 +310,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
   8. **Звуки** — packs + volumes
   9. **Иконки** — IslandIcons / Tabler / Lucide / Meteocons
   10. **Буфер обмена** — toggle, max items, click action
-  11. **Монитор** — toggle, refresh interval, auto-collapse, virtual interfaces
+  11. **Монитор** — toggle, refresh interval, раскрывать при наведении, virtual interfaces (настройка «Сворачивать через 30 с» удалена в 1.12.1)
   12. **О приложении** — version, repo, import/export
 - Все `x:Name` контролов сохранены — `LoadUi` / `ReadUi` / `WireVolumeLabels` без ломки.
 
@@ -347,7 +354,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 
 ## 9. Чеклист перед PR
 
-- [ ] Высота капсулы не изменилась (осталась 30).
+- [ ] Высота капсулы не изменилась (осталась 30). Исключение — `SystemStats` (`StatsExpandedH = 108`, 1.12.1).
 - [ ] Morph Width base 420 мс Soft easing (× AnimationSpeed); Appear/Dismiss styles на Notification.
 - [ ] Unread: Notify++, Clear=0, Collapse сохраняет; cycle seed не ++.
 - [ ] Нет Open-Meteo / third-party weather HTTP.

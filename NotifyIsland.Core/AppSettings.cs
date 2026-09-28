@@ -256,8 +256,13 @@ public sealed class AppSettings
     /// <summary>Sampling period in ms. Clamped to [StatsRefreshMinMs, StatsRefreshMaxMs] by Normalize().</summary>
     public int SystemStatsRefreshMs { get; set; } = OverlayTokens.StatsRefreshMs;
 
-    /// <summary>Self-collapse the SystemStats kind back to Idle after StatsAutoCollapseMs.</summary>
-    public bool SystemStatsAutoCollapse { get; set; } = true;
+    // REMOVED 1.12.1: SystemStatsAutoCollapse (and its Settings checkbox "Сворачивать через 30 с").
+    // The wall-clock 30 s self-collapse it gated no longer exists — the SystemStats surface is
+    // entered on hover and closed on pointer-leave (HoverExpandDelayMs / HoverCollapseGraceMs).
+    // Old settings.json files that still contain the key simply ignore the unknown member.
+
+    /// <summary>Hover the Idle pill for <see cref="HoverExpandDelayMs"/> to peek the SystemStats surface. Default ON.</summary>
+    public bool SystemStatsHoverPeek { get; set; } = true;
 
     /// <summary>Count virtual / tunnel / loopback network interfaces in the net metric.</summary>
     public bool SystemStatsAllInterfaces { get; set; } = true;
@@ -394,7 +399,7 @@ public sealed class AppSettings
         target.DismissStyle = DismissStyle;
         target.SystemStatsEnabled = SystemStatsEnabled;
         target.SystemStatsRefreshMs = SystemStatsRefreshMs;
-        target.SystemStatsAutoCollapse = SystemStatsAutoCollapse;
+        target.SystemStatsHoverPeek = SystemStatsHoverPeek;
         target.SystemStatsAllInterfaces = SystemStatsAllInterfaces;
         target.SettingsSearchEnabled = SettingsSearchEnabled;
         target.SettingsWindowX = SettingsWindowX;

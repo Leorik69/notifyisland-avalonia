@@ -98,8 +98,31 @@ public static class OverlayTokens
     public const double StatsShowThreeMetricsW    = 480.0;
     /// <summary>At or above this available width, also show Net.</summary>
     public const double StatsShowAllMetricsW      = 620.0;
-    /// <summary>Idle time before the SystemStats kind self-collapses (ms).</summary>
-    public const int    StatsAutoCollapseMs       = 30_000;
+    // REMOVED 1.12.1: StatsAutoCollapseMs — the wall-clock 30 s self-collapse it fed is gone.
+
+    // -- System Stats expanded (1.12.1 rework) -----------------------------
+    /// <summary>Height of the expanded System Stats pill (DIP). Exempts SystemStats from CollapsedH.</summary>
+    // Content budget (SystemStatsPanel, OverlayWindow.axaml:290-317), line box ≈ FontSize × 1.33:
+    //   4 rows × 16 (FontSize 12 value line dominates the 11 label) = 64
+    // + 4 gaps × Spacing 4                                        = 16
+    // + StatsFullDate 13 (FontSize 10) + Margin top 2              = 15
+    // + panel Margin 6 + 6                                        = 12
+    // = 107 → 108 (rounded up to a clean value, no clipping).
+    public const double StatsExpandedH = 108.0;
+    /// <summary>Fixed width of the expanded System Stats pill (DIP).</summary>
+    public const double StatsExpandedW = 300.0;
+    /// <summary>CPU % at or above which the value turns to the attention colour.</summary>
+    public const double StatsCpuWarn = 70.0;
+    /// <summary>CPU % at or above which the value turns to the critical colour.</summary>
+    public const double StatsCpuCrit = 90.0;
+    /// <summary>RAM usage % of total at or above which the value turns to the attention colour.</summary>
+    public const double StatsRamWarn = 85.0;
+    /// <summary>RAM usage % of total at or above which the value turns to the critical colour.</summary>
+    public const double StatsRamCrit = 95.0;
+    /// <summary>Battery % at or below which the value turns to the attention colour.</summary>
+    public const double StatsBatteryWarn = 20.0;
+    /// <summary>Battery % at or below which the value turns to the critical colour.</summary>
+    public const double StatsBatteryCrit = 10.0;
 
     // -- Settings (1.12.0) --------------------------------------------------
     /// <summary>Below this many sidebar sections, hide the search box.</summary>
@@ -115,13 +138,9 @@ public static class OverlayTokens
     /// <summary>Horizontal wobble amplitude (DIP) on first appear.</summary>
     public const double FirstAppearWobblePx  = 1.0;
 
-    // -- Hover-peek (1.12.0) -----------------------------------------------
-    /// <summary>Idle time before an un-pinned hover-peek auto-hides (ms).</summary>
-    public const int    PeekAutoHideMs          = 1_200;
-    /// <summary>Duration of the peek width morph (ms).</summary>
-    public const int    PeekMorphMs             = 200;
-    /// <summary>Extra pill width for the full-date row during peek (DIP).</summary>
-    public const double PeekExtraFullDateW      = 120.0;
+    // NOTE: the 1.12.0 hover-peek tokens (PeekAutoHideMs, PeekMorphMs, PeekExtraFullDateW)
+    // were removed in 1.12.1 — the hover auto-hide timer and the date peek are gone; peek
+    // expansion now reuses HoverExpandDelayMs / MorphMs.
 
     // -- Tray menu (1.12.0) -------------------------------------------------
     /// <summary>Maximum entries surfaced in the tray clipboard submenu.</summary>

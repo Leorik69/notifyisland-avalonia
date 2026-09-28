@@ -78,8 +78,9 @@ public class OverlayMachineTests
 
         foreach (OverlayKind kind in Enum.GetValues<OverlayKind>())
         {
+            // 1.12.1: SystemStats is the only kind exempt from the CollapsedH height rule.
             var h = OverlayMachine.HeightFor(kind);
-            Assert.Equal(OverlayTokens.CollapsedH, h);
+            Assert.Equal(kind == OverlayKind.SystemStats ? OverlayTokens.StatsExpandedH : OverlayTokens.CollapsedH, h);
 
             var w = OverlayMachine.WidthFor(kind, weatherEnabled: true);
             if (kind is OverlayKind.Idle or OverlayKind.Collapsed)

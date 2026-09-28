@@ -26,6 +26,7 @@ public static class IslandLayout
     /// Logical morph length is always OverlayMachine.WidthFor (long axis).
     /// Vertical capsule: width = CollapsedH (thin), height = long axis.
     /// Horizontal: width = long axis, height = CollapsedH.
+    /// SystemStats: fixed StatsExpandedW × StatsExpandedH, orientation-independent.
     /// </summary>
     public static (double Width, double Height) SizeFor(
         OverlayKind kind,
@@ -35,6 +36,11 @@ public static class IslandLayout
         bool batteryChip = false,
         int statsMetricCount = 0)
     {
+        // SystemStats is a fixed 300×108 block (1.12.1) — no metric-count width inflation,
+        // and the only kind exempt from the CollapsedH height rule.
+        if (kind == OverlayKind.SystemStats)
+            return (OverlayTokens.StatsExpandedW, OverlayTokens.StatsExpandedH);
+
         var longAxis = OverlayMachine.WidthFor(kind, weatherEnabled, batteryChip, statsMetricCount);
         var shortAxis = OverlayTokens.CollapsedH;
         if (IsVertical(orientation, edge))

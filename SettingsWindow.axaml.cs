@@ -222,7 +222,7 @@ public partial class SettingsWindow : Window
         SelectByTag(ClipboardClickActionBox, _draft.ClipboardClickAction.ToString());
         SystemStatsEnabledBox.IsChecked = _draft.SystemStatsEnabled;
         SelectByTag(SystemStatsRefreshBox, _draft.SystemStatsRefreshMs.ToString(CultureInfo.InvariantCulture));
-        SystemStatsAutoCollapseBox.IsChecked = _draft.SystemStatsAutoCollapse;
+        SystemStatsHoverPeekBox.IsChecked = _draft.SystemStatsHoverPeek;
         SystemStatsAllInterfacesBox.IsChecked = _draft.SystemStatsAllInterfaces;
         AboutVersionText.Text = $"NotifyIsland {typeof(AppSettings).Assembly.GetName().Version?.ToString(3) ?? "1.12.0"}";
         AboutRuntimeText.Text = $"{System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription} · Avalonia 11";
@@ -417,7 +417,7 @@ public partial class SettingsWindow : Window
         if (int.TryParse(SelectedTag(SystemStatsRefreshBox), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out var statsMs))
             _draft.SystemStatsRefreshMs = statsMs;
-        _draft.SystemStatsAutoCollapse = SystemStatsAutoCollapseBox.IsChecked == true;
+        _draft.SystemStatsHoverPeek = SystemStatsHoverPeekBox.IsChecked == true;
         _draft.SystemStatsAllInterfaces = SystemStatsAllInterfacesBox.IsChecked == true;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimSpeedBox), true, out var anim))
             _draft.AnimationSpeed = anim;

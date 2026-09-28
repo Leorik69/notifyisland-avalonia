@@ -69,7 +69,7 @@ public partial class OverlayWindow : Window
     private bool _pointerOverPill;
     private DateTime _lastPillClickUtc = DateTime.MinValue;
     private bool _peekSecondsActive;
-    private DispatcherTimer? _peekAutoHide;
+    private SystemSnapshot? _lastStats;
 
     // Explicit width/height morph (Avalonia Window Width Transitions are unreliable).
     private readonly DispatcherTimer _morphTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
@@ -485,7 +485,6 @@ public partial class OverlayWindow : Window
     {
         // Reorder: clock+date vs weather — Left = weather before clock
         var row = CollapsedRow;
-        var stats = SystemStatsPanel;
         var clockText = ClockText;
         var digital = DigitalClockRow;
         var dateText = DateText;
@@ -496,7 +495,6 @@ public partial class OverlayWindow : Window
         if (_settings.WeatherSide == WeatherSide.Left)
         {
             row.Children.Add(weather);
-            row.Children.Add(stats);
             row.Children.Add(clockText);
             row.Children.Add(digital);
             row.Children.Add(dateText);
@@ -505,7 +503,6 @@ public partial class OverlayWindow : Window
         }
         else
         {
-            row.Children.Add(stats);
             row.Children.Add(clockText);
             row.Children.Add(digital);
             row.Children.Add(dateText);
@@ -569,34 +566,16 @@ public partial class OverlayWindow : Window
             var kind = _machine.Snapshot().Kind;
             if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
             {
-                var origin = SystemStatsPanel.TranslatePoint(new Point(0, 0), this);
-                if (origin is Point o
-                    && pos.X >= o.X
-                    && pos.X < o.X + SystemStatsPanel.Bounds.Width
-                    && SystemStatsPanel.IsVisible
-                    && _settings.SystemStatsEnabled)
-                {
-                    _machine.Dispatch(OverlayCommand.SetSystemStats, new OverlayPayload
-                    {
-                        SystemStats = _statsMachine?.Snapshot ?? SystemSnapshot.Empty,
-                        AutoCollapse = _settings.SystemStatsAutoCollapse
-                    });
-                    IslandSounds.Play(IslandSoundKind.Expand, _settings);
-                    ApplySize();
-                    Paint();
-                    e.Handled = true;
-                    return;
-                }
+                // 1.12.1: a single click in Idle is pin/unpin only. Metrics do not intercept
+                // clicks — SystemStats is entered by hover, never by an X hit-test.
                 HandleIdlePillClick(pos.X);
             }
             else if (kind == OverlayKind.SystemStats)
             {
-                _machine.Dispatch(OverlayCommand.Collapse);
-                IslandSounds.Play(IslandSoundKind.Collapse, _settings);
-                ApplySize();
-                Paint();
-                e.Handled = true;
-                return;
+                // 1.12.1: the click no longer collapses the stats surface — exit is pointer-leave
+                // driven. The click still reaches the pin path so "hover, then click" pins
+                // instead of being swallowed by the metrics surface. Right click → context menu.
+                HandleIdlePillClick(pos.X);
             }
             else if (kind == OverlayKind.Timer)
             {
@@ -853,8 +832,8 @@ public partial class OverlayWindow : Window
             if (_hoverPin.IsContentExpanded)
             {
                 _hoverPin.EscapeOrUnpin();
-                ApplyPinnedBorderVisual();
-                ApplySize(); Paint();
+                // Esc also closes the SystemStats surface opened by the hover peek.
+                ApplyHoverExpandedState(false);
                 e.Handled = true;
                 return;
             }
@@ -1290,8 +1269,17 @@ var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orie
         var p = snap.Payload;
         var overlayOn = IsOverlayKind(kind);
 
-        OverlayPanel.IsVisible = overlayOn;
+        // SystemStats renders in its own 108 DIP slot (SystemStatsPanel), not the single-row overlay.
+        OverlayPanel.IsVisible = overlayOn && kind != OverlayKind.SystemStats;
         CollapsedRow.IsVisible = !overlayOn;
+
+        // 1.12.1: panel visibility follows the FSM kind immediately (Paint runs on the same
+        // UI turn as the command that changed the kind). It must NOT wait for the next
+        // SystemStatsRefreshMs sampling tick, otherwise the panel appears 0-2 s late on hover.
+        var statsVisible = kind == OverlayKind.SystemStats && _settings.SystemStatsEnabled;
+        SystemStatsPanel.IsVisible = statsVisible;
+        if (statsVisible && _lastStats is { } known)
+            ApplyStatsValues(known);
 
         var showMinimalWx = !overlayOn && snap.WeatherEnabled;
         MinimalWeather.IsVisible = showMinimalWx;
@@ -1707,50 +1695,101 @@ var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orie
         _ => ""
     };
 
+    /// <summary>Value colour: normal / attention / critical, high-is-bad metric (CPU, RAM %).</summary>
+    private static IBrush StatsBrushHigh(double value, double warn, double crit) =>
+        new SolidColorBrush(Color.Parse(
+            value >= crit ? OverlayTokens.ErrorHex
+            : value >= warn ? OverlayTokens.AccentHex
+            : OverlayTokens.TextSecondaryHex));
+
+    /// <summary>Value colour: normal / attention / critical, low-is-bad metric (battery %).</summary>
+    private static IBrush StatsBrushLow(double value, double warn, double crit) =>
+        new SolidColorBrush(Color.Parse(
+            value <= crit ? OverlayTokens.ErrorHex
+            : value <= warn ? OverlayTokens.AccentHex
+            : OverlayTokens.TextSecondaryHex));
+
+    /// <summary>Normal (never-accented) value colour — used for placeholders such as a missing battery.</summary>
+    private static IBrush StatsBrushNormal() => new SolidColorBrush(Color.Parse(OverlayTokens.TextSecondaryHex));
+
+    /// <summary>«↓ 21,3 МБ/с» / «↑ 812 КБ/с» — binary 1024 unit switch, current culture decimal separator.</summary>
+    private static string FormatNetRate(long bytesPerSec, string arrow)
+    {
+        const double kb = 1024.0;
+        const double mb = kb * 1024.0;
+        var b = bytesPerSec < 0 ? 0 : bytesPerSec;
+        if (b == 0)
+            return $"{arrow} {0.0.ToString("F1", CultureInfo.CurrentCulture)} МБ/с";
+        return b >= mb
+            ? $"{arrow} {(b / mb).ToString("F1", CultureInfo.CurrentCulture)} МБ/с"
+            : $"{arrow} {(b / kb).ToString("F1", CultureInfo.CurrentCulture)} КБ/с";
+    }
+
     private void OnStatsSnapshot(SystemSnapshot s)
     {
         Dispatcher.UIThread.Post(() =>
         {
+            // Cache always: a later hover opens the panel with the last known values
+            // instead of waiting for the next sampling tick.
+            _lastStats = s;
+
             var kind = _machine.Snapshot().Kind;
             var overlayOn = IsOverlayKind(kind) && kind != OverlayKind.SystemStats;
             if (!_settings.SystemStatsEnabled || overlayOn)
-            {
-                SystemStatsPanel.IsVisible = false;
-                if (kind != OverlayKind.SystemStats) SystemStatsExpanded.IsVisible = false;
                 return;
-            }
+            // Visibility is owned by Paint() (kind-driven). Here we only refresh values.
+            if (kind != OverlayKind.SystemStats) return;
 
             var screen = Screens.All.FirstOrDefault(sc => sc.WorkingArea.Contains(new PixelPoint(
                 (int)Position.X, (int)Position.Y)));
             var available = (screen?.WorkingArea.Width ?? OverlayTokens.StatsShowAllMetricsW)
                             - OverlayTokens.StatsScreenMarginPx;
-            var count = StatsLayout.VisibleMetricCount(available);
-            _machine.StatsMetricCount = count;
-            SystemStatsPanel.IsVisible = count > 0;
+            _machine.StatsMetricCount = StatsLayout.VisibleMetricCount(available);
 
-            StatsCpuText.Text     = count > 0 ? $"{s.CpuPercent:F0}%" : "";
-            StatsRamText.Text     = count > 1 && s.RamTotalBytes > 0
-                ? $"{s.RamUsedBytes / 1_000_000_000.0:F1}/{s.RamTotalBytes / 1_000_000_000.0:F0} GB" : "";
-            StatsBatteryText.Text = count > 2 && s.BatteryPercent is { } bp ? $"{bp:F0}%" : "";
-            StatsNetText.Text     = count > 3 && s.NetDownBytesPerSec > 0
-                ? $"v{s.NetDownBytesPerSec / 1_000_000.0:F1}" : "";
-
-            if (_machine.Snapshot().Kind == OverlayKind.SystemStats)
-            {
-                SystemStatsExpanded.IsVisible = true;
-                StatsExCpuText.Text     = $"CPU      {s.CpuPercent:F0}%";
-                StatsExRamText.Text     = s.RamTotalBytes > 0
-                    ? $"RAM      {s.RamUsedBytes / 1_000_000_000.0:F1} / {s.RamTotalBytes / 1_000_000_000.0:F0} GB  ({s.RamPercent:F0}%)"
-                    : "RAM      —";
-                StatsExBatteryText.Text = s.BatteryPercent is { } ebp
-                    ? $"Батарея  {ebp:F0}%{(s.OnAcPower ? "  ⚡" : "")}" : "Батарея  —";
-                StatsExNetText.Text     = $"Сеть     v {s.NetDownBytesPerSec / 1_000_000.0:F1} MB/s   ^ {s.NetUpBytesPerSec / 1_000.0:F0} KB/s";
-            }
-            else
-            {
-                SystemStatsExpanded.IsVisible = false;
-            }
+            ApplyStatsValues(s);
         });
+    }
+
+    /// <summary>Render one SystemSnapshot into the stats value labels. Idempotent.</summary>
+    private void ApplyStatsValues(SystemSnapshot s)
+    {
+        StatsCpuValue.Text = $"{s.CpuPercent:F0} %";
+        StatsCpuValue.Foreground = StatsBrushHigh(
+            s.CpuPercent, OverlayTokens.StatsCpuWarn, OverlayTokens.StatsCpuCrit);
+
+        if (s.RamTotalBytes > 0)
+        {
+            var usedGb = s.RamUsedBytes / 1_000_000_000.0;
+            var totalGb = s.RamTotalBytes / 1_000_000_000.0;
+            StatsRamValue.Text = $"{usedGb:F1} / {totalGb:F0} ГБ";
+            StatsRamValue.Foreground = StatsBrushHigh(
+                s.RamPercent, OverlayTokens.StatsRamWarn, OverlayTokens.StatsRamCrit);
+        }
+        else
+        {
+            StatsRamValue.Text = "—";
+            StatsRamValue.Foreground = StatsBrushNormal();
+        }
+
+        if (s.BatteryPercent is { } bp)
+        {
+            StatsBatteryValue.Text = $"{bp:F0} %{(s.OnAcPower ? " ⚡" : "")}";
+            StatsBatteryValue.Foreground = StatsBrushLow(
+                bp, OverlayTokens.StatsBatteryWarn, OverlayTokens.StatsBatteryCrit);
+        }
+        else
+        {
+            // Desktop / no battery — placeholder stays in the normal colour.
+            StatsBatteryValue.Text = "—";
+            StatsBatteryValue.Foreground = StatsBrushNormal();
+        }
+
+        // Network never goes critical — one normal-coloured value, down + up.
+        StatsNetValue.Text =
+            $"{FormatNetRate(s.NetDownBytesPerSec, "↓")}  {FormatNetRate(s.NetUpBytesPerSec, "↑")}";
+        StatsNetValue.Foreground = StatsBrushNormal();
+
+        StatsFullDate.Text = DateFormatHelper.Format(DateTime.Now, DateFormat.FullLong);
     }
 
     private void ApplyPowerSnapshot(PowerStatusSnapshot snap)
@@ -1929,22 +1968,31 @@ var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orie
 
     {
         _hoverPin.Configure(
-            _settings.HoverExpandEnabled,
+            _settings.HoverExpandEnabled && _settings.SystemStatsHoverPeek,
             _settings.ClickPinEnabled,
             _settings.HoverExpandDelayMs,
             _settings.HoverCollapseGraceMs);
         ApplyPinnedBorderVisual();
     }
 
+    /// <summary>
+    /// Advance the hover-pin machine. <see cref="HoverPinMachine.IsContentExpanded"/> is the single
+    /// source of truth for the SystemStats peek: entering the expanded phase dispatches
+    /// <see cref="OverlayCommand.SetSystemStats"/>, leaving it dispatches <see cref="OverlayCommand.Collapse"/>.
+    /// No wall-clock auto-collapse — the machine's own grace timer drives the exit.
+    /// </summary>
     private bool TickHoverPin(int deltaMs)
     {
         var kind = _machine.Snapshot().Kind;
-        if (kind is not (OverlayKind.Idle or OverlayKind.Collapsed))
+        // SystemStats is itself a hover-driven state, so it must not force-reset the machine.
+        if (kind is not (OverlayKind.Idle or OverlayKind.Collapsed or OverlayKind.SystemStats))
         {
             if (_hoverPin.Phase != HoverPinPhase.Collapsed)
             {
                 _hoverPin.ResetToCollapsed();
-                HidePeekFullDate();
+                ApplySize();
+                Paint();
+                TickClock();
                 return true;
             }
             return false;
@@ -1952,82 +2000,59 @@ var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orie
         var wasExpanded = _hoverPin.IsContentExpanded;
         var changed = _hoverPin.Tick(deltaMs);
         var isExpanded = _hoverPin.IsContentExpanded;
-        if (isExpanded && !wasExpanded)
-            ShowPeekFullDate();
-        else if (!isExpanded && wasExpanded)
-            HidePeekFullDate();
+        if (isExpanded != wasExpanded)
+            ApplyHoverExpandedState(isExpanded);
         if (changed)
-        {
             ApplyPinnedBorderVisual();
-            TickClock();
-        }
-        return changed || (!wasExpanded && isExpanded) || (wasExpanded && !isExpanded);
+        return changed;
     }
 
-    private void ShowPeekFullDate()
+    /// <summary>Show (open SystemStats) or hide (collapse back) the hover-peek surface.</summary>
+    private void ApplyHoverExpandedState(bool expanded)
     {
-        PeekFullDateText.Text = DateFormatHelper.Format(DateTime.Now, DateFormat.FullShort);
-        PeekFullDateText.IsVisible = true;
-        StartPeekAutoHide();
-    }
-
-    private void HidePeekFullDate()
-    {
-        PeekFullDateText.IsVisible = false;
-        _peekAutoHide?.Stop();
-    }
-
-    private void StartPeekAutoHide()
-    {
-        if (_hoverPin.IsPinned) return;
-        _peekAutoHide ??= new DispatcherTimer
+        if (expanded)
         {
-            Interval = TimeSpan.FromMilliseconds(OverlayTokens.PeekAutoHideMs)
-        };
-        _peekAutoHide.Tick -= OnPeekAutoHide;
-        _peekAutoHide.Tick += OnPeekAutoHide;
-        _peekAutoHide.Start();
-    }
-
-    private void OnPeekAutoHide(object? sender, EventArgs e)
-    {
-        if (_hoverPin.IsPinned)
-        {
-            _peekAutoHide?.Stop();
-            return;
-        }
-        _peekAutoHide?.Stop();
-        // Simulate pointer leaving so the hover-pin machine collapses on its own.
-        _hoverPin.PointerLeave();
-        PeekFullDateText.IsVisible = false;
-        ApplySize();
-        Paint();
-        TickClock();
-    }
-
-    private void OnPillHoverEnter()
-    {
-        var kind = _machine.Snapshot().Kind;
-        if (kind is not (OverlayKind.Idle or OverlayKind.Collapsed)) return;
-        var before = _hoverPin.IsContentExpanded;
-        _hoverPin.PointerEnter();
-        if (_hoverPin.IsContentExpanded && !_hoverPin.IsPinned)
-            StartPeekAutoHide();
-        if (_hoverPin.IsContentExpanded != before || _hoverPin.Phase == HoverPinPhase.HoverPending)
-            ApplyPinnedBorderVisual();
-    }
-
-    private void OnPillHoverLeave()
-    {
-        var before = _hoverPin.IsContentExpanded;
-        _hoverPin.PointerLeave();
-        if (_hoverPin.IsContentExpanded != before)
-        {
+            if (_settings.SystemStatsHoverPeek && _settings.SystemStatsEnabled)
+            {
+                _machine.Dispatch(OverlayCommand.SetSystemStats, new OverlayPayload
+                {
+                    SystemStats = _lastStats ?? SystemSnapshot.Empty
+                });
+                IslandSounds.Play(IslandSoundKind.Expand, _settings);
+            }
             ApplyPinnedBorderVisual();
             ApplySize();
             Paint();
             TickClock();
         }
+        else
+        {
+            // Pinned keeps the surface; only an unpinned collapse returns to Idle.
+            if (_machine.Snapshot().Kind == OverlayKind.SystemStats)
+            {
+                _machine.Dispatch(OverlayCommand.Collapse);
+                IslandSounds.Play(IslandSoundKind.Collapse, _settings);
+            }
+            ApplyPinnedBorderVisual();
+            ApplySize();
+            Paint();
+            TickClock();
+        }
+    }
+
+    private void OnPillHoverEnter()
+    {
+        var kind = _machine.Snapshot().Kind;
+        if (kind is not (OverlayKind.Idle or OverlayKind.Collapsed or OverlayKind.SystemStats)) return;
+        _hoverPin.PointerEnter();
+        ApplyPinnedBorderVisual();
+    }
+
+    private void OnPillHoverLeave()
+    {
+        _hoverPin.PointerLeave();
+        if (!_hoverPin.IsContentExpanded)
+            ApplyHoverExpandedState(false);
     }
 
     private void ApplyPinnedBorderVisual()
@@ -2098,7 +2123,16 @@ var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orie
         if (!wasPinned && _hoverPin.IsPinned)
             IslandSounds.Play(IslandSoundKind.Expand, _settings);
         else if (wasPinned && !_hoverPin.IsPinned)
+        {
             IslandSounds.Play(IslandSoundKind.Collapse, _settings);
+            // Unpinned while the SystemStats surface is up → close it too.
+            if (_machine.Snapshot().Kind == OverlayKind.SystemStats)
+            {
+                _machine.Dispatch(OverlayCommand.Collapse);
+                IslandSounds.Play(IslandSoundKind.Collapse, _settings);
+            }
+        }
+        PlayClickPop();
 
         // If we unpinned but pointer is still over, restart hover peek promptly.
         if (!_hoverPin.IsPinned && _pointerOverPill && _settings.HoverExpandEnabled)

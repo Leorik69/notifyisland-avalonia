@@ -642,15 +642,15 @@
               <StackPanel Spacing="8">
                 <TextBlock Classes="sectionTitle" Text="Монитор"/>
                 <TextBlock Classes="mutedNote"
-                           Text="Отображает нагрузку CPU и памяти прямо в капсуле. Данные берутся из системных счётчиков Windows и обновляются с выбранным интервалом."/>
-                <CheckBox x:Name="SystemStatsEnabledBox" Content="Показывать нагрузку в капсуле"/>
+                           Text="Показывает нагрузку CPU, памяти, батареи и сети в отдельной панели, которая раскрывается по наведению. Данные берутся из системных счётчиков Windows и обновляются с выбранным интервалом."/>
+                <CheckBox x:Name="SystemStatsEnabledBox" Content="Показывать системный монитор"/>
                 <TextBlock Classes="fieldLabel" Text="Интервал обновления"/>
                 <ComboBox x:Name="SystemStatsRefreshBox" Width="200">
                   <ComboBoxItem Tag="500" Content="500 мс"/>
                   <ComboBoxItem Tag="1000" Content="1 с"/>
                   <ComboBoxItem Tag="2000" Content="2 с"/>
                 </ComboBox>
-                <CheckBox x:Name="SystemStatsAutoCollapseBox" Content="Сворачивать через 30 с"/>
+                <CheckBox x:Name="SystemStatsHoverPeekBox" Content="Раскрывать при наведении"/>
                 <CheckBox x:Name="SystemStatsAllInterfacesBox" Content="Считать все сетевые интерфейсы"/>
               </StackPanel>
             </Border>

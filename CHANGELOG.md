@@ -2,6 +2,18 @@
 
 ## Unreleased — Idle breath removed + Clipboard history (1.12.0-preview)
 
+### Changed — System monitor rework (1.12.1)
+Supersedes the 1.12.0 «Added — System monitor» section below: the inline metric row and click-to-open behaviour described there no longer exist.
+- Метрики монитора больше не встроены в свёрнутую пилюлю: Idle показывает только часы и дату.
+- Монитор — отдельная поверхность: открывается по наведению (250 мс) и сворачивается при уходе курсора (grace 500 мс). Автосворачивание по таймеру 30 с убрано.
+- Клик по метрикам больше не перехватывается: одиночный клик в Idle — снова пин/анпин (с анимацией ClickPop), двойной клик — центр уведомлений.
+- Панель монитора 300×108 DIP: четыре подписанные строки `CPU` / `Память` / `Батарея` / `Сеть` и полная дата внизу. Раньше блок оставался 30 DIP и обрезался.
+- Форматирование сети: стрелки направления `↓` / `↑` и реальные единицы `МБ/с` / `КБ/с` (переключение на 1024) вместо литерального `v`.
+- Цвета значений по порогам: синий `#3D9CF0` при переходе порога (CPU ≥ 70 %, RAM ≥ 85 %, батарея ≤ 20 %), красный `#E8A0A0` при критическом (CPU ≥ 90 %, RAM ≥ 95 %, батарея ≤ 10 %).
+- Настройка «Сворачивать через 30 с» удалена вместе с ключом `AppSettings.SystemStatsAutoCollapse`; чекбокс «Показывать нагрузку в капсуле» переименован в «Показывать системный монитор». Старые `settings.json` грузятся без проблем — неизвестный ключ игнорируется.
+- Мёртвый код 1.12.0 удалён: `OverlayPayload.AutoCollapse`, `OverlayTokens.StatsAutoCollapseMs`, `PeekAutoHideMs`, `PeekMorphMs`, `PeekExtraFullDateW` (последние три — префиксы hover-peek, заменённого на `HoverExpandDelayMs` / `MorphMs`).
+- GUIDELINES §2 / §3 / §4b / §7 и §9-чеклист, ISLAND_PREVIEW и CONTEXT обновлены под новое поведение.
+
 ### Removed — Idle breath
 - Removed idle-breath animation entirely: `AppSettings.AnimBreathEnabled` / `AnimIdleBreath`, `OverlayTokens.BreathScaleAmp` / `BreathScaleXExtra` / `BreathWidthAmpPx` / `BreathGlowAmp`, `AnimationTiming.BreathPeriodMs`, `AnimationAction.IdleBreath`, `HoverPinMachine.SoftenBreath`. Pulse (unread-dot) kept as-is.
 - UI: dropped «Дыхание в простое» checkbox and per-action «Дыхание (idle)» speed combo. Remaining per-action speeds: morph inflate / morph collapse / unread pulse / hover.
