@@ -104,4 +104,14 @@ public static class OverlayTokens
     // -- Settings (1.12.0) --------------------------------------------------
     /// <summary>Below this many sidebar sections, hide the search box.</summary>
     public const int    SettingsSearchMinSections = 4;
+
+    // -- Animations (1.12.0) -- both derived from MorphMs ---------------------
+    /// <summary>Click-acknowledgement pop duration (ms). Half the morph it interrupts.</summary>
+    public const int    ClickPopMs           = MorphMs / 2;
+    /// <summary>Peak scale for the click-acknowledgement pop.</summary>
+    public const double ClickPopPeak         = 1.08;
+    /// <summary>First-appear wobble duration (ms). Same rhythm as ClickPopMs.</summary>
+    public const int    FirstAppearWobbleMs  = MorphMs / 2;
+    /// <summary>Horizontal wobble amplitude (DIP) on first appear.</summary>
+    public const double FirstAppearWobblePx  = 1.0;
 }

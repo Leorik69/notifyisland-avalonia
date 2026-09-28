@@ -13,6 +13,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Styling;
 using Avalonia.Threading;
 
 namespace NotifyIsland;
@@ -1494,14 +1495,47 @@ var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orie
 
     private void OnMediaPrev(object? sender, RoutedEventArgs e)
     {
+        PlayClickPop();
         if (_mediaSource is not null && _settings.ShowNowPlaying)
             _ = _mediaSource.TrySkipPreviousAsync();
     }
 
     private void OnMediaNext(object? sender, RoutedEventArgs e)
     {
+        PlayClickPop();
         if (_mediaSource is not null && _settings.ShowNowPlaying)
             _ = _mediaSource.TrySkipNextAsync();
+    }
+
+    /// <summary>
+    /// Click-acknowledgement pop: scale 1 → ClickPopPeak (peak holds up to ~33% of total) → 1.
+    /// Uses <see cref="Avalonia.Animation.Animation"/> with two <see cref="KeyFrame"/>s because
+    /// Avalonia 11 has no WPF-style <c>DoubleAnimation</c>.
+    /// </summary>
+    private void PlayClickPop()
+    {
+        var speed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimClickPop);
+        if (!AnimationTiming.IsEnabled(speed)) return;
+        var halfMs = AnimationTiming.ScaleMs(OverlayTokens.ClickPopMs, speed);
+        var anim = new Avalonia.Animation.Animation
+        {
+            Duration = TimeSpan.FromMilliseconds(halfMs * 2),
+            Easing = new CubicEaseOut(),
+            FillMode = Avalonia.Animation.FillMode.Forward,
+            Children =
+            {
+                new KeyFrame
+                {
+                    Cue = new Cue(0.5),
+                    Setters =
+                    {
+                        new Setter(ScaleTransform.ScaleXProperty, OverlayTokens.ClickPopPeak),
+                        new Setter(ScaleTransform.ScaleYProperty, OverlayTokens.ClickPopPeak),
+                    }
+                },
+            }
+        };
+        _ = anim.RunAsync(_pillScale);
     }
 
     private void EnsureMediaSource()

@@ -231,6 +231,14 @@ public sealed class AppSettings
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AnimationSpeed AnimSwipeRubber { get; set; } = AnimationSpeed.Normal;
 
+    /// <summary>Speed of the click-acknowledgement pop.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AnimationSpeed AnimClickPop { get; set; } = AnimationSpeed.Normal;
+
+    /// <summary>Speed of the first-appear wobble.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AnimationSpeed AnimFirstAppearWobble { get; set; } = AnimationSpeed.Normal;
+
     /// <summary>Enable unread-dot opacity pulse when unread &gt; 0.</summary>
     public bool AnimPulseEnabled { get; set; } = true;
 
@@ -379,6 +387,8 @@ public sealed class AppSettings
         target.AnimUnreadPulse = AnimUnreadPulse;
         target.AnimHover = AnimHover;
         target.AnimSwipeRubber = AnimSwipeRubber;
+        target.AnimClickPop = AnimClickPop;
+        target.AnimFirstAppearWobble = AnimFirstAppearWobble;
         target.AnimPulseEnabled = AnimPulseEnabled;
         target.AppearStyle = AppearStyle;
         target.DismissStyle = DismissStyle;
