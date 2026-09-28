@@ -1,4 +1,4 @@
-# NotifyIsland 1.12.0 — System Monitor + Polish Suite Implementation Plan
+# NotifyIsland 1.12.0 пїЅ System Monitor + Polish Suite Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -15,8 +15,8 @@
 - Target framework `net8.0-windows10.0.19041.0` (Av) and `net8.0-windows` (Core). No framework change.
 - **No new NuGet dependency.** Every platform call must come from `System`, `System.Diagnostics`, `System.Net.NetworkInformation`, or WinForms `SystemInformation` / `System.Windows.Forms.Clipboard`.
 - `NotifyIsland.Core` has **no** `UseWindowsForms` and must stay WinForms-free. All `Windows*Source.cs` live at the repo root (Av project).
-- No Open-Meteo, no island mouse-drag, no swipe gestures — clicks only.
-- **All numeric animation / layout / timing values live in `NotifyIsland.Core/OverlayTokens.cs`** and are mirrored in `docs/ISLAND_GUIDELINES.md` §2 and §9. No bare numeric literals in code.
+- No Open-Meteo, no island mouse-drag, no swipe gestures пїЅ clicks only.
+- **All numeric animation / layout / timing values live in `NotifyIsland.Core/OverlayTokens.cs`** and are mirrored in `docs/ISLAND_GUIDELINES.md` пїЅ2 and пїЅ9. No bare numeric literals in code.
 - Width and ratio tokens are `double`. Durations and counters are `int`. Byte-rates are `long`.
 - Git commits use `git -c user.name='Leorik69' -c user.email='leorik69@users.noreply.github.com'`, never `git config`.
 - Baseline before this plan: **174 tests passing**, 0 warnings, 0 errors.
@@ -27,7 +27,7 @@
 
 ## File Structure
 
-**Created — Core (`NotifyIsland.Core/`)**
+**Created пїЅ Core (`NotifyIsland.Core/`)**
 
 | File | Responsibility |
 |---|---|
@@ -37,13 +37,13 @@
 | `StatsLayout.cs` | Pure layout math: `VisibleMetricCount`, `StatsPillWidth`, `SlotOrder`, `StatsMetricSlot` enum. |
 | `SystemMonitorMachine.cs` | Facade over the source; marshals nothing, just holds the latest snapshot and re-raises the event. |
 
-**Created — Av (repo root)**
+**Created пїЅ Av (repo root)**
 
 | File | Responsibility |
 |---|---|
 | `WindowsSystemMonitorSource.cs` | The only file that touches platform APIs. Timer-driven sampler with per-item error isolation. |
 
-**Created — Tests (`NotifyIsland.Tests/`)**
+**Created пїЅ Tests (`NotifyIsland.Tests/`)**
 
 | File | Responsibility |
 |---|---|
@@ -52,7 +52,7 @@
 | `AdaptiveStatsLayoutTests.cs` | 9 tests (layout math + FSM auto-collapse gate). |
 | `AnimationEasingTests.cs` | 4 tests for `ClickPop`. |
 
-**Modified — Core**
+**Modified пїЅ Core**
 
 | File | Change |
 |---|---|
@@ -62,7 +62,7 @@
 | `AppSettings.cs` | 7 new keys, `Normalize()` clamps. |
 | `NotifyAnimStyles.cs` | Add `ClickPop`. |
 
-**Modified — Av**
+**Modified пїЅ Av**
 
 | File | Change |
 |---|---|
@@ -72,14 +72,14 @@
 | `TrayService.cs` | New menu order + clipboard submenu. |
 | `Program.cs` | Dispose the machine on shutdown. |
 
-**Modified — Docs**
+**Modified пїЅ Docs**
 
 | File | Change |
 |---|---|
-| `docs/ISLAND_GUIDELINES.md` | New tokens in §2; §7 sidebar list 9 > 12. |
-| `docs/ISLAND_PREVIEW.md` | §1.12.0 features; the DPI worked example. |
+| `docs/ISLAND_GUIDELINES.md` | New tokens in пїЅ2; пїЅ7 sidebar list 9 > 12. |
+| `docs/ISLAND_PREVIEW.md` | пїЅ1.12.0 features; the DPI worked example. |
 | `CONTEXT.md` | System monitor row in the source-of-truth table. |
-| `CHANGELOG.md` | `## Unreleased — System monitor (1.12.0)`. |
+| `CHANGELOG.md` | `## Unreleased пїЅ System monitor (1.12.0)`. |
 
 ---
 
@@ -138,7 +138,7 @@ public class StatsDebounceTests
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release --filter "FullyQualifiedName~StatsDebounceTests"`
-Expected: FAIL — `error CS0103: The name 'StatsDebounce' does not exist`
+Expected: FAIL пїЅ `error CS0103: The name 'StatsDebounce' does not exist`
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -226,12 +226,12 @@ public interface ISystemMonitorSource : IDisposable
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release --filter "FullyQualifiedName~StatsDebounceTests"`
-Expected: PASS — 4 passed
+Expected: PASS пїЅ 4 passed
 
 - [ ] **Step 5: Verify no regression**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release`
-Expected: PASS — 178 passed (174 + 4)
+Expected: PASS пїЅ 178 passed (174 + 4)
 
 - [ ] **Step 6: Commit**
 
@@ -246,11 +246,11 @@ git -c user.name='Leorik69' -c user.email='leorik69@users.noreply.github.com' co
 
 **Files:**
 - Create: `NotifyIsland.Core/StatsLayout.cs`
-- Create: `NotifyIsland.Core/OverlayTokens.cs` (append only — check the file does not exist first; if it does, append to it)
+- Create: `NotifyIsland.Core/OverlayTokens.cs` (append only пїЅ check the file does not exist first; if it does, append to it)
 - Test: `NotifyIsland.Tests/AdaptiveStatsLayoutTests.cs`
 
 **Interfaces:**
-- Consumes: `OverlayTokens.StatsMinPillW`, `StatsShowTwoMetricsW`, `StatsShowThreeMetricsW`, `StatsShowAllMetricsW`, `CollapsedW`, `StatsMetricSlotW`, `ExpandedMaxW` — all added in this task.
+- Consumes: `OverlayTokens.StatsMinPillW`, `StatsShowTwoMetricsW`, `StatsShowThreeMetricsW`, `StatsShowAllMetricsW`, `CollapsedW`, `StatsMetricSlotW`, `ExpandedMaxW` пїЅ all added in this task.
 - Produces:
   - `public enum StatsMetricSlot { Cpu, Ram, Battery, Net }`
   - `public static class StatsLayout` with `static int VisibleMetricCount(double availableWidth)`, `static double StatsPillWidth(int visibleMetricCount)`, `static IReadOnlyList<StatsMetricSlot> SlotOrder`
@@ -329,7 +329,7 @@ Add `using System.Linq;` at the top of the file.
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release --filter "FullyQualifiedName~AdaptiveStatsLayoutTests"`
-Expected: FAIL — `error CS0103: The name 'StatsLayout' does not exist`
+Expected: FAIL пїЅ `error CS0103: The name 'StatsLayout' does not exist`
 
 - [ ] **Step 3: Add the tokens**
 
@@ -425,12 +425,12 @@ Add `using System.Collections.Generic;` and `using System.Linq;` if not already 
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release --filter "FullyQualifiedName~AdaptiveStatsLayoutTests"`
-Expected: PASS — 8 passed
+Expected: PASS пїЅ 8 passed
 
 - [ ] **Step 6: Verify no regression**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release`
-Expected: PASS — 186 passed (174 + 4 + 8)
+Expected: PASS пїЅ 186 passed (174 + 4 + 8)
 
 - [ ] **Step 7: Commit**
 
@@ -581,7 +581,7 @@ public class SystemMonitorMachineTests
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release --filter "FullyQualifiedName~SystemMonitorMachineTests"`
-Expected: FAIL — `error CS0103: The name 'SystemMonitorMachine' does not exist`
+Expected: FAIL пїЅ `error CS0103: The name 'SystemMonitorMachine' does not exist`
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -592,7 +592,7 @@ namespace NotifyIsland;
 
 /// <summary>
 /// Facade over an <see cref="ISystemMonitorSource"/>. Holds the latest snapshot and re-raises
-/// the source's event. Deliberately does no marshalling — the Av layer owns the
+/// the source's event. Deliberately does no marshalling пїЅ the Av layer owns the
 /// Dispatcher.UIThread.Post hop.
 /// </summary>
 public sealed class SystemMonitorMachine : IDisposable
@@ -636,12 +636,12 @@ public sealed class SystemMonitorMachine : IDisposable
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release --filter "FullyQualifiedName~SystemMonitorMachineTests"`
-Expected: PASS — 8 passed
+Expected: PASS пїЅ 8 passed
 
 - [ ] **Step 5: Verify no regression**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release`
-Expected: PASS — 194 passed (174 + 4 + 8 + 8)
+Expected: PASS пїЅ 194 passed (174 + 4 + 8 + 8)
 
 - [ ] **Step 6: Commit**
 
@@ -659,7 +659,7 @@ git -c user.name='Leorik69' -c user.email='leorik69@users.noreply.github.com' co
 - Modify: `NotifyIsland.Av.csproj` only if a `System.Net.NetworkInformation` reference is missing (it is in-box; no change expected)
 
 **Interfaces:**
-- Consumes: `ISystemMonitorSource`, `SystemSnapshot`, `StatsDebounce`, `OverlayTokens.Stats*` (Tasks 1–2).
+- Consumes: `ISystemMonitorSource`, `SystemSnapshot`, `StatsDebounce`, `OverlayTokens.Stats*` (Tasks 1пїЅ2).
 - Produces: `public sealed class WindowsSystemMonitorSource : ISystemMonitorSource`, ctor `WindowsSystemMonitorSource(TimeSpan? interval = null)`.
 
 - [ ] **Step 1: Write the file**
@@ -957,36 +957,36 @@ var capacityTicks = elapsedMs * cores * TimeSpan.TicksPerMillisecond;
 cpuPercent = tickDelta * 100.0 / capacityTicks;
 ```
 
-Sanity check: a machine at 100% of one core out of `cores` accumulates `elapsedMs * TimeSpan.TicksPerMillisecond` ticks in `elapsedMs` ms. Dividing by `elapsedMs * cores * TicksPerMillisecond` and multiplying by 100 gives `100 / cores` — correct per-core-normalized percentage. At full load across all cores the value is 100.
+Sanity check: a machine at 100% of one core out of `cores` accumulates `elapsedMs * TimeSpan.TicksPerMillisecond` ticks in `elapsedMs` ms. Dividing by `elapsedMs * cores * TicksPerMillisecond` and multiplying by 100 gives `100 / cores` пїЅ correct per-core-normalized percentage. At full load across all cores the value is 100.
 
 - [ ] **Step 4: Run the full test suite**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release`
-Expected: PASS — 194 passed
+Expected: PASS пїЅ 194 passed
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add WindowsSystemMonitorSource.cs
-git -c user.name='Leorik69' -c user.email='leorik69@users.noreply.github.com' commit -m "feat(av): WindowsSystemMonitorSource — timer sampler with per-item isolation"
+git -c user.name='Leorik69' -c user.email='leorik69@users.noreply.github.com' commit -m "feat(av): WindowsSystemMonitorSource пїЅ timer sampler with per-item isolation"
 ```
 
 ---
 
-### Task 5: FSM integration — SystemStats kind, SetSystemStats, payload transforms
+### Task 5: FSM integration пїЅ SystemStats kind, SetSystemStats, payload transforms
 
 **Files:**
 - Modify: `NotifyIsland.Core/OverlayMachine.cs`
 - Test: `NotifyIsland.Tests/AdaptiveStatsLayoutTests.cs` (append the auto-collapse test)
 
 **Interfaces:**
-- Consumes: `SystemSnapshot`, `StatsLayout`, `OverlayTokens.StatsAutoCollapseMs` (Tasks 1–2).
+- Consumes: `SystemSnapshot`, `StatsLayout`, `OverlayTokens.StatsAutoCollapseMs` (Tasks 1пїЅ2).
 - Produces:
   - `OverlayKind.SystemStats` (12th enum member, appended)
   - `OverlayCommand.SetSystemStats` (19th enum member, appended)
   - `OverlayPayload.SystemStats` (`SystemSnapshot?`) and `OverlayPayload.AutoCollapse` (`bool`, default `true`)
   - `OverlayMachine.StatsMetricCount { get; set; }` (`int`, default 0)
-  - `OverlayMachine.WidthFor(OverlayKind, bool, bool, int cycleCount, int statsMetricCount)` — new trailing optional parameter
+  - `OverlayMachine.WidthFor(OverlayKind, bool, bool, int statsMetricCount)` пїЅ new trailing optional parameter
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1041,7 +1041,7 @@ Add `using System;` to the top of the file if it is not already there.
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release --filter "FullyQualifiedName~AdaptiveStatsLayoutTests"`
-Expected: FAIL — `error CS0117: 'OverlayCommand' does not contain a definition for 'SetSystemStats'`
+Expected: FAIL пїЅ `error CS0117: 'OverlayCommand' does not contain a definition for 'SetSystemStats'`
 
 - [ ] **Step 3: Add the enum members**
 
@@ -1062,21 +1062,21 @@ In the `OverlayPayload` class, add:
 
 In `OverlayMachine.cs`, find each of the three and add the two new fields. This is the step most likely to silently drop the feature, so check all three.
 
-`Apply(OverlayPayload data)` — add inside the method body:
+`Apply(OverlayPayload data)` пїЅ add inside the method body:
 
 ```csharp
         SystemStats = data.SystemStats;
         AutoCollapse = data.AutoCollapse;
 ```
 
-`Clone(OverlayPayload p)` — add inside the object initializer:
+`Clone(OverlayPayload p)` пїЅ add inside the object initializer:
 
 ```csharp
         SystemStats = p.SystemStats,
         AutoCollapse = p.AutoCollapse,
 ```
 
-`Sanitize(OverlayPayload raw)` — add inside the returned object initializer:
+`Sanitize(OverlayPayload raw)` пїЅ add inside the returned object initializer:
 
 ```csharp
             SystemStats = raw.SystemStats is { CpuPercent: var cpu } && double.IsFinite(cpu)
@@ -1136,8 +1136,7 @@ In `WidthFor`, add the new trailing optional parameter and the SystemStats branc
 
 ```csharp
     public static double WidthFor(OverlayKind kind, bool weatherEnabled = false,
-                                  bool batteryChip = false, int cycleCount = 0,
-                                  int statsMetricCount = 0)
+                                  bool batteryChip = false, int statsMetricCount = 0)
     {
         if (kind == OverlayKind.SystemStats)
             return StatsLayout.StatsPillWidth(statsMetricCount);
@@ -1152,12 +1151,12 @@ In `WidthFor`, add the new trailing optional parameter and the SystemStats branc
 - [ ] **Step 9: Run test to verify it passes**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release --filter "FullyQualifiedName~AdaptiveStatsLayoutTests"`
-Expected: PASS — 10 passed
+Expected: PASS пїЅ 10 passed
 
 - [ ] **Step 10: Verify no regression**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release`
-Expected: PASS — 196 passed
+Expected: PASS пїЅ 196 passed
 
 - [ ] **Step 11: Commit**
 
@@ -1228,7 +1227,7 @@ Append to `NotifyIsland.Tests/AppSettingsTests.cs`:
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release --filter "FullyQualifiedName~Normalize_ClampsSystemStatsRefreshMs"`
-Expected: FAIL — `error CS0117: 'AppSettings' does not contain a definition for 'SystemStatsRefreshMs'`
+Expected: FAIL пїЅ `error CS0117: 'AppSettings' does not contain a definition for 'SystemStatsRefreshMs'`
 
 - [ ] **Step 3: Add the properties**
 
@@ -1271,12 +1270,12 @@ In `Normalize()`, add:
 - [ ] **Step 6: Run test to verify it passes**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release --filter "FullyQualifiedName~AppSettingsTests"`
-Expected: PASS — all AppSettings tests pass, including the 3 new ones
+Expected: PASS пїЅ all AppSettings tests pass, including the 3 new ones
 
 - [ ] **Step 7: Verify no regression**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release`
-Expected: PASS — 199 passed
+Expected: PASS пїЅ 199 passed
 
 - [ ] **Step 8: Commit**
 
@@ -1287,7 +1286,7 @@ git -c user.name='Leorik69' -c user.email='leorik69@users.noreply.github.com' co
 
 ---
 
-### Task 7: Settings UI — two new sections, search, live validation, import/export
+### Task 7: Settings UI пїЅ two new sections, search, live validation, import/export
 
 **Files:**
 - Modify: `SettingsWindow.axaml`
@@ -1306,13 +1305,13 @@ In `SettingsWindow.axaml`, after the `Tag="clipboard"` `ListBoxItem`, add:
           <ListBoxItem Tag="system">
             <StackPanel Orientation="Horizontal" Spacing="10">
               <Image x:Name="NavIcon_system" Width="18" Height="18" Classes="navIcon"/>
-              <TextBlock Text="Система" VerticalAlignment="Center"/>
+              <TextBlock Text="пїЅпїЅпїЅпїЅпїЅпїЅпїЅ" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
           <ListBoxItem Tag="about">
             <StackPanel Orientation="Horizontal" Spacing="10">
               <Image x:Name="NavIcon_about" Width="18" Height="18" Classes="navIcon"/>
-              <TextBlock Text="О программе" VerticalAlignment="Center"/>
+              <TextBlock Text="пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
 ```
@@ -1324,7 +1323,7 @@ Directly above the `<ListBox x:Name="NavList"`, add:
 ```xml
         <TextBox x:Name="SettingsSearchBox"
                  Classes="navSearch"
-                 Watermark="Поиск раздела"
+                 Watermark="пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ"
                  Margin="12,8,12,4" />
 ```
 
@@ -1337,18 +1336,18 @@ After the closing `</ScrollViewer>` of `Panel_clipboard`, add:
           <StackPanel Spacing="12">
             <Border Classes="settingsCard">
               <StackPanel Spacing="8">
-                <TextBlock Classes="sectionTitle" Text="Система"/>
+                <TextBlock Classes="sectionTitle" Text="пїЅпїЅпїЅпїЅпїЅпїЅпїЅ"/>
                 <TextBlock Classes="mutedNote"
-                           Text="Метрики снимаются локально раз в интервал. Никаких сетевых запросов — только чтение счётчиков Windows."/>
-                <CheckBox x:Name="SystemStatsEnabledBox" Content="Показывать метрики в островке"/>
-                <TextBlock Classes="fieldLabel" Text="Интервал обновления"/>
+                           Text="пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ Windows."/>
+                <CheckBox x:Name="SystemStatsEnabledBox" Content="пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"/>
+                <TextBlock Classes="fieldLabel" Text="пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"/>
                 <ComboBox x:Name="SystemStatsRefreshBox" Width="200">
-                  <ComboBoxItem Tag="500" Content="500 мс"/>
-                  <ComboBoxItem Tag="1000" Content="1 с"/>
-                  <ComboBoxItem Tag="2000" Content="2 с"/>
+                  <ComboBoxItem Tag="500" Content="500 пїЅпїЅ"/>
+                  <ComboBoxItem Tag="1000" Content="1 пїЅ"/>
+                  <ComboBoxItem Tag="2000" Content="2 пїЅ"/>
                 </ComboBox>
-                <CheckBox x:Name="SystemStatsAutoCollapseBox" Content="Автоскрытие после 30 с"/>
-                <CheckBox x:Name="SystemStatsAllInterfacesBox" Content="Считать виртуальные интерфейсы"/>
+                <CheckBox x:Name="SystemStatsAutoCollapseBox" Content="пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ 30 пїЅ"/>
+                <CheckBox x:Name="SystemStatsAllInterfacesBox" Content="пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"/>
               </StackPanel>
             </Border>
           </StackPanel>
@@ -1357,17 +1356,17 @@ After the closing `</ScrollViewer>` of `Panel_clipboard`, add:
           <StackPanel Spacing="12">
             <Border Classes="settingsCard">
               <StackPanel Spacing="8">
-                <TextBlock Classes="sectionTitle" Text="О программе"/>
+                <TextBlock Classes="sectionTitle" Text="пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"/>
                 <TextBlock x:Name="AboutVersionText" Classes="mutedNote" Text="NotifyIsland 1.12.0"/>
                 <TextBlock x:Name="AboutRuntimeText" Classes="mutedNote" Text=".NET 8 / Avalonia 11"/>
                 <TextBlock x:Name="AboutRepoText" Classes="mutedNote"
                            Text="https://github.com/Leorik69/notifyisland-avalonia"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                  <Button x:Name="AboutExportButton" Content="Экспорт настроек" Click="OnExportSettings"/>
-                  <Button x:Name="AboutImportButton" Content="Импорт настроек" Click="OnImportSettings"/>
-                  <Button x:Name="AboutUpdateButton" Content="Проверить обновления" IsEnabled="False"/>
+                  <Button x:Name="AboutExportButton" Content="пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ" Click="OnExportSettings"/>
+                  <Button x:Name="AboutImportButton" Content="пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ" Click="OnImportSettings"/>
+                  <Button x:Name="AboutUpdateButton" Content="пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ" IsEnabled="False"/>
                 </StackPanel>
-                <TextBlock Classes="mutedNote" Text="Проверка обновлений отключена: сборка полностью офлайн."/>
+                <TextBlock Classes="mutedNote" Text="пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ."/>
               </StackPanel>
             </Border>
           </StackPanel>
@@ -1395,7 +1394,7 @@ In `LoadUi()`, after the clipboard bindings, add:
         SystemStatsAutoCollapseBox.IsChecked = _draft.SystemStatsAutoCollapse;
         SystemStatsAllInterfacesBox.IsChecked = _draft.SystemStatsAllInterfaces;
         AboutVersionText.Text = $"NotifyIsland {typeof(AppSettings).Assembly.GetName().Version?.ToString(3) ?? "1.12.0"}";
-        AboutRuntimeText.Text = $"{System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription} · Avalonia 11";
+        AboutRuntimeText.Text = $"{System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription} пїЅ Avalonia 11";
         AboutRepoText.Text = "https://github.com/Leorik69/notifyisland-avalonia";
         SettingsSearchBox.IsVisible = NavEntries.Length >= OverlayTokens.SettingsSearchMinSections;
 ```
@@ -1503,12 +1502,12 @@ Expected: 0 warnings, 0 errors. Fix any missing `using` (`System.Linq`, `System.
 
 ```bash
 git add SettingsWindow.axaml SettingsWindow.axaml.cs Assets/Icons/
-git -c user.name='Leorik69' -c user.email='leorik69@users.noreply.github.com' commit -m "polish(ui): Settings sections Система + О программе, search, import/export"
+git -c user.name='Leorik69' -c user.email='leorik69@users.noreply.github.com' commit -m "polish(ui): Settings sections пїЅпїЅпїЅпїЅпїЅпїЅпїЅ + пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, search, import/export"
 ```
 
 ---
 
-### Task 8: Pill UI — metric row, expanded kind, click-to-expand
+### Task 8: Pill UI пїЅ metric row, expanded kind, click-to-expand
 
 **Files:**
 - Modify: `OverlayWindow.axaml`
@@ -1529,10 +1528,10 @@ In `OverlayWindow.axaml`, at the **start** of the `CollapsedRow` `StackPanel`, b
                     Spacing="6"
                     VerticalAlignment="Center"
                     IsVisible="False">
-          <TextBlock x:Name="StatsCpuText"  VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text="—"/>
-          <TextBlock x:Name="StatsRamText"  VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text="—"/>
-          <TextBlock x:Name="StatsBatteryText" VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text="—"/>
-          <TextBlock x:Name="StatsNetText"  VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text="—"/>
+          <TextBlock x:Name="StatsCpuText"  VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text="пїЅ"/>
+          <TextBlock x:Name="StatsRamText"  VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text="пїЅ"/>
+          <TextBlock x:Name="StatsBatteryText" VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text="пїЅ"/>
+          <TextBlock x:Name="StatsNetText"  VerticalAlignment="Center" FontSize="11" FontWeight="Medium" Text="пїЅ"/>
         </StackPanel>
 ```
 
@@ -1542,10 +1541,10 @@ Inside the expanded content panel of `OverlayWindow.axaml` (the one holding `Ove
 
 ```xml
         <StackPanel x:Name="SystemStatsExpanded" IsVisible="False" Spacing="6" Margin="0,8,0,0">
-          <TextBlock x:Name="StatsExCpuText"     FontSize="12" Text="CPU —"/>
-          <TextBlock x:Name="StatsExRamText"     FontSize="12" Text="RAM —"/>
-          <TextBlock x:Name="StatsExBatteryText" FontSize="12" Text="Батарея —"/>
-          <TextBlock x:Name="StatsExNetText"     FontSize="12" Text="Сеть —"/>
+          <TextBlock x:Name="StatsExCpuText"     FontSize="12" Text="CPU пїЅ"/>
+          <TextBlock x:Name="StatsExRamText"     FontSize="12" Text="RAM пїЅ"/>
+          <TextBlock x:Name="StatsExBatteryText" FontSize="12" Text="пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ"/>
+          <TextBlock x:Name="StatsExNetText"     FontSize="12" Text="пїЅпїЅпїЅпїЅ пїЅ"/>
         </StackPanel>
 ```
 
@@ -1615,10 +1614,10 @@ In `OverlayWindow.axaml.cs`, add:
                 StatsExCpuText.Text     = $"CPU      {s.CpuPercent:F0}%";
                 StatsExRamText.Text     = s.RamTotalBytes > 0
                     ? $"RAM      {s.RamUsedBytes / 1_000_000_000.0:F1} / {s.RamTotalBytes / 1_000_000_000.0:F0} GB  ({s.RamPercent:F0}%)"
-                    : "RAM      —";
+                    : "RAM      пїЅ";
                 StatsExBatteryText.Text = s.BatteryPercent is { } ebp
-                    ? $"Батарея  {ebp:F0}%{(s.OnAcPower ? "  ?" : "")}" : "Батарея  —";
-                StatsExNetText.Text     = $"Сеть     v {s.NetDownBytesPerSec / 1_000_000.0:F1} MB/s   ^ {s.NetUpBytesPerSec / 1_000.0:F0} KB/s";
+                    ? $"пїЅпїЅпїЅпїЅпїЅпїЅпїЅ  {ebp:F0}%{(s.OnAcPower ? "  ?" : "")}" : "пїЅпїЅпїЅпїЅпїЅпїЅпїЅ  пїЅ";
+                StatsExNetText.Text     = $"пїЅпїЅпїЅпїЅ     v {s.NetDownBytesPerSec / 1_000_000.0:F1} MB/s   ^ {s.NetUpBytesPerSec / 1_000.0:F0} KB/s";
             }
             else
             {
@@ -1674,10 +1673,9 @@ In `IslandLayout.SizeFor`, add an optional trailing parameter and forward it:
 ```csharp
     public static (double Width, double Height) SizeFor(
         OverlayKind kind, bool weatherEnabled, IslandOrientation orientation,
-        IslandEdge edge, bool batteryChip = false, int cycleCount = 0,
-        int statsMetricCount = 0)
+        IslandEdge edge, bool batteryChip = false, int statsMetricCount = 0)
     {
-        var longAxis = OverlayMachine.WidthFor(kind, weatherEnabled, batteryChip, cycleCount, statsMetricCount);
+        var longAxis = OverlayMachine.WidthFor(kind, weatherEnabled, batteryChip, statsMetricCount);
         // ... existing body unchanged ...
     }
 ```
@@ -1709,7 +1707,7 @@ Run: `dotnet build NotifyIsland.Av.csproj -c Release`
 Expected: 0 warnings, 0 errors
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release`
-Expected: PASS — 199 passed
+Expected: PASS пїЅ 199 passed
 
 - [ ] **Step 11: Manual smoke test**
 
@@ -1718,9 +1716,9 @@ Per AGENTS.md rule 8, kill any running instance, publish fresh, launch:
 2. Confirm the metric row appears to the left of the clock on Idle.
 3. Click the metric row > the pill expands to the full readout.
 4. Click the expanded pill > returns to Idle.
-5. Change «Интервал обновления» in Settings > the rate changes without a restart.
-6. Uncheck «Считать виртуальные интерфейсы» > the net figure changes.
-7. Uncheck «Показывать метрики» > the row hides.
+5. Change пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ in Settings > the rate changes without a restart.
+6. Uncheck пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ > the net figure changes.
+7. Uncheck пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ > the row hides.
 
 - [ ] **Step 12: Commit**
 
@@ -1791,7 +1789,7 @@ public class AnimationEasingTests
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release --filter "FullyQualifiedName~AnimationEasingTests"`
-Expected: FAIL — `error CS0103: The name 'ClickPop' does not exist`
+Expected: FAIL пїЅ `error CS0103: The name 'ClickPop' does not exist`
 
 - [ ] **Step 3: Add the tokens**
 
@@ -1799,7 +1797,7 @@ Append to `OverlayTokens.cs`:
 
 ```csharp
 
-    // -- Animations (1.12.0) — both derived from MorphMs ---------------------
+    // -- Animations (1.12.0) пїЅ both derived from MorphMs ---------------------
     /// <summary>Click-acknowledgement pop duration (ms). Half the morph it interrupts.</summary>
     public const int    ClickPopMs           = MorphMs / 2;
     /// <summary>Peak scale for the click-acknowledgement pop.</summary>
@@ -1826,7 +1824,7 @@ Match the existing comma placement in the file: if the previous member is `IconC
 
 - [ ] **Step 5: Add ClickPop to NotifyAnimStyles.cs**
 
-Append inside the `AnimationEasing` class. Note: **do not touch the existing `PopScale`** — it is used by `NotifyAppearStyle.Pop` and asserted in `AnimationTimingTests.cs:110`.
+Append inside the `AnimationEasing` class. Note: **do not touch the existing `PopScale`** пїЅ it is used by `NotifyAppearStyle.Pop` and asserted in `AnimationTimingTests.cs:110`.
 
 ```csharp
     /// <summary>
@@ -1872,12 +1870,12 @@ Add to `CopyTo`:
 - [ ] **Step 7: Run test to verify it passes**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release --filter "FullyQualifiedName~AnimationEasingTests"`
-Expected: PASS — 4 passed
+Expected: PASS пїЅ 4 passed
 
-- [ ] **Step 8: Verify no regression — especially the existing PopScale tests**
+- [ ] **Step 8: Verify no regression пїЅ especially the existing PopScale tests**
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release`
-Expected: PASS — 203 passed (199 + 4). The pre-existing `PopScale` assertions in `AnimationTimingTests.cs:110` must still pass untouched.
+Expected: PASS пїЅ 203 passed (199 + 4). The pre-existing `PopScale` assertions in `AnimationTimingTests.cs:110` must still pass untouched.
 
 - [ ] **Step 9: Apply the pop in OverlayWindow**
 
@@ -2017,7 +2015,7 @@ In `OverlayWindow.axaml`, at the end of `CollapsedRow`, add:
                 CornerRadius="4"
                 Background="#28FFFFFF"
                 Padding="4,1" VerticalAlignment="Center">
-          <TextBlock Text="Закреплено" FontSize="9" Foreground="#C8C8CC"/>
+          <TextBlock Text="пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ" FontSize="9" Foreground="#C8C8CC"/>
         </Border>
 ```
 
@@ -2031,18 +2029,18 @@ In `TrayService.cs`, replace the menu construction with:
         var menu = new NativeMenu();
         menu.Add(new NativeMenuItem
         {
-            Header = _islandVisible ? "Скрыть островок" : "Показать островок",
+            Header = _islandVisible ? "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ" : "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ",
             Command = new NativeMenuCommand { Callback = (_, _) => ToggleIsland() }
         });
         menu.Add(new NativeMenuItemSeparator());
 
         menu.Add(new NativeMenuItem
         {
-            Header = "Центр уведомлений",
+            Header = "пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ",
             Command = new NativeMenuCommand { Callback = (_, _) => OpenActionCenter() }
         });
 
-        var clipItem = new NativeMenuItem { Header = "Буфер обмена" };
+        var clipItem = new NativeMenuItem { Header = "пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ" };
         foreach (var entry in _clipboard.SnapshotNewestFirst()
                      .Take(OverlayTokens.TrayClipboardSubmenuItems))
         {
@@ -2051,10 +2049,10 @@ In `TrayService.cs`, replace the menu construction with:
             {
                 ClipboardItemKind.Text => (captured.Text ?? "").Replace('\n', ' ').Replace('\r', ' '),
                 ClipboardItemKind.File => System.IO.Path.GetFileName(captured.Paths is { Count: > 0 } ? captured.Paths[0] : ""),
-                ClipboardItemKind.MultiFile => $"{captured.Paths?.Count ?? 0} файлов",
+                ClipboardItemKind.MultiFile => $"{captured.Paths?.Count ?? 0} пїЅпїЅпїЅпїЅпїЅпїЅ",
                 _ => ""
             };
-            if (label.Length > 40) label = label[..39] + "…";
+            if (label.Length > 40) label = label[..39] + "пїЅ";
             clipItem.Items.Add(new NativeMenuItem
             {
                 Header = label,
@@ -2071,35 +2069,35 @@ In `TrayService.cs`, replace the menu construction with:
             });
         }
         if (clipItem.Items.Count == 0)
-            clipItem.Items.Add(new NativeMenuItem { Header = "(пусто)" });
+            clipItem.Items.Add(new NativeMenuItem { Header = "(пїЅпїЅпїЅпїЅпїЅ)" });
         menu.Add(clipItem);
         menu.Add(new NativeMenuItemSeparator());
 
         menu.Add(new NativeMenuItem
         {
-            Header = _demoOn ? "Демо выкл" : "Демо вкл",
+            Header = _demoOn ? "пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ" : "пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ",
             Command = new NativeMenuCommand { Callback = (_, _) => ToggleDemo() }
         });
         menu.Add(new NativeMenuItem
         {
-            Header = _weatherOn ? "Погода выкл" : "Погода вкл",
+            Header = _weatherOn ? "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ" : "пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ",
             Command = new NativeMenuCommand { Callback = (_, _) => ToggleWeather() }
         });
         menu.Add(BuildTimerMenu());
         menu.Add(new NativeMenuItemSeparator());
         menu.Add(new NativeMenuItem
         {
-            Header = "Настройки…",
+            Header = "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ",
             Command = new NativeMenuCommand { Callback = (_, _) => OpenSettings() }
         });
         menu.Add(new NativeMenuItem
         {
-            Header = "Выход",
+            Header = "пїЅпїЅпїЅпїЅпїЅ",
             Command = new NativeMenuCommand { Callback = (_, _) => Exit() }
         });
 ```
 
-Adapt the field and method names to whatever `TrayService.cs` actually uses today — it already has equivalents of `_islandVisible`, `_demoOn`, `_weatherOn`, `BuildTimerMenu`, `OpenSettings`, `Exit`. `TrayService` needs a reference to the `ClipboardHistory` instance; pass it in from `OverlayWindow` where the tray is constructed.
+Adapt the field and method names to whatever `TrayService.cs` actually uses today пїЅ it already has equivalents of `_islandVisible`, `_demoOn`, `_weatherOn`, `BuildTimerMenu`, `OpenSettings`, `Exit`. `TrayService` needs a reference to the `ClipboardHistory` instance; pass it in from `OverlayWindow` where the tray is constructed.
 
 - [ ] **Step 7: Build and verify**
 
@@ -2107,7 +2105,7 @@ Run: `dotnet build NotifyIsland.Av.csproj -c Release`
 Expected: 0 warnings, 0 errors
 
 Run: `dotnet test NotifyIsland.Tests/NotifyIsland.Tests.csproj -c Release`
-Expected: PASS — 203 passed
+Expected: PASS пїЅ 203 passed
 
 - [ ] **Step 8: Commit**
 
@@ -2127,15 +2125,15 @@ git -c user.name='Leorik69' -c user.email='leorik69@users.noreply.github.com' co
 - Modify: `CHANGELOG.md`
 - Test: none
 
-- [ ] **Step 1: Update GUIDELINES §2 with the new tokens**
+- [ ] **Step 1: Update GUIDELINES пїЅ2 with the new tokens**
 
-Add a row block to the animation timing table in `docs/ISLAND_GUIDELINES.md` §2, mirroring §3.5 of the spec:
+Add a row block to the animation timing table in `docs/ISLAND_GUIDELINES.md` пїЅ2, mirroring пїЅ3.5 of the spec:
 
 ```markdown
-| ClickPop (chevron/cycle ack) | **210 мс** (= MorphMs/2) | CubicEaseOut | 1.0 > 1.08 > 1.0, never below 1 |
-| First-appear wobble | **210 мс** (= MorphMs/2) | sine | ±1 DIP translate X |
-| Peek auto-hide | **1200 мс** | — | un-pinned peek collapses |
-| Peek width morph | **200 мс** | SoftOut | +120 DIP for the full-date row |
+| ClickPop (chevron/cycle ack) | **210 пїЅпїЅ** (= MorphMs/2) | CubicEaseOut | 1.0 > 1.08 > 1.0, never below 1 |
+| First-appear wobble | **210 пїЅпїЅ** (= MorphMs/2) | sine | пїЅ1 DIP translate X |
+| Peek auto-hide | **1200 пїЅпїЅ** | пїЅ | un-pinned peek collapses |
+| Peek width morph | **200 пїЅпїЅ** | SoftOut | +120 DIP for the full-date row |
 ```
 
 Add the system-monitor layout thresholds to the layout section:
@@ -2146,14 +2144,14 @@ Add the system-monitor layout thresholds to the layout section:
 | Stats screen margin | **48 DIP** | gap kept between pill and screen edge |
 ```
 
-- [ ] **Step 2: Correct the GUIDELINES §7 sidebar list**
+- [ ] **Step 2: Correct the GUIDELINES пїЅ7 sidebar list**
 
 The list currently names 9 sections. Replace it with the 12 that ship in 1.12.0:
 
 ```markdown
-1. Островок · 2. Погода · 3. Расположение · 4. Тема · 5. Медиа и питание ·
-6. Оформление · 7. Анимации · 8. Звуки · 9. Иконки · 10. Буфер обмена ·
-11. Система · 12. О программе
+1. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ 2. пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ 3. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ 4. пїЅпїЅпїЅпїЅ пїЅ 5. пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ
+6. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ 7. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ 8. пїЅпїЅпїЅпїЅпїЅ пїЅ 9. пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ 10. пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ
+11. пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ 12. пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 ```
 
 - [ ] **Step 3: Add the ISLAND_PREVIEW feature entries and the DPI example**
@@ -2161,26 +2159,26 @@ The list currently names 9 sections. Replace it with the 12 that ship in 1.12.0:
 Append to `docs/ISLAND_PREVIEW.md`:
 
 ```markdown
-## 1.12.0 — System Monitor
+## 1.12.0 пїЅ System Monitor
 
-48a. **Метрики в островке**: CPU, RAM, батарея, сеть — в ряд слева от часов. Отсчёт локальный, раз в настраиваемый интервал, без сети.
-49. **Адаптивный ряд**: 1–4 слота по ширине монитора. Приоритет `CPU > RAM > батарея > сеть`; при нехватке места отпадают справа налево, CPU не отпадает никогда.
-50. **Раскрытый вид**: клик по ряду открывает полный отчёт (4 строки) вместо часов; клик по нему возвращает в Idle.
-51. **Раздел «Система»**: тумблер, интервал, автоскрытие, учёт виртуальных интерфейсов. Всё применяется без перезапуска.
+48a. **пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ**: CPU, RAM, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ пїЅ пїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ.
+49. **пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ**: 1пїЅ4 пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ `CPU > RAM > пїЅпїЅпїЅпїЅпїЅпїЅпїЅ > пїЅпїЅпїЅпїЅ`; пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, CPU пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ.
+50. **пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ**: пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ (4 пїЅпїЅпїЅпїЅпїЅпїЅ) пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ; пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ Idle.
+51. **пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ**: пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.
 ```
 
 And, for the layout worked example:
 
 ```markdown
-Пороги на 1920?1080 при 100 % (доступно 1872 DIP): 4 слота.
-При 150 % (доступно 1232 DIP): 4 слота.
-На 1280?1024 при 150 % (доступно 805 DIP): 4 слота.
-Ниже 620 DIP ряд сокращается: минус сеть > минус батарея > минус RAM. Ниже 380 DIP остаётся только CPU.
+пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ 1920?1080 пїЅпїЅпїЅ 100 % (пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ 1872 DIP): 4 пїЅпїЅпїЅпїЅпїЅ.
+пїЅпїЅпїЅ 150 % (пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ 1232 DIP): 4 пїЅпїЅпїЅпїЅпїЅ.
+пїЅпїЅ 1280?1024 пїЅпїЅпїЅ 150 % (пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ 805 DIP): 4 пїЅпїЅпїЅпїЅпїЅ.
+пїЅпїЅпїЅпїЅ 620 DIP пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ > пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ > пїЅпїЅпїЅпїЅпїЅ RAM. пїЅпїЅпїЅпїЅ 380 DIP пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ CPU.
 ```
 
 - [ ] **Step 4: Add the CONTEXT.md source-of-truth row**
 
-In the table under «Единый источник правды», after the clipboard row, add:
+In the table under пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, after the clipboard row, add:
 
 ```markdown
 | System monitor | `NotifyIsland.Core/{SystemSnapshot,StatsDebounce,StatsLayout,SystemMonitorMachine}.cs` + `WindowsSystemMonitorSource.cs` |
@@ -2191,12 +2189,12 @@ In the table under «Единый источник правды», after the clipboard row, add:
 At the top of `CHANGELOG.md`, under the existing `## Unreleased` heading, add:
 
 ```markdown
-### Added — System monitor (1.12.0)
-- Live CPU%, RAM, battery% and network throughput in the collapsed pill, sampled locally every 500–2000 ms.
-- Adaptive metric row: 1–4 slots by monitor width, drop order Net > Battery > RAM > CPU.
+### Added пїЅ System monitor (1.12.0)
+- Live CPU%, RAM, battery% and network throughput in the collapsed pill, sampled locally every 500пїЅ2000 ms.
+- Adaptive metric row: 1пїЅ4 slots by monitor width, drop order Net > Battery > RAM > CPU.
 - Expanded `SystemStats` kind with a full readout; click the row to open, click again to return.
-- Settings section «Система» (toggle, interval, auto-collapse, virtual interfaces) and «О программе» (version, repo, import/export).
-- Tray menu gained a «Буфер обмена» submenu with the last 5 items, click to re-copy.
+- Settings section пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (toggle, interval, auto-collapse, virtual interfaces) and пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (version, repo, import/export).
+- Tray menu gained a пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ submenu with the last 5 items, click to re-copy.
 - Hover-peek now shows the full date, weather and unread badge, and auto-hides.
 
 ### Changed
