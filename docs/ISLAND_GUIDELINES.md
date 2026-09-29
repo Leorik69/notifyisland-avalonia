@@ -182,8 +182,8 @@ FSM: `OverlayMachine` / `OverlayKind`.
   - Клик по **островной половине** — как раньше: одиночный = пин/анпин, двойной = Action Center.
   - Клик по **буферной половине** → `ClipboardClickAction`: `Dismiss` (только закрыть) или `DismissAndClear` (закрыть и очистить системный буфер через `WriteText("")` — открывает буфер, пишет пустую строку, ничего не вставляет). Правая кнопка в любом месте по-прежнему открывает контекстное меню.
   - Зоны ⅓/⅓/⅓ цикла буфера меряются по **островной половине** (`ClipboardSplit.IslandHalfExtent` = 170 DIP), а не по всей пилюле: иначе при делении обе границы зон уехали бы вправо. Ось — длинная, то есть та же, что у hit-test половины.
-- `CycleNext` / `CyclePrev` остаются в `OverlayMachine` для API / unit-тестов / demo.
-- ПКМ → контекстное меню; Media Prev/Play/Next — отдельные кнопки; F9–F12 demos — клавиатура.
+- `CycleNext` / `CyclePrev` остаются в `OverlayMachine` для API и unit-тестов.
+- ПКМ → контекстное меню; Media Prev/Play/Next — кнопки в строке «Плеер» монитора; **F12** — таймер, **Esc** — открепить/свернуть. Демо-режима в продукте нет (удалён в 1.13.0).
 - Hover-peek / click-pin: Core `HoverPinMachine` (1.10.0). Без свайпов.
 - Fullscreen: `HideOnFullscreen` → hide via `Win32Overlay.IsFullscreenOrBusy`; optional click-through.
 
@@ -262,7 +262,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 - Z-order Topmost / Desktop / BehindApps (Win32 SetWindowPos)
 - Edge + OffsetX/Y (без mouse drag)
 - Opacity 0.35–1.0 на fill; AnimationSpeed (Slow|Normal|Fast|Off) с pulse; SoundPack (Nothing|Ios|System|Off) + SoundEnabled + master/per-event volumes
-- Demo cycle (`--demo` / F9); Click → Action Center
+- Click → Action Center. Демо-цикл удалён в 1.13.0: остаётся только реальный ввод.
 - Unit-тесты FSM + AppSettings + IslandLayout + python FSM script
 
 ### Убрать / не раздувать (обоснование)
@@ -311,9 +311,9 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 
 ## 6. Демо и источники данных
 
-**Медиа в демо:** захардкоженный мок (`Night Drive` / `Local Radio`), не SMTC.
+**Медиа:** только SMTC (`WindowsMediaSessionSource`). Мок-трека больше нет — демо-режим удалён в 1.13.0.
 
-**Погода в демо:** `SetWeather` в `RunDemoStep()`; данные из `WindowsWeatherSource` (или stub `WeatherCodes.MockMoscow()` = ясно 18°).
+**Погода:** `SetWeather` из `WindowsWeatherSource` (или stub `WeatherCodes.MockMoscow()` = ясно 18°, когда источник недоступен).
 
 - Play/pause в UI только переключает флаг `Playing` в FSM (`OnMediaPlay`), звук не играет.
 
