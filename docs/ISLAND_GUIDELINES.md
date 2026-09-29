@@ -119,6 +119,11 @@
 | First-appear wobble | **210 мс** (= MorphMs/2) | sine | ±1 DIP translate X |
 | Peek expand (Idle → SystemStats) | **250 мс** задержка (`HoverExpandDelayMs`) + MorphMs | Soft | закрывается по уходу курсора + grace 500 мс |
 | SystemStats height morph | **MorphMs = 420 мс** | Soft | 30 → `StatsHeightFor(rowCount)` (108 DIP при 5 строках, 48 DIP при 2) |
+| Split: выезд половины буфера (1.12.2) | **MorphMs = 420 мс** (= существующий width morph) | CubicOut | едет вдоль длинной оси с дальнего конца на `ClipboardHalfW` (200 DIP); отдельного таймера нет — едет на 16-мс морф-таймере |
+| Split: задержка fade половины (1.12.2) | **¼ MorphMs ≈ 105 мс** (`ClipboardHalfFadeDelay` = 0.25 от прогресса) | CubicOut | капсула уже растёт, когда половина начинает проявляться — читается как «догоняет», а не переключается в такт с шириной |
+| Split: пере-увеличение половины (1.12.2) | **MorphMs**, пик в первой трети | существующий `ClickPop`, ресайз 1.0 → **1.06** (`ClipboardHalfPopPeak`) → 1.0 | никогда ниже 1.0; новая easing-кривая не заводится |
+| Split: покачивание в покое (1.12.2) | **2400 мс**/период | sine | ±**0.5 DIP** по **поперечной** оси (`ClipboardHalfBreathePx` / `ClipboardHalfBreatheMs`); едет на существующем тике 200 мс (12 отсчётов на период) |
+| Split: время жизни половины (1.12.2) | **`min(NotifyDurationMs, ClipboardHistory.MaxPillMs)` = 4000 мс** при дефолтах | — | счётчик половины свой (`SplitMsLeft`), не общий `_notifyMs` |
 
 Запрещено:
 - менять высоту капсулы при notify (не «расти вверх»);
@@ -143,6 +148,8 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | `Expanded` | обзор | expanded |
 | `Weather` | dynamic weather icon · «Ясно · 18° · 0%» | ~360 |
 | `SystemStats` (1.12.1) | строки CPU / Память / Батарея / Сеть / дата — набор и порядок задаёт пользователь (`AppSettings.StatsRows`) | `StatsExpandedW` = 300 |
+| `Clipboard` (1.12.0) | **больше не целый kind в нормальной работе** (см. правило 8) | — |
+| **Split-половина буфера** (1.12.2) | не kind, а **флаг на машине**: `OverlaySnapshot.IsSplitClipboard` + payload `SplitClipboard`; добавляется к **любому** текущему kind'у и не заменяет его | `ClipboardSplit.SplitLongAxisFor(kind) = widthFor(kind) + ClipboardHalfW` |
 
 Правила:
 1. Горизонтальный режим: высота всегда **`CollapsedH = 30`**, морф только по ширине.
@@ -153,6 +160,10 @@ FSM: `OverlayMachine` / `OverlayKind`.
 5. Idle/Collapsed: **одинарный клик** → pin/unpin (`ClickPinEnabled`); **двойной клик** → `ms-actioncenter:`; Esc → unpin. (1.10.0; раньше single = Action Center.)
 6. Right-click → быстрое меню (Центр уведомлений / Demo / Погода / **Настроить монитор…** (1.12.1 — открывает окно Settings сразу на разделе «Монитор», даже если окно уже видно) / разделитель / Свернуть / **Настройки…** / Выход). Полные настройки — только в окне Settings (§7).
 7. CycleNext/Prev (API) **не** инкрементит unread (Notification slot = demo seed). UI-свайпов нет.
+8. **Split-буфер (1.12.2).** Копирование не забирает пилюлю: `OverlayCommand.SetClipboardSplit` ставит флаг, островок сохраняет свой kind и содержимое (часы, дата, погода, батарея, unread-dot), а буфер живёт в half-pill рядом. Реализовано **флагом на машине, а не новым `OverlayKind`**: половина ортогональна kind'у — у неё свой `OverlayPayload` (`SplitClipboard`), своё время жизни (`SplitMsLeft`) и своя граница.
+9. Что осталось от `OverlayKind.Clipboard`: сам enum и `OverlayCommand.SetClipboard` в Core **сохранены** (их держит `ClipboardHistoryTests` и демо/API-контракт), но приложение их **больше не диспатчит** — `OnClipboardCaptured` шлёт только `SetClipboardSplit`. Нормальный путь буфера — половинка; целый kind остался как запасной путь и как документация прежнего поведения.
+10. **Геометрия split (1.12.2).** Горизонтально: островная половина `CollapsedW` = **170 DIP** + буферная `ClipboardHalfW` = **200 DIP** = **370 × 30 DIP**. Высота по-прежнему **всегда `CollapsedH` = 30** — split правило не нарушает, он добавляет только длину. На Left/Right длинная ось вертикальна, поэтому та же арифметика даёт **30 × 370**: ширина — тонкая капсула `CollapsedH`, половина буфера встаёт **вниз** (у дальнего конца длинной оси), а её содержимое (иконка + текст) поворачивается на **−90°** и верстается как обычная строка 200 × 30 внутри повёрнутой коробки. Итоговое правило: буферная половина всегда живёт длинной стороной `ClipboardHalfW` и всегда кросс-стороной `CollapsedH` — она физически не может выйти за капсулу.
+11. `SystemStats` от split не разделяется: фиксированный блок не делится (`IslandLayout.SizeFor` возвращает его размер раньше, чем смотрит на split). Прочие kind'ы — `widthFor(kind) + ClipboardHalfW`; для kind'ов с клампом в `ExpandedMinW/MaxW` половинка добавляется **после** клампа (split Notification = 380 + 200, а не 460).
 
 ---
 
@@ -167,6 +178,10 @@ FSM: `OverlayMachine` / `OverlayKind`.
 | (legacy) `SwipeFirePx` / `SwipeRubberMs` | 48 / 180 | **не используются** UI; оставлены для совместимости |
 
 - Свайп L/R/U/D **не** циклит слоты и **не** expand/collapse.
+- **Split-половина (1.12.2):** обе половины — один `Border`, hit-test общий; решение принимается один раз в момент нажатия по координате **длинной** оси (X на Top/Bottom, Y на Left/Right) против `ClipboardSplit.ClipboardHalfStart`.
+  - Клик по **островной половине** — как раньше: одиночный = пин/анпин, двойной = Action Center.
+  - Клик по **буферной половине** → `ClipboardClickAction`: `Dismiss` (только закрыть) или `DismissAndClear` (закрыть и очистить системный буфер через `WriteText("")` — открывает буфер, пишет пустую строку, ничего не вставляет). Правая кнопка в любом месте по-прежнему открывает контекстное меню.
+  - Зоны ⅓/⅓/⅓ цикла буфера меряются по **островной половине** (`ClipboardSplit.IslandHalfExtent` = 170 DIP), а не по всей пилюле: иначе при делении обе границы зон уехали бы вправо. Ось — длинная, то есть та же, что у hit-test половины.
 - `CycleNext` / `CyclePrev` остаются в `OverlayMachine` для API / unit-тестов / demo.
 - ПКМ → контекстное меню; Media Prev/Play/Next — отдельные кнопки; F9–F12 demos — клавиатура.
 - Hover-peek / click-pin: Core `HoverPinMachine` (1.10.0). Без свайпов.
@@ -202,6 +217,23 @@ FSM: `OverlayMachine` / `OverlayKind`.
 
 Код: `NotifyIsland.Core/OverlayTokens.cs` + `NotifyIsland.Core/StatsLayout.cs`. В 1.12.1 метрики вынесены из свёрнутой пилюли в отдельную поверхность, поэтому `StatsMinPillW` / `StatsShow*MetricsW` / `StatsMetricSlotW` больше не влияют на ширину — `WidthFor(SystemStats)` всегда возвращает `StatsExpandedW`.
 
+### 4b-1. Layout tokens: split clipboard half (1.12.2)
+
+| Параметр | Значение | Пояснение |
+|---|---:|---|
+| Island half (long axis) | **170 DIP** | `OverlayTokens.CollapsedW`; столько же, сколько свёрнутая пилюля без батареи |
+| `ClipboardHalfW` | **200 DIP** | длинная сторона буферной половины; итог 170 + 200 = **370** по длинной оси |
+| `ClipboardDividerW` | **1 DIP** | толщина разделителя (`#FFFFFF` @ 10 %) |
+| `ClipboardDividerCross` | **16 DIP** | длина разделителя **поперёк** длинной оси; на вертикальном краю это его ширина, на горизонтальном — высота, одно и то же число |
+| `ClipboardHalfGap` | **8 DIP** (по 4 DIP с каждой стороны) | отступ половин **от** разделителя, остаётся внутренним padding'ом; длину не добавляет. Разделитель центрируется на границе половин отрицательным margin'ом `DividerFrame.NearMargin` |
+| `ClipboardHalfFadeDelay` | **0.25** (¼ морфа) | доля прогресса морфа, которую половина ещё невидима перед началом fade |
+| `ClipboardHalfPopPeak` | **1.06** | пик пере-увеличения; та же кривая `ClickPop`, что у ack клика, только с другим пиком |
+| `ClipboardHalfBreatheMs` | **2400 мс** | период синуса покачивания в покое |
+| `ClipboardHalfBreathePx` | **0.5 DIP** | амплитуда; всегда по поперечной оси, никогда по длинной |
+| Half content margin | **4 / 10 DIP** по краям, spacing **4 DIP**, иконка **12 DIP**, текст `MaxWidth` **166 DIP** | 200 − 12 − 4 − 4 − 10 = 166; на вертикальном краю та же строка просто повёрнута |
+
+Код: `NotifyIsland.Core/OverlayTokens.cs` (константы) + `NotifyIsland.Core/ClipboardSplit.cs` (чистая геометрия и кадр анимации) + `NotifyIsland.Core/ClipboardHalfPreview.cs` (иконка формата и правила превью). Граница половины — **единственная функция** `ClipboardSplit.ClipboardHalfStart`: её используют и отрисовка (margin разделителя, анкоринг), и hit-test (`IsInHalf`), и зоны ⅓/⅓/⅓ (`IslandHalfExtent`), поэтому разойтись они не могут. Все три transform'а половины живут на трёх **разных** элементах и на разных осях (ориентация → `ClipboardHalfContent`, морф по длинной → `ClipboardHalfMotion`, breathe по поперечной → `ClipboardHalf`), поэтому ни один кадр не затирает другой ни на одном краю.
+
 ### 4c. Иконки (единый pack)
 
 - Файл: `IslandIcons.cs` + заметка `Assets/Icons/README.md`.
@@ -210,6 +242,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 - Палитра: secondary `#C8C8CC` на тёмной капсуле; белый на accent chip — читается и на light, и на dark Win11 chrome.
 - Weather keys динамические по WMO-like code (`WeatherCodes.IconKey`): clear / partly / cloud / fog / drizzle / rain / snow / storm; смена с **crossfade 240 мс**.
 - Kind keys: `clock`, `notify`, `media`, `timer`, `progress`, `error`.
+- Clipboard format keys (1.12.2, `ClipboardHalfPreview.IconKeyFor`): `clipboard` (текст и всё неопознанное), `file`, `files`. Резолвятся через `IconPackService` как все остальные ключи; `file` / `files` нарисованы в `IslandIcons` в том же 24×24 outline-конструировании, ничего не вендорилось.
 - Без платных/проприетарных пакетов; геометрии в стиле MIT Fluent / Tabler outline.
 
 ---
@@ -218,6 +251,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 
 ### Сейчас есть
 - Idle clock + unread glow + optional minimal weather (+ WeatherSide L/R)
+- **Split-буфер (1.12.2):** копирование делит пилюлю пополам — островная половина (170 DIP) живым остаётся, буферная (200 DIP) показывает иконку формата и превью; см. §3 правила 8–11
 - Notification morph (H: width / V: height), badge
 - Progress / Media / Timer / Error / **Weather** (FSM + demo)
 - **Clicks only** (no swipe)
@@ -255,11 +289,14 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 ### Clipboard history — правила
 - Только локальный ring buffer (`ClipboardHistory`), максимум 100, default 25.
 - Источник: `WindowsClipboardSource` — `GetClipboardSequenceNumber()` polling 1с, читает CF_HDROP → CF_UNICODETEXT.
-- `OverlayKind.Clipboard` (11-й) + `OverlayCommand.SetClipboard` (15-й).
-- Pill show-time `ClipboardHistory.MaxPillMs = 6000` (дольше notification — пользователь может дотянуться).
+- **Показ (1.12.2):** `OverlayCommand.SetClipboardSplit` — половинка, а не целый kind. `OverlayKind.Clipboard` (11-й) и `OverlayCommand.SetClipboard` (15-й) в Core остались, но приложение их не диспатчит (см. §3 правило 9).
+- Split-time половины = `min(NotifyDurationMs, ClipboardHistory.MaxPillMs)`; `ClipboardHistory.MaxPillMs = 6000` — это **потолок**, а дефолтное время жизни = 4000 мс (`NotifyDurationMs`), как у уведомления. Счётчик свой (`SplitMsLeft`), общий `_notifyMs` ему не мешает и наоборот.
+- Геометрия и анимация — §3 правила 8–11, §2 (строки `Split:`), §3b, §4b-1. Кратко: 170 + 200 = 370 по длинной оси, высота 30 всегда, выезд с дальнего конца на существующем морфе, fade с задержкой ¼, пик 1.06 по `ClickPop`, breathe ±0.5 DIP / 2.4 с по поперечной оси.
+- Превью: `ClipboardHistory.BuildPayload` уже даёт текст и **правильные склонения**; `ClipboardHalfPreview` только нормализует и обрезает под 200 DIP — все пробелы/переводы строк схлопываются в один пробел, текст режется по 22 символа с многоточием, файл показывает имя, мультифайл — «5 файлов», пустой payload — «буфер обмена». Склонение **не дублируется** в UI.
 - НЕ bump'ит unread (это не системное уведомление).
 - Звук `Notify` только на Text/File, не на MultiFile (слишком часто при копировании в Проводнике).
-- `ClipboardClickAction.Dismiss` — закрыть пилюлю, пользователь жмёт Ctrl+V сам. `DismissAndClear` — очистить системный буфер после закрытия. `PasteToLastFocus` — зарезервировано для v1.1.
+- **Клик по половине** (1.12.2) → `ClipboardClickAction`: `Dismiss` — закрыть половину, пользователь жмёт Ctrl+V сам. `DismissAndClear` — закрыть и очистить системный буфер (реализовано как `WriteText("")`: открывает буфер, пишет пустую строку, ничего не вставляет). `PasteToLastFocus` — зарезервировано для v1.1. До 1.12.2 эта настройка читалась только окном настроек и в островке была мёртвой.
+- Схлопывание анимируется: и клик, и истечение времени дают тот же collapse-морф, половина на время перехода остаётся видимой и уезжает той же дорогой, что приехала. Прятать её можно только после завершения перехода.
 - v1 НЕ вставляет в чужое окно автоматически — это даёт focus-эффект, который мешает пользователю.
 
 ### Добавить позже
@@ -310,7 +347,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
   7. **Анимации** — speed + appear/dismiss + pulse
   8. **Звуки** — packs + volumes
   9. **Иконки** — IslandIcons / Tabler / Lucide / Meteocons
-  10. **Буфер обмена** — toggle, max items, click action
+  10. **Буфер обмена** — toggle, max items, click action (`ClipboardClickAction` с 1.12.2 читается островком: клик по буферной половине её исполняет)
   11. **Монитор** — toggle, refresh interval, раскрывать при наведении, virtual interfaces (настройка «Сворачивать через 30 с» удалена в 1.12.1); набор и порядок строк (1.12.1): пресет + редактор строк + статичное превью
 - Ключи набора строк монитора (1.12.1): `AppSettings.StatsRowsPreset` (`Full` / `Brief` / `Custom`; `Off` в Core, но в UI не предлагается — off-switch это чекбокс «Показывать системный монитор») и `AppSettings.StatsRows` (упорядоченный список `StatsRow`). Пишутся читаемыми строками, не ординалами; оба приводятся к согласованному виду в `Normalize()` (ручное `Off` в `settings.json` мигрирует в `Full`). Состояние редактора строк — `NotifyIsland.Core/StatsRowEditState.cs`.
   12. **О приложении** — version, repo, import/export
@@ -356,7 +393,9 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 
 ## 9. Чеклист перед PR
 
-- [ ] Высота капсулы не изменилась (осталась 30). Исключение — `SystemStats` (высота от числа строк, `StatsHeightFor`, 1.12.1).
+- [ ] Высота капсулы не изменилась (осталась 30). Исключение — `SystemStats` (высота от числа строк, `StatsHeightFor`, 1.12.1). Split-половина (1.12.2) исключением **не** является: она добавляет только длину (170 + 200 = 370 на Top/Bottom, 30 × 370 на Left/Right).
+- [ ] Новая механика описана в §2 (тайминги) и покрыта тестом; граница половины считается **только** через `ClipboardSplit` — и разметка, и hit-test (1.12.2).
+- [ ] Зоны клика ⅓/⅓/⅓ меряются по островной половине, а не по всей пилюле (1.12.2), и ось у них длинная.
 - [ ] Morph Width base 420 мс Soft easing (× AnimationSpeed); Appear/Dismiss styles на Notification.
 - [ ] Unread: Notify++, Clear=0, Collapse сохраняет; cycle seed не ++.
 - [ ] Нет Open-Meteo / third-party weather HTTP.

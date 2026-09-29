@@ -49,6 +49,18 @@ public static class IslandIcons
             "M7.5 12 A4.5 4.5 0 0 1 8 3.1 A6 6 0 0 1 19 6.5 A3.5 3.5 0 0 1 18.5 12 Z M9 15.5 L9 18.5 M8 16.5 L10 17.5 M8 17.5 L10 16.5 M13 15.5 L13 18.5 M12 16.5 L14 17.5 M12 17.5 L14 16.5",
         ["weather-storm"] =
             "M7.5 11 A4.5 4.5 0 0 1 8 2.1 A6 6 0 0 1 19 5.5 A3.5 3.5 0 0 1 18.5 11 Z M11 12 L9 16 L12 16 L10 20",
+        // 1.12.2 split clipboard half: file / multi-file format icons. Authored for this set
+        // in the same construction as the rest of the pack — 24×24, r=2 corners, a 5×5
+        // diagonal fold, outline only, no fill — so they read as one family at 12 DIP.
+        // Nothing is vendored, so Assets/Icons/NOTICE is unchanged.
+        //   "file"   — one document, x 5…19, y 3…21.
+        //   "files"  — the same document twice: a back page peeking out up-left (x 2…16,
+        //              y 2…20, drawn as an open L so the front page hides the overlap) and
+        //              the front page at x 7…21, y 5…23.
+        ["file"] =
+            "M14 3 H7 A2 2 0 0 0 5 5 V19 A2 2 0 0 0 7 21 H17 A2 2 0 0 0 19 19 V8 Z M14 3 V8 H19",
+        ["files"] =
+            "M11 2 H4 A2 2 0 0 0 2 4 V18 A2 2 0 0 0 4 20 H7 M16 5 H9 A2 2 0 0 0 7 7 V21 A2 2 0 0 0 9 23 H19 A2 2 0 0 0 21 21 V10 Z M16 5 V10 H21",
         // Lucide-style clipboard silhouette (24×24, outline 1.75).
         ["clipboard"] =
             "M16 4 H18 A2 2 0 0 1 20 6 V20 A2 2 0 0 1 18 22 H6 A2 2 0 0 1 4 20 V6 A2 2 0 0 1 6 4 H8 M15 2 H9 A1 1 0 0 0 8 3 V4 A1 1 0 0 0 9 5 H15 A1 1 0 0 0 16 4 V3 A1 1 0 0 0 15 2 Z M8 9 H16 M8 13 H16 M8 17 H13"

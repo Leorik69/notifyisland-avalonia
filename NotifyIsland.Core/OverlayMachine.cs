@@ -37,6 +37,8 @@ public enum OverlayCommand
     ExpandWidget,
     SetBattery,
     SetClipboard,
+    /// <summary>Attach a clipboard half next to the current kind instead of taking over the pill (1.12.2).</summary>
+    SetClipboardSplit,
     SetClipboardCycle,
     CycleClipboardNext,
     CycleClipboardPrev,
@@ -104,8 +106,14 @@ public sealed class OverlaySnapshot
     public double Height { get; init; }
     public int NotifyMsLeft { get; init; }
     public int UnreadCount { get; init; }
+    /// <summary>True while a clipboard half is attached next to the normal island content (1.12.2).</summary>
+    public bool IsSplitClipboard { get; init; }
+    /// <summary>Milliseconds left before the split clipboard half collapses away.</summary>
+    public int SplitMsLeft { get; init; }
     public bool WeatherEnabled { get; init; }
     public OverlayPayload LastWeather { get; init; } = new();
+    /// <summary>Payload of the attached clipboard half. Empty when <see cref="IsSplitClipboard"/> is false.</summary>
+    public OverlayPayload SplitClipboard { get; init; } = new();
 }
 
 public sealed class OverlayMachine
@@ -121,6 +129,12 @@ public sealed class OverlayMachine
     private OverlayPayload _lastWeather = WeatherCodes.MockMoscow();
     private List<string> _cyclePreviews = new();
     private int _cycleIndex = -1;
+    // 1.12.2 split pill: the island keeps its own kind while a clipboard half is attached
+    // beside it. The half is orthogonal to the kind, so it carries its own payload and its
+    // own lifetime — see Dispatch(SetClipboardSplit) and Tick.
+    private readonly OverlayPayload _splitClipboard = new();
+    private bool _isSplitClipboard;
+    private int _splitMs;
 
     public int NotifyDurationMs
     {
@@ -147,16 +161,23 @@ public sealed class OverlayMachine
 
     public OverlayPayload LastWeather => Clone(_lastWeather);
 
+    /// <summary>True while a clipboard half is attached next to the normal island content (1.12.2).</summary>
+    public bool IsSplitClipboard => _isSplitClipboard;
+
     public OverlaySnapshot Snapshot() => new()
     {
         Kind = _kind,
         Payload = Clone(_payload),
-        Width = WidthFor(_kind, _weatherEnabled, statsMetricCount: StatsMetricCount),
+        Width = WidthFor(_kind, _weatherEnabled, statsMetricCount: StatsMetricCount,
+                         splitClipboard: _isSplitClipboard),
         Height = HeightFor(_kind, StatsRowCount),
         NotifyMsLeft = Math.Max(0, _notifyMs),
         UnreadCount = _unreadCount,
         WeatherEnabled = _weatherEnabled,
-        LastWeather = Clone(_lastWeather)
+        LastWeather = Clone(_lastWeather),
+        IsSplitClipboard = _isSplitClipboard,
+        SplitMsLeft = Math.Max(0, _splitMs),
+        SplitClipboard = _isSplitClipboard ? Clone(_splitClipboard) : new OverlayPayload()
     };
 
     public OverlaySnapshot Dispatch(OverlayCommand command, OverlayPayload? incoming = null)
@@ -167,6 +188,7 @@ public sealed class OverlayMachine
             case OverlayCommand.Collapse:
                 _kind = OverlayKind.Collapsed;
                 _notifyMs = 0;
+                ClearSplit();
                 break;
             case OverlayCommand.Expand:
                 _kind = OverlayKind.Expanded;
@@ -231,6 +253,7 @@ public sealed class OverlayMachine
                 _notifyMs = 0;
                 _unreadCount = 0;
                 Apply(new OverlayPayload());
+                ClearSplit();
                 break;
             case OverlayCommand.SetBattery:
                 if (_kind != OverlayKind.Battery)
@@ -264,6 +287,18 @@ public sealed class OverlayMachine
                 // Longer-lived than notification — copyable payload stays around.
                 _notifyMs = NotifyDurationMs > 0 ? Math.Min(NotifyDurationMs, ClipboardHistory.MaxPillMs) : ClipboardHistory.MaxPillMs;
                 // No unread bump — clipboard events are not system notifications.
+                break;
+            case OverlayCommand.SetClipboardSplit:
+                // 1.12.2: the island keeps its own kind; the clipboard rides along in a
+                // half attached to the long axis. No unread bump — copying is not a
+                // system notification (GUIDELINES).
+                if (data.ClipboardItemKind == ClipboardItemKind.None)
+                    break;
+                ApplySplit(data);
+                _isSplitClipboard = true;
+                _splitMs = NotifyDurationMs > 0
+                    ? Math.Min(NotifyDurationMs, ClipboardHistory.MaxPillMs)
+                    : ClipboardHistory.MaxPillMs;
                 break;
             case OverlayCommand.SetClipboardCycle:
                 // Install cycle previews + index. Used by the Idle/Collapsed pill to browse
@@ -326,6 +361,19 @@ public sealed class OverlayMachine
                 _kind = collapseTarget;
                 if (_kind == OverlayKind.Idle)
                     _returnTo = OverlayKind.Idle;
+            }
+        }
+        // 1.12.2: the split clipboard half has its own lifetime. It cannot ride on _notifyMs —
+        // that counter is owned by the Notification/Battery/Clipboard kinds and is reset by
+        // every Notify, so a notification arriving mid-split would either kill the half early
+        // or be killed by it. Same 6000 ms budget (ClipboardHistory.MaxPillMs), separate counter.
+        if (_isSplitClipboard)
+        {
+            _splitMs -= dt;
+            if (_splitMs <= 0)
+            {
+                _splitMs = 0;
+                ClearSplit();
             }
         }
         if (_kind == OverlayKind.Timer && _payload.Playing)
@@ -434,6 +482,40 @@ public sealed class OverlayMachine
         _payload.ClipboardCyclePreview = _cyclePreviews[_cycleIndex];
         _payload.Title = _cyclePreviews[_cycleIndex];
         _payload.Subtitle = $"{_cycleIndex + 1}/{n}";
+    }
+
+    /// <summary>Dismiss the attached clipboard half without touching the island kind.</summary>
+    public OverlaySnapshot DismissSplitClipboard()
+    {
+        ClearSplit();
+        return Snapshot();
+    }
+
+    /// <summary>
+    /// Copy only the clipboard fields onto the half's own payload. The island's own payload
+    /// (title/weather/notification text) is deliberately left untouched — that is the whole
+    /// point of the split.
+    /// </summary>
+    private void ApplySplit(OverlayPayload data)
+    {
+        _splitClipboard.Title = string.IsNullOrWhiteSpace(data.Title) ? "Буфер обмена" : data.Title;
+        _splitClipboard.Subtitle = data.Subtitle;
+        _splitClipboard.Body = data.Body;
+        _splitClipboard.ClipboardItemKind = data.ClipboardItemKind;
+        _splitClipboard.ClipboardPaths = data.ClipboardPaths;
+        _splitClipboard.ClipboardCapturedAt = data.ClipboardCapturedAt;
+    }
+
+    private void ClearSplit()
+    {
+        _isSplitClipboard = false;
+        _splitMs = 0;
+        _splitClipboard.ClipboardItemKind = ClipboardItemKind.None;
+        _splitClipboard.ClipboardPaths = null;
+        _splitClipboard.ClipboardCapturedAt = DateTimeOffset.MinValue;
+        _splitClipboard.Title = "";
+        _splitClipboard.Subtitle = "";
+        _splitClipboard.Body = "";
     }
 
     private void ApplyWeather(OverlayPayload data)
@@ -611,8 +693,14 @@ public sealed class OverlayMachine
         SystemStats = p.SystemStats
     };
 
+    /// <summary>
+    /// Long-axis (morph) width for a kind. <paramref name="splitClipboard"/> adds the 1.12.2
+    /// clipboard half to the long axis; SystemStats keeps its fixed block width and is exempt,
+    /// exactly as it is exempt from the CollapsedH height rule.
+    /// </summary>
     public static double WidthFor(OverlayKind kind, bool weatherEnabled = false,
-                                  bool batteryChip = false, int statsMetricCount = 0)
+                                  bool batteryChip = false, int statsMetricCount = 0,
+                                  bool splitClipboard = false)
     {
         if (kind == OverlayKind.SystemStats)
             return OverlayTokens.StatsExpandedW;
@@ -635,9 +723,13 @@ public sealed class OverlayMachine
         {
             if (batteryChip)
                 w += OverlayTokens.CollapsedBatteryExtraW;
-            return w;
+            // The split half is orthogonal to the kind: it rides on the long axis of whatever
+            // is currently shown, and is not clamped into the ExpandedMinW/MaxW range — a
+            // split Notification is 380 + ClipboardHalfW, not squeezed back to 460.
+            return splitClipboard ? ClipboardSplit.SplitLongAxisFor(w) : w;
         }
-        return Math.Clamp(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
+        w = Math.Clamp(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
+        return splitClipboard ? ClipboardSplit.SplitLongAxisFor(w) : w;
     }
 
     /// <summary>

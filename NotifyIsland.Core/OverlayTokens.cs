@@ -144,6 +144,33 @@ public static class OverlayTokens
     // were removed in 1.12.1 — the hover auto-hide timer and the date peek are gone; peek
     // expansion now reuses HoverExpandDelayMs / MorphMs.
 
+    // -- Split clipboard pill (1.12.2) -------------------------------------
+    /// <summary>Width of the clipboard half when the island is split (DIP).</summary>
+    public const double ClipboardHalfW = 200.0;
+    /// <summary>Divider thickness between the two halves (DIP).</summary>
+    public const double ClipboardDividerW = 1.0;
+    /// <summary>Gap between each half and the divider (DIP).</summary>
+    public const double ClipboardHalfGap = 8.0;
+    /// <summary>
+    /// Length of the divider line *across* the long axis (DIP). On a horizontal pill this is
+    /// the divider's height, on a vertical one its width — the same number either way, so the
+    /// line reads identically in both orientations.
+    /// </summary>
+    public const double ClipboardDividerCross = 16.0;
+    /// <summary>Breathe period of the waiting clipboard half (ms).</summary>
+    public const int ClipboardHalfBreatheMs = 2400;
+    /// <summary>Vertical amplitude of the waiting-half breathe (DIP).</summary>
+    public const double ClipboardHalfBreathePx = 0.5;
+    /// <summary>
+    /// Fraction of the split morph spent holding the half invisible before its fade
+    /// starts, as a fraction of the morph (0.25 = a quarter of MorphMs). The width is
+    /// already moving here, so the half reads as catching up rather than appearing in
+    /// lockstep with the capsule.
+    /// </summary>
+    public const double ClipboardHalfFadeDelay = 0.25;
+    /// <summary>Peak scale of the split half: 1.0 → 1.06 → 1.0. Same shape as ClickPop.</summary>
+    public const double ClipboardHalfPopPeak = 1.06;
+
     // -- Tray menu (1.12.0) -------------------------------------------------
     /// <summary>Maximum entries surfaced in the tray clipboard submenu.</summary>
     public const int    TrayClipboardSubmenuItems = 5;

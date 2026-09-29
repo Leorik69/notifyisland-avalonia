@@ -151,6 +151,69 @@
         </Border>
       </StackPanel>
 
+      <!-- 1.12.2 split clipboard half. Sibling of CollapsedRow inside the same Pill Border,
+           so the capsule keeps one shared corner radius and one hit region. Hidden until
+           Paint() sees OverlaySnapshot.IsSplitClipboard. The half is anchored at the far end
+           of the pill's LONG axis — right on Top/Bottom, bottom on Left/Right — and adds no
+           length of its own: the pill already grew in ApplySize, and the divider is a 1 px
+           line centred on the existing boundary (negative half-line margin), never a spacer.
+           The numbers below are the horizontal defaults only; ApplyClipboardHalfLayout()
+           drives the whole block from IslandLayout.IsVertical and ClipboardSplit, so a
+           vertical edge gets a 30×200 half on the long axis instead of a 200×30 one. -->
+      <Grid x:Name="ClipboardHalf"
+            IsVisible="False"
+            IsHitTestVisible="False"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Center"
+            Width="200"
+            Height="30">
+       <!-- 1.12.2 transform ownership. Three writers need a transform at once and must not
+            clobber each other, so they live on three different elements:
+              · ClipboardHalfContent → the orientation (RotateTransform on a vertical edge,
+                                      so a 200-DIP run of text fits the 30-DIP cross axis)
+              · ClipboardHalf        → the 200 ms breathe, on the CROSS axis
+                                      (TranslateTransform.Y horizontal / .X vertical)
+              · ClipboardHalfMotion  → the 16 ms morph, TranslateTransform along the LONG
+                                      axis (X horizontal / Y vertical) + ScaleTransform
+            The morph is the only element it touches, and the axis it writes is the one the
+            breathe never writes, so the two can never collide on either orientation. -->
+       <Grid x:Name="ClipboardHalfMotion"
+             RenderTransformOrigin="50%,50%">
+        <!-- Boundary line. Thickness 1 centred on the half start, with a negative half-thickness
+             margin taken from ClipboardSplit.DividerFor so the two halves read as one capsule.
+             The 8 DIP ClipboardHalfGap stays inner padding (4 DIP per half) instead of extra
+             length. Horizontal here; ApplyClipboardHalfLayout() makes it a horizontal line
+             spanning 16 DIP of the cross axis on Left/Right. -->
+        <Border x:Name="ClipboardHalfDivider"
+                Width="1" Height="16"
+                Background="#1AFFFFFF"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                IsHitTestVisible="False" />
+        <!-- 4 DIP clearance from the divider, then icon + trimmed preview. MaxWidth keeps
+             the TextBlock inside the half so CharacterEllipsis does the trimming. On a vertical
+             edge this stays a 200×30 row and is rotated as a whole, so the trimming budget
+             (ClipboardHalfPreview.TextMaxChars, MaxWidth 166) is unchanged. -->
+        <StackPanel x:Name="ClipboardHalfContent"
+                    Orientation="Horizontal"
+                    Spacing="4"
+                    VerticalAlignment="Center"
+                    RenderTransformOrigin="50%,50%"
+                    Margin="4,0,10,0">
+          <Viewbox x:Name="ClipboardHalfIcon" Width="12" Height="12" VerticalAlignment="Center" />
+          <TextBlock x:Name="ClipboardHalfText"
+                     VerticalAlignment="Center"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="11"
+                     FontWeight="Medium"
+                     Foreground="#C8C8CC"
+                     MaxWidth="166"
+                     TextTrimming="CharacterEllipsis"
+                     Text="буфер" />
+        </StackPanel>
+       </Grid>
+      </Grid>
+
       <!-- Expanded single-row: icon | title/subtitle | badge | (system-stats expanded when SystemStats kind) -->
       <DockPanel x:Name="OverlayPanel"
                  Margin="10,0,10,0"

@@ -2,6 +2,27 @@
 
 ## Unreleased — Idle breath removed + Clipboard history (1.12.0-preview)
 
+### Changed — Split clipboard pill (1.12.2)
+Supersedes the «Added — Clipboard history (1.12.0-preview)» pill behaviour below: the clipboard no longer takes the whole capsule over, it attaches as a second half while the island keeps whatever it was showing.
+- Копирование больше **не занимает всю пилюлю**. Островок остаётся на одной стороне (часы, дата, погода, батарея, точка unread), а на другой появляется половина с буфером: иконка формата (`clipboard` / `file` / `files`) + превью. Обе половины — один Border, одна капсула, общий угол скругления.
+- Геометрия: островная половина `CollapsedW` = 170 DIP + буферная `ClipboardHalfW` = 200 DIP = **370 × 30 DIP** горизонтально. Высота не меняется никогда. На Left/Right длинная ось вертикальна — та же геометрия становится **30 × 370**, буферная половина встаёт вниз, а её строка поворачивается на −90°.
+- Разделитель — линия 1 px `#FFFFFF` @ 10 %, длиной 16 DIP поперёк длинной оси, по центру границы половин; `ClipboardHalfGap` = 8 DIP (по 4 DIP с каждой стороны) остаётся внутренним отступом, а не дополнительной длиной.
+- Анимация: половина выезжает с дальнего конца длинной оси на существующем width-morph (420 мс, без нового таймера), её opacity **задержана на четверть морфа** (`ClipboardHalfFadeDelay` = 0.25), пере-увеличение `1.0 → 1.06 → 1.0` существующей кривой `ClickPop`. В покое — синус ±0.5 DIP по поперечной оси с периодом 2.4 с, на существующем тике 200 мс.
+- Живёт `min(NotifyDurationMs, ClipboardHistory.MaxPillMs)` = **4 с** при дефолтах. Счётчик у половины свой (`SplitMsLeft`), потому что общий `_notifyMs` принадлежит kind'у Notification/Battery/Clipboard и обнуляется каждым Notify.
+- **Клик по буферной половине теперь исполняет `ClipboardClickAction`** (`Dismiss` / `DismissAndClear`; `DismissAndClear` чистит системный буфер через `WriteText("")`, не вставляя ничего). До 1.12.2 настройка читалась только окном настроек и в островке была мёртвой.
+- Превью текста: все пробельные прогоны схлопываются в один пробел, обрезка по символам до `ClipboardHalfPreview.TextMaxChars` = 22 с многоточием (висячий пробел перед многоточием отбрасывается). Имя файла и «5 файлов» — из `ClipboardHistory.BuildPayload`, склонение не дублируется.
+- Unread по-прежнему **не** растёт: копирование не системное уведомление.
+- Новое: `NotifyIsland.Core/ClipboardSplit.cs` (чистая геометрия — граница половины, зоны клика, кадр анимации) и `NotifyIsland.Core/ClipboardHalfPreview.cs` (иконка формата + правила превью). Токены: `ClipboardHalfW`, `ClipboardDividerW`, `ClipboardHalfGap`, `ClipboardDividerCross`, `ClipboardHalfBreatheMs`, `ClipboardHalfBreathePx`, `ClipboardHalfFadeDelay`, `ClipboardHalfPopPeak`.
+- FSM: `OverlayCommand.SetClipboardSplit` + `OverlaySnapshot.IsSplitClipboard` / `SplitMsLeft` / `SplitClipboard`. Это **флаг на машине, а не новый `OverlayKind`**: половина ортогональна kind'у, у неё свой payload и своё время жизни. `OverlayKind.Clipboard` и `SetClipboard` в Core остались, но приложение их больше не диспатчит.
+- Иконки форматов `file` / `files` добавлены в `IslandIcons` в том же 24×24 outline-конструировании; ничего не вендорилось, `Assets/Icons/NOTICE` не менялся.
+- Тесты: новый `NotifyIsland.Tests/ClipboardSplitTests.cs` (граница половин, зоны ⅓/⅓/⅓, кадры translate/opacity/scale, breathe, геометрия разделителя, правила превью, split-морф и split-тик FSM). Всего: 316/316 pass.
+
+Три бага, найденных на ревью и исправленных в этой же правке (все были молчаливыми):
+- Зоны ⅓/⅓/⅓ цикла буфера мерялись по **всей** ширине пилюли: при делении обе границы зон уехали бы вправо примерно на 57 DIP. Теперь `ClipboardSplit.IslandHalfExtent` отдаёт длину островной половины (170 DIP), и зоны встают в те же пиксели независимо от деления — на всех четырёх краях.
+- Половина скрывалась на **тик раньше** старта collapse-морфа, из-за чего сворачивание щёлкало вместо анимации. Видимость теперь отложена на длительность перехода и сбрасывается в `SettleSplitHalf`.
+- На Left/Right половина была 200-DIP-ребёнком, прижатым вправо внутри 30-DIP-пилюли: рисовалась за капсулой и не кликалась. Теперь она привязана вдоль длинной оси, а hit-test и отрисовка считаются из одной и той же функции Core (`ClipboardSplit.ClipboardHalfStart` / `IsInHalf`), поэтому разойтись они структурно не могут.
+- GUIDELINES §2 / §3 / §3b / §4b / §5 / §9, ISLAND_PREVIEW и CONTEXT обновлены под новое поведение.
+
 ### Added — System monitor customisation (1.12.1)
 Builds on the «System monitor rework (1.12.1)» block below: the panel is no longer a fixed four-row readout, the user picks what it shows and in which order.
 - `NotifyIsland.Core/StatsLayout.cs` — new `StatsRow` (`Cpu`, `Memory`, `Battery`, `Network`, `Date`) and `StatsPreset` (`Brief`, `Full`, `Off`, `Custom`), plus `ResolveRows(preset, custom)`, `StatsHeightFor(rowCount)`, `StatsLayout.ShouldCollapseStatsSurface(...)`, `LabelFor` / `NameFor` / `IsCaptionRow`.

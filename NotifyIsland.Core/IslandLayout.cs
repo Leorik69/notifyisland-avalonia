@@ -27,6 +27,8 @@ public static class IslandLayout
     /// Vertical capsule: width = CollapsedH (thin), height = long axis.
     /// Horizontal: width = long axis, height = CollapsedH.
     /// SystemStats: fixed StatsExpandedW × StatsHeightFor(statsRowCount), orientation-independent.
+    /// splitClipboard (1.12.2): adds ClipboardHalfW to the long axis, so on Left/Right the
+    /// clipboard half grows the height and the width stays the thin CollapsedH capsule.
     /// </summary>
     public static (double Width, double Height) SizeFor(
         OverlayKind kind,
@@ -35,15 +37,18 @@ public static class IslandLayout
         IslandEdge edge,
         bool batteryChip = false,
         int statsMetricCount = 0,
-        int statsRowCount = 0)
+        int statsRowCount = 0,
+        bool splitClipboard = false)
     {
         // SystemStats is a fixed-width block (1.12.1) whose height follows the resolved row
         // count; no metric-count width inflation, and the only kind exempt from the CollapsedH
-        // height rule. statsRowCount 0/less = the default 5-row Full panel.
+        // height rule. statsRowCount 0/less = the default 5-row Full panel. It stays exempt
+        // from the split half too — a fixed block does not split.
         if (kind == OverlayKind.SystemStats)
             return (OverlayTokens.StatsExpandedW, StatsLayout.StatsHeightFor(statsRowCount));
 
-        var longAxis = OverlayMachine.WidthFor(kind, weatherEnabled, batteryChip, statsMetricCount);
+        var longAxis = OverlayMachine.WidthFor(kind, weatherEnabled, batteryChip, statsMetricCount,
+                                               splitClipboard);
         var shortAxis = OverlayTokens.CollapsedH;
         if (IsVertical(orientation, edge))
             return (shortAxis, longAxis);
