@@ -95,6 +95,15 @@ public partial class OverlayWindow : Window
     private double _blobOpacity;
     /// <summary>Cross-axis breathe offset in DIP, written by the 200 ms tick.</summary>
     private double _blobBreathe;
+    /// <summary>Extra long-axis length the capsule currently shows for phase A (DIP). Kept as
+    /// a field because the window must be measured WITHOUT it: the island's screen position is
+    /// computed from the capsule's own 170 DIP, so a temporarily wider capsule must not push the
+    /// window around (see PlaceIsland and ApplyBlobPeek).</summary>
+    private double _blobPeek;
+    /// <summary>The capsule's own long-axis length, captured when a blob transition starts —
+    /// the base phase A grows from. It is read, never written by the morph, so the peek cannot
+    /// feed back into the length the island and the window are sized from.</summary>
+    private double _blobPeekBase;
 
     // Explicit width/height morph (Avalonia Window Width Transitions are unreliable).
     // _morphFrom/To are the CAPSULE sizes; _winFrom/To are the WINDOW sizes. They are two
@@ -647,7 +656,10 @@ public partial class OverlayWindow : Window
     /// </summary>
     private double IslandHalfExtent()
     {
-        var longAxis = PillLongAxis();
+        // IslandLongAxis, not PillLongAxis: during phase A the capsule is temporarily longer,
+        // but the ⅓/⅓/⅓ cycle zones belong to the island's OWN 170 DIP and must not slide
+        // outboard just because the preview is on screen.
+        var longAxis = IslandLongAxis();
         return longAxis > 0 ? longAxis : OverlayTokens.CollapsedW;
     }
 
@@ -773,19 +785,22 @@ public partial class OverlayWindow : Window
             var zonePos = SplitIsVertical ? pos.Y : pos.X;
 
             var kind = _machine.Snapshot().Kind;
-            if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
+            try
             {
-                // 1.12.1: a single click in Idle is pin/unpin only. Metrics do not intercept
-                // clicks — SystemStats is entered by hover, never by a long-axis hit-test.
-                HandleIdlePillClick(zonePos, zoneExtent);
-            }
-            else if (kind == OverlayKind.SystemStats)
-            {
-                // 1.12.1: the click no longer collapses the stats surface — exit is pointer-leave
-                // driven. The click still reaches the pin path so "hover, then click" pins
-                // instead of being swallowed by the metrics surface. Right click → context menu.
-                HandleIdlePillClick(zonePos, zoneExtent);
-            }
+                AppLog.Info($"DBG pill click kind={kind} zonePos={zonePos:0.0} zoneExtent={zoneExtent:0.0}");
+                if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
+                {
+                    // 1.12.1: a single click in Idle is pin/unpin only. Metrics do not intercept
+                    // clicks — SystemStats is entered by hover, never by a long-axis hit-test.
+                    HandleIdlePillClick(zonePos, zoneExtent);
+                }
+                else if (kind == OverlayKind.SystemStats)
+                {
+                    // 1.12.1: the click no longer collapses the stats surface — exit is pointer-leave
+                    // driven. The click still reaches the pin path so "hover, then click" pins
+                    // instead of being swallowed by the metrics surface. Right click → context menu.
+                    HandleIdlePillClick(zonePos, zoneExtent);
+                }
             else if (kind == OverlayKind.Timer)
             {
                 // Click keeps timer visible with controls (already expanded overlay).
@@ -795,6 +810,11 @@ public partial class OverlayWindow : Window
             {
                 // Explicit media focus — allow SMTC to keep ownership vs timer reclaim.
                 _userOpenedMedia = true;
+            }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("pill click handler threw", ex);
             }
             e.Handled = true;
             return;
@@ -1209,6 +1229,8 @@ public partial class OverlayWindow : Window
             _blobDir = snap.IsSplitClipboard ? 1 : -1;
             _splitApplied = snap.IsSplitClipboard;
             _blobClock.Restart();
+            // The capsule's own length is captured further down, once (w, h) are known —
+            // see _blobPeekBase.
         }
         var batteryChip = _settings.ShowBatteryInCollapsed
             && _lastPower is { HasBattery: true }
@@ -1228,6 +1250,12 @@ public partial class OverlayWindow : Window
             if (peek)
                 w += OverlayTokens.IdlePeekExtraW;
         }
+
+        // 1.12.4: phase A grows the capsule from the island's OWN length, so the base is
+        // captured on every ApplySize while a blob transition is in flight, not only on the
+        // frame it starts. Without this a re-ApplySize mid-morph (the 200 ms tick does it
+        // whenever the kind changes) would leave the peek growing off a stale base.
+        if (_blobDir != 0) _blobPeekBase = SplitIsVertical ? h : w;
 
         // The window is a separate target: with a blob it must be big enough for the ball and
         // its whole drag disc, and it follows the NEW split state while the capsule target
@@ -1479,13 +1507,22 @@ public partial class OverlayWindow : Window
     {
         if (_blobDir == 0) return;
         var entering = _blobDir > 0;
-        // The ball is invisible for the first ClipboardHalfFadeDelay of the morph: the window
-        // is already growing there, so holding the ball back makes it read as catching up with
-        // the island rather than appearing in lockstep with it.
-        var p = entering
-            ? Math.Clamp((t - OverlayTokens.ClipboardHalfFadeDelay) /
-                         (1.0 - OverlayTokens.ClipboardHalfFadeDelay), 0.0, 1.0)
-            : Math.Clamp(t / (1.0 - OverlayTokens.ClipboardHalfFadeDelay), 0.0, 1.0);
+        // 1.12.4, two phases off ONE token (spec §Анимация). Phase A is the island running out
+        // and showing the clipboard again — the 1.12.2 behaviour the user asked to get back.
+        // Phase B is the capsule returning to 170 while the ball peels out of it. The user's
+        // complaint was that there was "no animation at all": a ball sliding out of a capsule
+        // that never changed reads as a repaint, not a detach, because nothing sets up the
+        // second shape to leave from.
+        var a = ClipboardBlob.PeekPhaseAt(t);
+        var b = ClipboardBlob.DetachPhaseAt(t);
+        ApplyBlobPeek(t);
+
+        // The ball only exists in phase B. During phase A it sits at travel 0, which is INSIDE
+        // the capsule, and the rope has no length — so it is hidden rather than drawn as a dot
+        // under the island. It fades in over the first fifth of phase B, by which point the
+        // capsule has already started pulling back and the ball is visibly emerging from under
+        // it rather than appearing out of nothing.
+        var p = b;
         // ClickPop peaks above 1; remap its 1..peak range onto 0..1 so the overshoot becomes a
         // nudge past the home spot on the travel axis instead of a change of size.
         var pop = AnimationEasing.ClickPop(p);
@@ -1497,9 +1534,92 @@ public partial class OverlayWindow : Window
         UpdateBlobVisual(travel, opacity);
         // A retracting ball must stay visible for the whole morph or the collapse reads as a
         // snap; SettleBlob hides it once the direction clears.
-        Blob.IsVisible = true;
+        Blob.IsVisible = b > 0;
         BlobBridge.IsVisible = opacity > 0.01;
         _blobScale.ScaleX = _blobScale.ScaleY = entering ? pop : 2.0 - pop;
+    }
+
+    /// <summary>
+    /// Phase A: run the capsule out by <see cref="OverlayTokens.BlobPeekW"/> and fade the
+    /// clipboard preview in, then bring both back over phase B.
+    ///
+    /// The growth goes on the capsule's LEADING end only and the preview is anchored to that
+    /// same end, so the capsule's near edge — the one the eye uses to locate the island — never
+    /// moves. That is what keeps "the island is static" (spec §Окно) true while it is briefly
+    /// longer. The extra length is subtracted back off everywhere the island is MEASURED:
+    /// <see cref="PlaceIsland"/> (else the window would creep sideways) and the click zones
+    /// (else the ⅓/⅓/⅓ split would slide while the preview is up).
+    /// </summary>
+    private void ApplyBlobPeek(double t)
+    {
+        var peek = ClipboardBlob.PeekWidthAt(t);
+        var vertical = SplitIsVertical;
+        // The preview is opaque only while there is capsule to show it in; it fades in over
+        // phase A and out over phase B so the text never sits half-outside the rounded cap.
+        var a = AnimationEasing.CubicOut(ClipboardBlob.PeekPhaseAt(t));
+        var b = AnimationEasing.CubicOut(ClipboardBlob.DetachPhaseAt(t));
+        BlobPeek.IsVisible = peek > 0.5;
+        BlobPeek.Opacity = a * (1.0 - b);
+        // Clip the preview by the capsule's current length, on whichever axis is the long one.
+        // The 15 DIP trailing inset is the corner radius, so the text stops before the curve
+        // instead of running over it.
+        if (vertical)
+        {
+            BlobPeek.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
+            BlobPeek.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom;
+            BlobPeek.Margin = new Thickness(0);
+            BlobPeek.Width = double.NaN;
+            BlobPeek.Height = Math.Max(0, peek - 15);
+        }
+        else
+        {
+            BlobPeek.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
+            BlobPeek.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
+            BlobPeek.Margin = new Thickness(0, 0, 15, 0);
+            BlobPeek.Width = Math.Max(0, peek - 15);
+            BlobPeek.Height = double.NaN;
+        }
+
+        if (Math.Abs(peek - _blobPeek) < 0.01) return;
+        _blobPeek = peek;
+
+        // Keep the island's OWN content where it is. CollapsedRow and SecondsStrip are
+        // centre-aligned in the capsule, so a capsule 110 DIP longer would slide both 55 DIP
+        // along the long axis — the capsule's edge would hold still while its contents crawled
+        // out from under it, which is exactly the "the island moves" the spec rules out. A
+        // trailing margin of the peek length takes that room back on the growing side, so the
+        // content keeps centring in the ORIGINAL 170 DIP box for the whole phase.
+        var hold = new Thickness(vertical ? 0 : 0, 0, vertical ? 0 : peek, vertical ? peek : 0);
+        CollapsedRow.Margin = hold;
+        SecondsStrip.Margin = vertical
+            ? new Thickness(10, 0, 10, peek + 2)
+            : new Thickness(10, 0, 10 + peek, 2);
+        // Grow the capsule on its long axis FROM the morph's own base, not from the previous
+        // frame: OnMorphTick has already written this frame's interpolated capsule length, and
+        // for a blob attach that base is the settled 170. Accumulating onto the live value would
+        // let any unrelated interpolation leak into the peek.
+        // The pill is Left/Top anchored in the window, so the extra length appears on the
+        // trailing side without moving the near edge.
+        if (vertical) Pill.Height = _blobPeekBase + peek;
+        else Pill.Width = _blobPeekBase + peek;
+    }
+
+    /// <summary>Capsule length WITHOUT the phase-A peek — what the island and its hit zones
+    /// are measured against.</summary>
+    private double IslandLongAxis() => PillLongAxis() - _blobPeek;
+
+    /// <summary>
+    /// The capsule's size as the island knows it: its live size minus the phase-A peek, with
+    /// the window as the fallback when the pill has no size yet. One place, so the placement
+    /// and the click zones cannot disagree about how long the island is.
+    /// </summary>
+    private (double Width, double Height) IslandCapsuleSize()
+    {
+        var w = (SplitIsVertical ? Pill.Width : Pill.Width - _blobPeek);
+        var h = (SplitIsVertical ? Pill.Height - _blobPeek : Pill.Height);
+        if (w <= 0) w = Width;
+        if (h <= 0) h = Height;
+        return (w, h);
     }
 
     /// <summary>
@@ -1521,6 +1641,14 @@ public partial class OverlayWindow : Window
     {
         _blobScale.ScaleX = 1;
         _blobScale.ScaleY = 1;
+        // Phase A is over at rest, by definition: the capsule is exactly its own length and the
+        // preview is gone. Left set, a later ApplySize would find a capsule 110 DIP too long.
+        _blobPeek = 0;
+        BlobPeek.IsVisible = false;
+        BlobPeek.Opacity = 0;
+        // Release the hold the phase-A margin put on the island's own rows — see ApplyBlobPeek.
+        CollapsedRow.Margin = new Thickness(0);
+        SecondsStrip.Margin = new Thickness(10, 0, 10, 2);
         // The home spot is the resting definition, so a drag offset never outlives the blob —
         // a re-attach always brings the ball back to exactly where the geometry says it goes.
         _blobDragAlong = 0;
@@ -1559,7 +1687,11 @@ public partial class OverlayWindow : Window
     private void UpdateBlobVisual(double travel, double opacity)
     {
         var vertical = SplitIsVertical;
-        var capsuleLong = vertical ? Pill.Height : Pill.Width;
+        // The PEEK-FREE capsule length: the ball's home spot and the rope's start are defined
+        // against the island's own 170 DIP. Measuring them against the temporarily grown
+        // capsule would drag the ball outwards during phase A and leave the rope a frame behind
+        // when the capsule snapped back.
+        var capsuleLong = IslandLongAxis();
         var capsuleCross = vertical ? Pill.Width : Pill.Height;
         if (capsuleLong <= 0 || capsuleCross <= 0) return;
 
@@ -1586,14 +1718,14 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// Rebuild the bridge outline between the capsule's leading edge and the ball's centre.
+    /// Rebuild the rope outline between the capsule's leading edge and the ball's centre.
     ///
     /// Continuity is structural, not animated: one end sits 2 DIP INSIDE the capsule and the
     /// other end is the ball's centre, and both are drawn under the capsule and the ball, so
     /// there is no frame on which either end can be seen. The half-widths come from
-    /// <see cref="ClipboardBlob.BridgeHalfAt"/> (wide at the capsule, narrow at the ball) and
-    /// stay positive at both ends, which is what makes the two read as one goo structure
-    /// rather than a bar floating between two circles. Rebuilt from code, not declared in
+    /// <see cref="ClipboardBlob.BridgeHalfAt"/> (3→2.5 DIP: thin at both ends, since the user
+    /// asked for a rope) and stay positive at both ends, which is what makes the two read as
+    /// one structure rather than a gap with a bar in it. Rebuilt from code, not declared in
     /// XAML, because the endpoints are the same numbers the ball is placed from.
     /// </summary>
     private void UpdateBlobBridge(
@@ -1618,23 +1750,49 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        // Unit perpendicular to the bridge, used to give each end its own half-width.
-        var px = -dy / len;
-        var py = dx / len;
-        var h0 = ClipboardBlob.BridgeHalfAt(0);
-        var h1 = ClipboardBlob.BridgeHalfAt(1);
-        var a = ToWindow(vertical, sx + px * h0, sy + py * h0);
-        var b = ToWindow(vertical, sx - px * h0, sy - py * h0);
-        var c = ToWindow(vertical, along - px * h1, cross - py * h1);
-        var d = ToWindow(vertical, along + px * h1, cross + py * h1);
+        // 1.12.4: a ROPE, not a bar. The centreline sags by BridgeSagAt(t) along the CROSS
+        // axis — downwards on a horizontal island, outwards on a vertical one — and the sag
+        // itself comes from SagPxFor(len), so it is 0 while the ball is still inside the
+        // capsule and maximal by the time the ball reaches home. A rope that snapped from
+        // straight to drooping at the moment of arrival would be the "jerk" the spec forbids.
+        var sagPx = ClipboardBlob.SagPxFor(len);
+        // Cross axis points the same way as the window's cross axis, so adding to it is
+        // "down" on a Top/Bottom island; the geometry is identical on Left/Right.
+        var dySag = sagPx;
+
+        // Sample the sagging centreline and build a strip around it: two rails, each point
+        // offset by its own half-width along the normal of the LOCAL tangent. Using the local
+        // tangent rather than one global perpendicular is what keeps the rope a constant
+        // thickness where it curves — a global perpendicular would visibly thin it at the
+        // bottom of the droop.
+        const int segments = 12;
+
+        // One sample of the rope: the sagging centreline point at t, plus the unit normal of
+        // the local tangent there, offset by the rope's half-width at that t.
+        Point Rail(double tt, double side)
+        {
+            var cx = sx + dx * tt;
+            var cy = sy + dy * tt + dySag * ClipboardBlob.BridgeSagAt(tt, sagPx);
+            // Local tangent by a forward difference, normalised. Using the local tangent rather
+            // than one global perpendicular is what keeps the rope a constant thickness where
+            // it curves; a global perpendicular visibly thins it at the bottom of the droop.
+            var ahead = Math.Min(1.0, tt + 1.0 / segments);
+            var ax = sx + dx * ahead;
+            var ay = sy + dy * ahead + dySag * ClipboardBlob.BridgeSagAt(ahead, sagPx);
+            var tx = ax - cx;
+            var ty = ay - cy;
+            var tl = Math.Sqrt(tx * tx + ty * ty);
+            var hw = ClipboardBlob.BridgeHalfAt(tt);
+            if (tl <= 0) return ToWindow(vertical, cx, cy);
+            return ToWindow(vertical, cx - (ty / tl) * hw * side, cy + (tx / tl) * hw * side);
+        }
 
         var geo = new StreamGeometry();
         using (var ctx = geo.Open())
         {
-            ctx.BeginFigure(a, isFilled: true);
-            ctx.LineTo(b);
-            ctx.LineTo(c);
-            ctx.LineTo(d);
+            ctx.BeginFigure(Rail(0, 1), isFilled: true);
+            for (var i = 1; i <= segments; i++) ctx.LineTo(Rail((double)i / segments, 1));
+            for (var i = segments; i >= 0; i--) ctx.LineTo(Rail((double)i / segments, -1));
             ctx.EndFigure(isClosed: true);
         }
         BlobBridge.Data = geo;
@@ -1761,8 +1919,13 @@ public partial class OverlayWindow : Window
         // the island jump sideways every time the ball attached. This runs on every morph
         // frame, so the capsule holds its screen position during the morph too, not just at
         // rest.
-        var homePw = (int)Math.Round((Pill.Width > 0 ? Pill.Width : Width) * scale);
-        var homePh = (int)Math.Round((Pill.Height > 0 ? Pill.Height : Height) * scale);
+        // The PEEK-FREE capsule size, as a (w, h) pair: phase A makes the capsule longer, and
+        // feeding that longer length to IslandLayout.Place would move the window — and with it
+        // the island — 55 DIP for the duration of the preview. The spec's "the island does not
+        // move" has to be measured against the settled length, not the temporary one.
+        var (homeW, homeH) = IslandCapsuleSize();
+        var homePw = (int)Math.Round(homeW * scale);
+        var homePh = (int)Math.Round(homeH * scale);
         var (x, y) = IslandLayout.Place(
             wa.X, wa.Y, wa.Width, wa.Height, homePw, homePh,
             _settings.Edge, _settings.OffsetX, _settings.OffsetY);
@@ -1795,8 +1958,15 @@ public partial class OverlayWindow : Window
         // The island itself needs no compensation any more: the capsule never grew, so
         // CollapsedRow and SecondsStrip just centre themselves in it.
         if (snap.IsSplitClipboard) ApplyBlobContent(snap.SplitClipboard);
-        CollapsedRow.Margin = new Thickness(0);
-        SecondsStrip.Margin = new Thickness(10, 0, 10, 2);
+        // 1.12.4: only claim these margins at rest. During phase A the morph owns them — it
+        // holds the island's rows in the original 170 DIP box while the capsule is longer, and a
+        // Paint landing mid-morph (Paint runs on every kind change) would otherwise yank the
+        // rows 55 DIP outwards for a frame. At rest _blobPeek is 0, so this is the old margin.
+        if (_blobPeek <= 0)
+        {
+            CollapsedRow.Margin = new Thickness(0);
+            SecondsStrip.Margin = new Thickness(10, 0, 10, 2);
+        }
         CollapsedRow.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
         SecondsStrip.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
 
@@ -1945,6 +2115,15 @@ public partial class OverlayWindow : Window
             CurrentIconCollapsed(), brush);
 
         BlobText.Text = ClipboardHalfPreview.TextFor(cp);
+        // 1.12.4 phase A shows the SAME preview inside the capsule, so the text/icon rules stay
+        // in one tested place. Refilled here rather than per frame: the morph only changes how
+        // wide and how opaque the row is, never what it says. The icon is built TWICE on
+        // purpose — a Viewbox has a single Child and handing the ball's to the preview would
+        // reparent it, so the ball would lose its icon mid-peek.
+        BlobPeekIcon.Child = IconPackService.Create(
+            _settings.IconPack, ClipboardHalfPreview.IconKeyFor(cp.ClipboardItemKind),
+            CurrentIconCollapsed(), brush);
+        BlobPeekText.Text = ClipboardHalfPreview.TextFor(cp);
         ToolTip.SetTip(Blob, cp.ClipboardItemKind switch
         {
             ClipboardItemKind.Text => "Скопирован текст",

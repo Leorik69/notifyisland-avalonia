@@ -242,6 +242,14 @@ public sealed class AppSettings
     /// <summary>Enable unread-dot opacity pulse when unread &gt; 0.</summary>
     public bool AnimPulseEnabled { get; set; } = true;
 
+    /// <summary>
+    /// User's own "reduce motion" request (Settings → Анимации), combined with the OS toggle by
+    /// <see cref="AnimReduced.Resolve"/>. Default <c>false</c> = "no extra request": a settings.json
+    /// written by an older build simply has no such key and deserializes to the initialiser value, so
+    /// untouched installs keep animating exactly as before (1.12.4).
+    /// </summary>
+    public bool ReducedMotion { get; set; } = false;
+
     /// <summary>Notification appear style (Settings → Анимации).</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public NotifyAppearStyle AppearStyle { get; set; } = NotifyAppearStyle.Bounce;
@@ -411,6 +419,7 @@ public sealed class AppSettings
         target.AnimClickPop = AnimClickPop;
         target.AnimFirstAppearWobble = AnimFirstAppearWobble;
         target.AnimPulseEnabled = AnimPulseEnabled;
+        target.ReducedMotion = ReducedMotion;
         target.AppearStyle = AppearStyle;
         target.DismissStyle = DismissStyle;
         target.SystemStatsEnabled = SystemStatsEnabled;

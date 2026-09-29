@@ -339,6 +339,37 @@
                    VerticalAlignment="Bottom"
                    Margin="12,0,12,2"
                    IsVisible="False" />
+
+      <!-- 1.12.4 phase A: the clipboard preview inside the capsule, the one the split pill
+           showed in 1.12.2. It lives INSIDE the capsule and is anchored to its growing end, so
+           it is clipped by the capsule (ClipToBounds + the Width OverlayWindow sets from
+           ClipboardBlob.PeekWidthAt) instead of spilling over the rounded corner. Icon and text
+           are the same ClipboardHalfPreview output the ball uses — no second text rule.
+           IsHitTestVisible=False: the capsule is the hit region, the preview is only ink. -->
+      <Border x:Name="BlobPeek"
+              IsVisible="False"
+              IsHitTestVisible="False"
+              ClipToBounds="True"
+              CornerRadius="15"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Center"
+              Margin="0,0,15,0"
+              Opacity="0">
+        <StackPanel Orientation="Horizontal"
+                    Spacing="3"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center">
+          <Viewbox x:Name="BlobPeekIcon" Width="12" Height="12" VerticalAlignment="Center" />
+          <TextBlock x:Name="BlobPeekText"
+                     VerticalAlignment="Center"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="11"
+                     FontWeight="Medium"
+                     Foreground="#C8C8CC"
+                     TextTrimming="CharacterEllipsis"
+                     Text="буфер" />
+        </StackPanel>
+      </Border>
     </Grid>
   </Border>
 

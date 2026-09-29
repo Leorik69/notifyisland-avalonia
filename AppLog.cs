@@ -13,6 +13,9 @@ internal static class AppLog
 
     public static void Warn(string message, Exception? ex = null) => Write("WARN", message, ex);
 
+    /// <summary>Errors and the process-dying paths, so a crash always leaves a trace.</summary>
+    public static void Error(string message, Exception? ex = null) => Write("ERROR", message, ex);
+
     private static void Write(string level, string message, Exception? ex)
     {
         try

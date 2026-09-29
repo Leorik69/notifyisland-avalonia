@@ -140,6 +140,19 @@ public static class OverlayTokens
     /// <summary>Horizontal wobble amplitude (DIP) on first appear.</summary>
     public const double FirstAppearWobblePx  = 1.0;
 
+    // -- Animation layer (1.12.4) -------------------------------------------
+    /// <summary>
+    /// Curve <see cref="AnimEase"/> falls back to for an unknown name. power2.out is the same soft
+    /// settle the island morph uses today, so a typo degrades to "slightly different motion" instead
+    /// of killing the morph tick. See AnimEase.Ease for why this is not an exception.
+    /// </summary>
+    public const string EaseFallbackName    = "power2.out";
+    /// <summary>
+    /// Every animation duration under reduced motion. 0 ms, not "fast": reduced motion removes the
+    /// movement, it does not shorten it (spec invariant "сниженная анимация не «ускоряет»").
+    /// </summary>
+    public const int    ReducedMotionMs      = 0;
+
     // NOTE: the 1.12.0 hover-peek tokens (PeekAutoHideMs, PeekMorphMs, PeekExtraFullDateW)
     // were removed in 1.12.1 — the hover auto-hide timer and the date peek are gone; peek
     // expansion now reuses HoverExpandDelayMs / MorphMs.
@@ -176,13 +189,27 @@ public static class OverlayTokens
     public const double BlobD = 64.0;
     /// <summary>Clear length of the bridge between the capsule edge and the ball.</summary>
     public const double BlobBridgeMin = 18.0;
-    /// <summary>Half-width of the bridge where it leaves the capsule (DIP).</summary>
-    public const double BlobBridgeBaseHalf = 12.0;
-    /// <summary>Half-width of the bridge where it meets the ball (DIP). Non-zero on
-    /// purpose: the bridge must always overlap the ball so it can never read as detached.</summary>
-    public const double BlobBridgeTipHalf = 5.0;
+    /// <summary>Half-width of the rope where it leaves the capsule (DIP). 1.12.4: 3, not 12 —
+    /// a rope is thin at both ends. The old 12→5 taper read as a stretched cone, not a rope.</summary>
+    public const double BlobBridgeBaseHalf = 3.0;
+    /// <summary>Half-width of the rope where it meets the ball (DIP). Non-zero on purpose: the
+    /// rope must always overlap the ball so it can never read as detached.</summary>
+    public const double BlobBridgeTipHalf = 2.5;
     /// <summary>How far the blob may be dragged from its home spot, every direction.</summary>
     public const double BlobDragMaxPx = 100.0;
+    /// <summary>How far the rope droops at its middle when the ball sits at home (DIP).
+    /// The rope hangs under the ball's weight, so its middle sinks along the CROSS axis; the
+    /// droop is 0 at zero length and capped here, which is what keeps the detach from
+    /// snapping the rope sideways when the ball reaches home.</summary>
+    public const double BlobRopeSagMaxPx = 7.0;
+    /// <summary>Extra long-axis length the capsule takes for phase A of the split morph
+    /// (DIP). The capsule grows to the RIGHT (down, on a vertical island) only — its leading
+    /// edge and its screen position never move, so "the island is still" survives.</summary>
+    public const double BlobPeekW = 110.0;
+    /// <summary>Share of the split morph spent on phase A — the capsule growing and revealing
+    /// the clipboard preview. The remaining 1 − this is the detach itself. A token, not a
+    /// literal in the morph, so the code and its comments cannot drift apart.</summary>
+    public const double BlobPeekShare = 0.4;
 
     // -- Tray menu (1.12.0) -------------------------------------------------
     /// <summary>Maximum entries surfaced in the tray clipboard submenu.</summary>
