@@ -200,17 +200,16 @@ public partial class OverlayWindow : Window
 
         Opened += (_, _) =>
         {
+            // Window-handle work only. It must stay idempotent: the fullscreen-restore path
+            // calls Show() again, which re-fires Opened, so this can run more than once per
+            // process. (Do NOT put background-worker startup here — see the ctor note below.)
             Win32Overlay.ApplyNoActivate(this);
             Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
             PlaceIsland();
             _ = RefreshWeatherAsync();
             EnsureMediaSource();
             EnsurePowerSource();
-            if (_settings.ClipboardEnabled)
-                _clipboardSource?.Start();
             SyncStatsRows();
-            if (_settings.SystemStatsEnabled)
-                _statsMachine?.Start();
             if (_winTray is null && _tray is null)
             {
                 try
@@ -274,6 +273,21 @@ public partial class OverlayWindow : Window
         _tick.Start();
         _weatherTimer.Start();
         _fullscreenTimer.Start();
+        // Background workers start HERE, not in Opened.
+        //
+        // Neither the clipboard poller nor the stats sampler needs a window handle —
+        // WindowsClipboardSource is GetClipboardSequenceNumber + OpenClipboard(IntPtr.Zero)
+        // on a plain System.Threading.Timer, and SystemMonitorMachine is timer-driven too.
+        //
+        // They used to start from Opened, and that was a long-standing bug: Opened does not
+        // fire for the window Avalonia shows when it is assigned to
+        // IClassicDesktopStyleApplicationLifetime.MainWindow. The listener only ever came up
+        // by accident, when the fullscreen-restore path called Show() and that re-fired
+        // Opened — so "the clipboard works" depended on the user entering and leaving
+        // fullscreen at least once per launch. Start() is idempotent, so calling it here and
+        // (harmlessly) never again elsewhere is safe.
+        if (_settings.ClipboardEnabled) _clipboardSource?.Start();
+        if (_settings.SystemStatsEnabled) _statsMachine?.Start();
         TickClock();
         ApplySize();
         Paint();
