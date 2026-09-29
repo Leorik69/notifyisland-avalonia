@@ -15,11 +15,12 @@ namespace NotifyIsland;
 /// power1 = quad, power2 = cubic, power3 = quart, power4 = quint. (GSAP's power1..4 are the
 /// polynomial degrees 2..5; the number is an index, not the degree.)
 ///
-/// NOT migrated on purpose: the existing "Ragged" dismiss is not a pure ease — it is a per-tick
-/// translate driven by a <c>Random</c> plus a separately faded opacity (see the Ragged branch of
-/// the dismiss tick). It therefore cannot be a dictionary entry without changing the visuals, and
-/// changing visuals is the migration stage's job, not the infrastructure stage's. A `ragged` name
-/// will be added when that scenario is actually ported to a timeline.
+/// `ragged` is the one non-ease entry, added with the 1.12.4 morph migration: it is the decay
+/// ENVELOPE of the ragged dismiss (1 → 0), not the jitter. The jitter is a per-tick
+/// <c>Random</c> translate and cannot be a function of t, so it stays in the window — see
+/// <see cref="CapsuleMorphTrack.Ragged"/>, which declares the ragged scenario as one phase on a
+/// linear axis. Making the envelope a named curve is what lets the scenario declare it instead of
+/// writing <c>1 - t</c> inline next to a random number.
 /// </summary>
 public static class AnimEase
 {
@@ -80,6 +81,18 @@ public static class AnimEase
             // AnimationEasing.ClickPop a lookup into this dictionary — is a migration-step change,
             // not infrastructure, so the shape of the curve cannot drift in the meantime.
             ["clickPop"] = AnimationEasing.ClickPop,
+
+            // The Bounce appear style's damped spring, reached through the dictionary for the same
+            // reason clickPop is: one implementation, and a style that names its curve instead of
+            // calling a static. Not one of GSAP's names because it is not one of GSAP's curves.
+            ["spring.out"] = AnimationEasing.SpringOut,
+
+            // The Ragged dismiss's DECAY ENVELOPE, not the jitter itself. The jitter is
+            // Random-driven per tick and cannot be a function of t, so it stays in the window
+            // (see CapsuleMorphTrack.Ragged); what belongs to the scenario is how fast the
+            // wobble dies out, and that is a pure 1 → 0 line. Linear on purpose: an eased decay
+            // would make the leave look like it was being pulled away smoothly.
+            ["ragged"] = t => 1.0 - t,
         };
 
     /// <summary>All registered curve names, for the settings UI and for tests.</summary>

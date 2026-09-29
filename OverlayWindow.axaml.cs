@@ -154,6 +154,14 @@ public partial class OverlayWindow : Window
     private NotifyAppearStyle _morphAppear = NotifyAppearStyle.Inflate;
     private NotifyDismissStyle _morphDismiss = NotifyDismissStyle.Collapse;
     private bool _morphUsesNotifyStyle;
+    /// <summary>
+    /// The scenario this morph is playing, chosen once in <see cref="StartMorph"/> and read by
+    /// every frame. Declared in Core (spec: animation layer, "Морфы капсулы") so the phase list and
+    /// the breakpoints inside it can be pinned by tests — this file cannot be built by the test
+    /// project. Kept as a field, not recomputed per tick, for the same reason the sizes are: a
+    /// style must not be able to change mid-morph.
+    /// </summary>
+    private CapsuleMorphTrack _morphTrack = CapsuleMorphTrack.Plain;
     private OverlayKind _prevKind = OverlayKind.Idle;
     private int _demoAppearStep;
     private static readonly NotifyAppearStyle[] DemoAppearCycle =
@@ -495,7 +503,12 @@ public partial class OverlayWindow : Window
     private void SyncUnreadPulse(bool shouldPulse)
     {
         var pulseSpeed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimUnreadPulse);
-        if (!shouldPulse || !_settings.AnimPulseEnabled || !AnimationTiming.IsEnabled(pulseSpeed))
+        // 1.12.4: reduced motion stops the endless cycles too, not just the transitions. The spec
+        // lists the unread pulse and the ball's breathe by name: a loop with no end state has
+        // nothing to land on, so "duration 0" cannot express it — the only reduced form of a loop
+        // is not running it. The dot is left at its resting opacity by StopUnreadPulse.
+        var reduced = AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion);
+        if (!shouldPulse || !_settings.AnimPulseEnabled || !AnimationTiming.IsEnabled(pulseSpeed) || reduced)
         {
             StopUnreadPulse(resetOpacity: false);
             return;
@@ -541,7 +554,15 @@ public partial class OverlayWindow : Window
         _frameActive = false;
     }
 
-    /// <summary>One pulse frame; false once the pulse is off or has been disabled in settings.</summary>
+    /// <summary>
+    /// One pulse frame; false once the pulse is off or has been disabled in settings.
+    /// <para>
+    /// 1.12.4: the timer and the media surfaces have no animation of their own to migrate — they
+    /// enter and leave through the same morph as every other kind, and the sine below is the only
+    /// endless motion in the capsule besides the ball's breathe. So the reduced-motion promise for
+    /// this file is carried by two guards: this pulse and <see cref="ApplyBlobBreathe"/>.
+    /// </para>
+    /// </summary>
     private bool TickUnreadPulse()
     {
         if (!_pulseActive) return false;
@@ -1717,6 +1738,10 @@ public partial class OverlayWindow : Window
         // settles the ball and the panel to their defined resting states, which is exactly
         // what a user who cannot tolerate motion needs. Shorter durations would leave the
         // blob mid-travel and the panel mid-fade.
+        // 1.12.4: this is the ONLY reduced-motion branch for size changes, and it is deliberately
+        // a settle and not a zero-duration run. Everything downstream of it — the hover peek's
+        // width change, the monitor's expansion, the appear/dismiss styles — reaches the reduced
+        // path through this one check, so none of them can grow its own "just make it fast" exit.
         var reduced = AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion);
         if (same || reduced || !AnimationTiming.IsEnabled(morphSpeed) || !IsVisible)
         {
@@ -1788,6 +1813,14 @@ public partial class OverlayWindow : Window
         _morphUsesNotifyStyle = enteringNotify || leavingNotify;
         _morphAppear = ResolveAppearStyle(enteringNotify);
         _morphDismiss = ResolveDismissStyle(leavingNotify);
+        // 1.12.4: the scenario is picked HERE, once, from the direction the morph already knows.
+        // The tick only reads the track — it never re-decides the style, so "which phases and
+        // which curves" is a single fact per morph instead of a switch evaluated 60 times a second.
+        _morphTrack = !_morphUsesNotifyStyle
+            ? CapsuleMorphTrack.Plain
+            : inflate
+                ? CapsuleMorphTrack.ForAppear(_morphAppear)
+                : CapsuleMorphTrack.ForDismiss(_morphDismiss);
         _morphDurationMs = AnimationTiming.ScaleMs(OverlayTokens.MorphMs, morphSpeed);
         // Bounce / Pop / Ragged / Glitch lean a bit longer for readability
         if (_morphUsesNotifyStyle)
@@ -1801,7 +1834,8 @@ public partial class OverlayWindow : Window
         AppLog.Info(
             $"Morph {_morphFromW:0}×{_morphFromH:0} → {_morphToW:0}×{_morphToH:0} " +
             $"({_morphDurationMs} ms, {morphSpeed}, " +
-            $"{(inflate ? $"appear={_morphAppear}" : $"dismiss={_morphDismiss}")})");
+            $"{(inflate ? $"appear={_morphAppear}" : $"dismiss={_morphDismiss}")}, " +
+            $"phases={_morphTrack.Describe()})");
 
         if (_morphActive)
         {
@@ -1906,21 +1940,13 @@ public partial class OverlayWindow : Window
         var dur = Math.Max(1, _morphDurationMs);
         var t = Math.Clamp(_morphWatch.ElapsedMilliseconds / (double)dur, 0.0, 1.0);
 
-        double widthT;
-        double auxT;
-        if (_morphUsesNotifyStyle && _morphInflate)
-        {
-            (widthT, auxT) = AppearProgress(t, _morphAppear);
-        }
-        else if (_morphUsesNotifyStyle && !_morphInflate)
-        {
-            (widthT, auxT) = DismissProgress(t, _morphDismiss);
-        }
-        else
-        {
-            widthT = AnimationEasing.CubicOut(t);
-            auxT = widthT;
-        }
+        // 1.12.4: both channels come off ONE declared scenario (CapsuleMorphTrack). The width and
+        // the window still ride the SAME size value — that pairing is what keeps a frame from
+        // showing a capsule and a window computed from different points of the animation — and the
+        // aux channel is the track's own phased value, so a style's breakpoints cannot drift away
+        // from the style.
+        var widthT = _morphTrack.SizeAt(t);
+        var auxT = _morphTrack.AuxAt(t);
 
         var cw = Math.Max(20, _morphFromW + (_morphToW - _morphFromW) * widthT);
         var ch = Math.Max(8, _morphFromH + (_morphToH - _morphFromH) * widthT);
@@ -1986,7 +2012,9 @@ public partial class OverlayWindow : Window
         var p = b;
         // ClickPop peaks above 1; remap its 1..peak range onto 0..1 so the overshoot becomes a
         // nudge past the home spot on the travel axis instead of a change of size.
-        var pop = AnimationEasing.ClickPop(p);
+        // 1.12.4: through the dictionary, so the detach pop and the click pop are visibly the
+        // same curve reached by name (see AnimEase's clickPop entry).
+        var pop = AnimEase.Ease("clickPop", p);
         var eased = (pop - 1.0) / (OverlayTokens.ClipboardHalfPopPeak - 1.0);
         var travel = entering ? eased : 1.0 - eased;
         var opacity = entering
@@ -2017,8 +2045,8 @@ public partial class OverlayWindow : Window
         var vertical = SplitIsVertical;
         // The preview is opaque only while there is capsule to show it in; it fades in over
         // phase A and out over phase B so the text never sits half-outside the rounded cap.
-        var a = AnimationEasing.CubicOut(ClipboardBlob.PeekPhaseAt(t));
-        var b = AnimationEasing.CubicOut(ClipboardBlob.DetachPhaseAt(t));
+        var a = AnimEase.Ease("power2.out", ClipboardBlob.PeekPhaseAt(t));
+        var b = AnimEase.Ease("power2.out", ClipboardBlob.DetachPhaseAt(t));
         BlobPeek.IsVisible = peek > 0.5;
         BlobPeek.Opacity = a * (1.0 - b);
         // Clip the preview by the capsule's current length, on whichever axis is the long one.
@@ -2131,6 +2159,11 @@ public partial class OverlayWindow : Window
     private void ApplyBlobBreathe()
     {
         if (!_splitApplied || _blobDir != 0 || _morphActive) return;
+        // 1.12.4: the second endless loop, and the other half of the reduced-motion promise the
+        // spec states ("бесконечные циклы … выключены"). A loop has no end state to land on, so
+        // reduced motion can only mean not running it; _blobBreathe is left at 0, which is the
+        // ball's defined resting offset.
+        if (AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion)) return;
         _blobBreathe = ClipboardSplit.CrossBreatheOffset((int)_blobClock.ElapsedMilliseconds);
         UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
     }
@@ -2265,32 +2298,23 @@ public partial class OverlayWindow : Window
     private static Point ToWindow(bool vertical, double along, double cross) =>
         vertical ? new Point(cross, along) : new Point(along, cross);
 
-    private static (double widthT, double auxT) AppearProgress(double t, NotifyAppearStyle style) => style switch
-    {
-        NotifyAppearStyle.Bounce => (AnimationEasing.SpringOut(t), AnimationEasing.SpringOut(t)),
-        NotifyAppearStyle.Pop => (AnimationEasing.CubicOut(t), AnimationEasing.PopScale(t)),
-        NotifyAppearStyle.SlideDown => (AnimationEasing.CubicOut(t), AnimationEasing.CubicOut(t)),
-        NotifyAppearStyle.FadeScale => (AnimationEasing.CubicOut(t), AnimationEasing.CubicOut(t)),
-        _ => (AnimationEasing.CubicOut(t), AnimationEasing.CubicOut(t))
-    };
-
-    private static (double widthT, double auxT) DismissProgress(double t, NotifyDismissStyle style) => style switch
-    {
-        NotifyDismissStyle.Glitch => (AnimationEasing.GlitchStep(t), AnimationEasing.GlitchStep(t)),
-        NotifyDismissStyle.Ragged => (AnimationEasing.CubicOut(t), t),
-        NotifyDismissStyle.SlideUp => (AnimationEasing.CubicOut(t), AnimationEasing.CubicOut(t)),
-        NotifyDismissStyle.FadeScaleOut => (AnimationEasing.CubicOut(t), AnimationEasing.CubicOut(t)),
-        _ => (AnimationEasing.CubicOut(t), AnimationEasing.CubicOut(t))
-    };
-
     /// <summary>
-    /// 1.12.3: the ball's own motion, driven from the same morph <c>t</c> as the capsule and
-    /// the window so the island growing and the ball leaving it are one movement. Runs before
-    /// the notify-style branch because a blob morph is not a notify morph — the ball must
-    /// animate for both, and the early return below would otherwise skip it.
+    /// 1.12.4: the per-frame aux channel of one morph. <paramref name="auxT"/> is the size
+    /// scenario's own phased value (<see cref="CapsuleMorphTrack.AuxAt"/>); <paramref name="rawT"/>
+    /// is the un-eased morph progress, kept for the two styles whose effect IS a per-frame
+    /// quantity rather than a curve: the Ragged jitter and the Glitch stutter.
+    /// <para>
+    /// The two style switches below therefore read the style, not the shape — every curve they
+    /// evaluate now comes from the named dictionary, and the style-specific numbers (offsets, the
+    /// stutter cell count) are tokens or the track's own, not bare literals.
+    /// </para>
     /// </summary>
     private void ApplyMorphAux(double auxT, double rawT)
     {
+        // 1.12.3: the ball's own motion, driven from the same morph <c>t</c> as the capsule and
+        // the window so the island growing and the ball leaving it are one movement. Runs before
+        // the notify-style branch because a blob morph is not a notify morph — the ball must
+        // animate for both, and the early return below would otherwise skip it.
         ApplyBlobMorph(rawT);
         // 1.12.3 history panel. Same tick, same progress: the window around the panel is already
         // morphing, so the panel's slide and fade ride that t rather than a timer of their own.
@@ -2317,7 +2341,7 @@ public partial class OverlayWindow : Window
                     break;
                 case NotifyAppearStyle.Bounce:
                     // Spring width already overshoots; gentle scale breathe with spring
-                    var springScale = 0.92 + 0.08 * AnimationEasing.SpringOut(rawT);
+                    var springScale = 0.92 + 0.08 * AnimEase.Ease("spring.out", rawT);
                     _pillScale.ScaleX = springScale;
                     _pillScale.ScaleY = springScale;
                     Pill.Opacity = Math.Min(1.0, 0.7 + 0.3 * auxT);
@@ -2325,7 +2349,7 @@ public partial class OverlayWindow : Window
                 case NotifyAppearStyle.Pop:
                     _pillScale.ScaleX = auxT;
                     _pillScale.ScaleY = auxT;
-                    Pill.Opacity = Math.Min(1.0, 0.85 + 0.15 * AnimationEasing.CubicOut(rawT));
+                    Pill.Opacity = Math.Min(1.0, 0.85 + 0.15 * AnimEase.Ease("power2.out", rawT));
                     break;
                 default:
                     Pill.Opacity = 1;
@@ -2348,15 +2372,23 @@ public partial class OverlayWindow : Window
                     break;
                 case NotifyDismissStyle.Ragged:
                     {
-                        var amp = 3.5 * (1.0 - rawT);
+                        // 1.12.4: the amplitude's decay is the named `ragged` curve, the jitter is
+                        // still Random per tick (it cannot be a function of t) — see
+                        // CapsuleMorphTrack.Ragged. The peak DIP and the cross-axis share of the
+                        // jitter are tokens, not bare numbers, because they are the look of the
+                        // style and nothing else.
+                        var amp = OverlayTokens.RaggedJitterAmpDip * AnimEase.Ease("ragged", rawT);
                         _pillTranslate.X = (_morphRng.NextDouble() * 2 - 1) * amp;
-                        _pillTranslate.Y = (_morphRng.NextDouble() * 2 - 1) * amp * 0.35;
-                        Pill.Opacity = 1.0 - AnimationEasing.CubicOut(rawT) * 0.85;
+                        _pillTranslate.Y = (_morphRng.NextDouble() * 2 - 1)
+                                           * amp * OverlayTokens.RaggedJitterCrossShare;
+                        Pill.Opacity = 1.0 - AnimEase.Ease("power2.out", rawT) * 0.85;
                         break;
                     }
                 case NotifyDismissStyle.Glitch:
                     {
-                        var stutter = (int)(rawT * 12) % 2 == 0;
+                        // The stutter cell count belongs to the scenario, not to this switch — the
+                        // offsets and the phase plateaus are two views of the same rhythm.
+                        var stutter = _morphTrack.StutterStep(rawT) % 2 == 0;
                         _pillTranslate.X = stutter ? 2.5 : -1.5;
                         _pillTranslate.Y = stutter ? -1.0 : 0.5;
                         Pill.Opacity = stutter ? Math.Max(0.15, 1.0 - auxT) : Math.Max(0.05, 0.7 - auxT);

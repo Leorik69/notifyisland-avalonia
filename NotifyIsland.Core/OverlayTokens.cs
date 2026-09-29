@@ -187,6 +187,17 @@ public static class OverlayTokens
     /// movement, it does not shorten it (spec invariant "сниженная анимация не «ускоряет»").
     /// </summary>
     public const int    ReducedMotionMs      = 0;
+    /// <summary>
+    /// Peak sideways jitter of the Ragged dismiss (DIP), at the start of the leave. The jitter
+    /// decays along the <c>ragged</c> curve; this is its amplitude, and it is a token because it
+    /// IS the look of the style — nothing else computes from it.
+    /// </summary>
+    public const double RaggedJitterAmpDip  = 3.5;
+    /// <summary>
+    /// How much of <see cref="RaggedJitterAmpDip"/> the Ragged dismiss jitters on the cross axis.
+    /// Less than 1 so the pill shakes sideways rather than buzzing in both directions.
+    /// </summary>
+    public const double RaggedJitterCrossShare = 0.35;
 
     // NOTE: the 1.12.0 hover-peek tokens (PeekAutoHideMs, PeekMorphMs, PeekExtraFullDateW)
     // were removed in 1.12.1 — the hover auto-hide timer and the date peek are gone; peek

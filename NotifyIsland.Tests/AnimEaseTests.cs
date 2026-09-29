@@ -242,9 +242,16 @@ public class AnimEaseTests
             Assert.True(AnimEase.Has(name), $"missing curve '{name}'");
         }
 
-        // Documented omission: the existing Ragged dismiss is Random-driven translate + a separate
-        // opacity fade, not a pure ease, so it has no dictionary entry until the scenario is migrated.
-        Assert.False(AnimEase.Has("ragged"));
+        // 1.12.4: "ragged" and "spring.out" arrived with the morph migration. "ragged" is the
+        // jitter's decay ENVELOPE, not the jitter (that stays Random per tick — see
+        // CapsuleMorphTrack.Ragged), and "spring.out" is the Bounce style's damped spring.
+        foreach (var name in new[] { "ragged", "spring.out" })
+        {
+            Assert.True(AnimEase.Has(name), $"missing curve '{name}'");
+        }
+
+        Assert.Equal(1.0 - 0.4, AnimEase.Ease("ragged", 0.4), 12);
+        Assert.Equal(AnimationEasing.SpringOut(0.4), AnimEase.Ease("spring.out", 0.4), 12);
     }
 
     [Fact]
