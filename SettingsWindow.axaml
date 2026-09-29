@@ -512,6 +512,18 @@
 
             <CheckBox x:Name="AnimPulseEnabledBox" Content="Pulse непрочитанных" Margin="0,12,0,2"/>
 
+            <!-- 1.12.4. Reduced motion REMOVES movement rather than speeding it up: morphs
+                 land on their end state, the click pop and the ball's detach do not travel,
+                 and the infinite loops (unread pulse, ball breathe, weather icons) stop.
+                 AnimReduced.Resolve ORs this with the Windows "Show animations" setting, so
+                 switching animations off in Windows is honoured even when this box is off. -->
+            <CheckBox x:Name="ReducedMotionBox"
+                      Content="Сниженная анимация (убирает движение)"
+                      Margin="0,8,0,2"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Движение убирается, а не ускоряется: элементы сразу оказываются в конечном состоянии. Учитывается и системная настройка «Анимации в Windows»."
+                       Margin="0,0,0,4"/>
+
             <TextBlock Classes="fieldLabel" Text="Морф / появление (inflate)"/>
             <ComboBox x:Name="AnimMorphInflateBox" Width="260">
               <ComboBoxItem Tag="Slow" Content="Медленнее"/>

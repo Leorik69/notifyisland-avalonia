@@ -846,7 +846,6 @@ public partial class OverlayWindow : Window
             var kind = _machine.Snapshot().Kind;
             try
             {
-                AppLog.Info($"DBG pill click kind={kind} zonePos={zonePos:0.0} zoneExtent={zoneExtent:0.0}");
                 if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
                 {
                     // 1.12.1: a single click in Idle is pin/unpin only. Metrics do not intercept
@@ -1313,6 +1312,11 @@ public partial class OverlayWindow : Window
     {
         draft.CopyTo(_settings);
         _settings.Normalize();
+        // The OS "animations in Windows" answer is cached because it is read from a per-frame
+        // tick, but caching it for the whole process lifetime means a user who turns animations
+        // off in Windows sees no change until they restart the app. Applying settings is a
+        // deliberate act and happens at human speed, so this is the right moment to re-read it.
+        _osAnimationsEnabled = null;
         ThemePresets.AutodetectCustom(_settings);
         _settings.Save();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
@@ -1708,7 +1712,13 @@ public partial class OverlayWindow : Window
         var morphSpeed = AnimationTiming.Effective(
             _settings.AnimationSpeed,
             inflate ? _settings.AnimMorphInflate : _settings.AnimMorphCollapse);
-        if (same || !AnimationTiming.IsEnabled(morphSpeed) || !IsVisible)
+        // Reduced motion takes the same path as "animations off" in the speed setting, and on
+        // purpose the same path: the branch below does not merely jump the size, it also
+        // settles the ball and the panel to their defined resting states, which is exactly
+        // what a user who cannot tolerate motion needs. Shorter durations would leave the
+        // blob mid-travel and the panel mid-fade.
+        var reduced = AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion);
+        if (same || reduced || !AnimationTiming.IsEnabled(morphSpeed) || !IsVisible)
         {
             // No morph will run, so nothing will ever consume _blobDir or _historyDir. Settle the
             // ball and the panel to their defined resting states here instead of leaving them
