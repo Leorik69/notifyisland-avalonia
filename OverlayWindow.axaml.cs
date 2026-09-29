@@ -105,6 +105,28 @@ public partial class OverlayWindow : Window
     /// feed back into the length the island and the window are sized from.</summary>
     private double _blobPeekBase;
 
+    // -- 1.12.3 clipboard history panel -------------------------------------------
+    // Opened by a click on the ball, closed by a second ball click, Escape, a click on the
+    // panel's own empty padding, or picking a row. The panel rides the EXISTING 16 ms morph
+    // tick (see ApplyHistoryPanelAnim) — opening it changes the window size, so there is
+    // already a morph running and the panel has a progress value to read for free. A second
+    // timer would be a second source of "when is this animation over".
+    private bool _historyOpen;
+    /// <summary>Row hosts currently in the panel, kept so the hover highlight can be moved and a
+    /// close can reset exactly what it showed. Typed as Border (not Control) because the hover
+    /// IS a Background change, and going through Control would need a cast at every call site.
+    /// Avalonia.Controls.Border spelled out: this file also sees System.Windows.Forms.</summary>
+    private readonly List<Avalonia.Controls.Border> _historyRowControls = new();
+    /// <summary>Row count the panel is currently laid out for — the window's size input.</summary>
+    private int _historyRowCount;
+    /// <summary>Panel's slide offset in DIP, written by the morph tick (negative = travelling in).</summary>
+    private readonly TranslateTransform _historySlide = new();
+    private readonly ScaleTransform _historyScale = new(1, 1);
+    /// <summary>+1 while the panel is opening, -1 while it is closing, 0 at rest.</summary>
+    private int _historyDir;
+    /// <summary>Row whose background is currently lit by the pointer, -1 for none.</summary>
+    private int _historyHover = -1;
+
     // Explicit width/height morph (Avalonia Window Width Transitions are unreliable).
     // _morphFrom/To are the CAPSULE sizes; _winFrom/To are the WINDOW sizes. They are two
     // separate pairs on purpose: 1.12.3 leaves the capsule exactly the size the island wants
@@ -182,6 +204,7 @@ public partial class OverlayWindow : Window
         EnableMorphTransitions();
         WirePointerClicks();
         WireBlobPointer();
+        WireHistoryPanel();
         ConfigureHoverPinFromSettings();
         SeedIcons();
         ApplyWeatherSide();
@@ -832,13 +855,350 @@ public partial class OverlayWindow : Window
     /// 1.12.3: click on the ball. It must NOT fall through to the idle-pill click: the ball is
     /// a sibling of the capsule, not a child, and the press/release pair is handled and marked
     /// here, so HandleIdlePillClick is never reached and the island stays open.
-    /// The history panel itself is the next stage (spec §«Панель истории»); until it exists
-    /// the click is logged and acknowledged so the wiring is live and observable.
+    /// A click toggles the history panel (spec §«Панель истории»).
     /// </summary>
+    /// <summary>
+    /// The panel's own dismiss affordances: a press on its padding (the empty part) closes it.
+    /// The rows handle their own press and mark it handled, so they never reach this — which is
+    /// how "click a row" and "click the empty part" stay two different actions off one handler.
+    /// </summary>
+    private void WireHistoryPanel()
+    {
+        HistoryPanel.PointerPressed += (_, e) =>
+        {
+            if (!_historyOpen) return;
+            if (e.Handled) return;
+            CloseHistoryPanel();
+            e.Handled = true;
+        };
+    }
+
     private void HandleBlobClick()
     {
-        AppLog.Info("Blob click: open clipboard history");
-        IslandSounds.Play(IslandSoundKind.Hover, _settings);
+        if (_historyOpen)
+        {
+            CloseHistoryPanel();
+            return;
+        }
+        OpenHistoryPanel();
+    }
+
+    // -- 1.12.3 history panel: open / close / rows ------------------------------
+
+    /// <summary>
+    /// Unfold the history panel, or do nothing at all when there is no history.
+    /// <para>
+    /// Empty history is the case that decides the whole shape of this method: an empty panel is
+    /// a list with nothing in it, which is the one thing the user cannot act on, and an
+    /// «История пуста» placeholder would be the app admitting it has nothing rather than the
+    /// clipboard being empty. So the click is simply absorbed — a sound, no panel, no error.
+    /// </para>
+    /// </summary>
+    private void OpenHistoryPanel()
+    {
+        var rows = ClipboardHistoryRows.Build(_clipboardHistory, DateTimeOffset.UtcNow);
+        if (rows.Count == 0)
+        {
+            AppLog.Info("Blob click: clipboard history is empty — panel not opened");
+            IslandSounds.Play(IslandSoundKind.Hover, _settings);
+            return;
+        }
+
+        _historyRowCount = rows.Count;
+        BuildHistoryRows(rows);
+        _historyOpen = true;
+        _historyDir = 1;
+        // Visible and hit-testable from the first frame, at zero opacity. Making it hit-testable
+        // only when the fade finished would mean a click during the 300 ms fade went through to
+        // the ball and TOGGLED THE PANEL SHUT — the fastest possible way to make the panel feel
+        // broken. It is transparent, not absent: a transparent-but-present control takes the
+        // click, which is what "open" means.
+        HistoryPanel.IsVisible = true;
+        HistoryPanel.IsHitTestVisible = true;
+        HistoryPanel.Opacity = 0;
+        HistoryPanel.Width = ClipboardHistoryPanel.SizeFor(rows.Count).Width;
+        HistoryPanel.Height = ClipboardHistoryPanel.SizeFor(rows.Count).Height;
+        IslandSounds.Play(IslandSoundKind.Expand, _settings);
+        // The window has to grow to hold the panel, and ApplySize is what does that — the same
+        // path the blob attach uses, so the panel and the ball share one morph.
+        ApplySize();
+        PlaceHistoryPanel();
+    }
+
+    /// <summary>
+    /// Fold the panel away. The rows stay alive until the dismiss finishes, so the panel is one
+    /// continuous surface rather than something rebuilt and re-faded.
+    /// </summary>
+    private void CloseHistoryPanel()
+    {
+        if (!_historyOpen) return;
+        _historyOpen = false;
+        _historyDir = -1;
+        // The window shrinks back; ApplySize reads _historyOpen, not the animation state.
+        ApplySize();
+    }
+
+    /// <summary>
+    /// Build one control per row. Built in code, like the System Stats rows, because the row
+    /// count is data (however many things the user copied) and not a markup constant.
+    /// <para>
+    /// The row is a Border with a hover background rather than a Button: a Button brings its own
+    /// chrome, its own focus ring and its own keyboard behaviour, none of which a mouse-only
+    /// overlay list wants. The hover is the whole affordance.
+    /// </para>
+    /// </summary>
+    private void BuildHistoryRows(IReadOnlyList<ClipboardHistoryRow> rows)
+    {
+        HistoryRows.Children.Clear();
+        _historyRowControls.Clear();
+        _historyHover = -1;
+
+        var brush = new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex));
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var index = i;
+
+            var icon = new Viewbox
+            {
+                Width = 12,
+                Height = 12,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                IsHitTestVisible = false,
+                Child = IconPackService.Create(_settings.IconPack, row.IconKey, 12, brush),
+            };
+            var title = new TextBlock
+            {
+                Text = row.Title,
+                FontFamily = IslandFonts.Resolve(_settings.FontFamily),
+                FontSize = 11,
+                Foreground = Avalonia.Media.Brushes.White,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                // One line, always: a wrapped row would make the panel taller than the window
+                // that was sized for exactly N rows, and the last row would fall off the edge.
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxWidth = OverlayTokens.HistoryPanelW - 2 * OverlayTokens.HistoryPanelPadX - 12 - 4 - 46,
+            };
+            var age = new TextBlock
+            {
+                Text = row.AgeText,
+                FontFamily = IslandFonts.Resolve(_settings.FontFamily),
+                FontSize = 10,
+                Foreground = new SolidColorBrush(Color.Parse("#888890")),
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                IsHitTestVisible = false,
+            };
+
+            var line = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 4 };
+            line.Children.Add(icon);
+            line.Children.Add(title);
+            line.Children.Add(age);
+
+            var host = new Border
+            {
+                Height = OverlayTokens.HistoryPanelRowH,
+                CornerRadius = new CornerRadius(6),
+                Background = Avalonia.Media.Brushes.Transparent,
+                Padding = new Thickness(4, 0),
+                Child = line,
+            };
+            host.PointerEntered += (_, _) => SetHistoryHover(index);
+            host.PointerExited += (_, _) => SetHistoryHover(-1);
+            host.PointerPressed += (_, e) =>
+            {
+                // Handled: a press on a row must not also be the "clicked the empty part of the
+                // panel" signal that closes it, and must not reach the ball underneath.
+                e.Handled = true;
+                ApplyHistoryRow(row);
+            };
+
+            HistoryRows.Children.Add(host);
+            _historyRowControls.Add(host);
+        }
+    }
+
+    /// <summary>Light one row's background. Re-asserting the same index is a no-op.</summary>
+    private void SetHistoryHover(int index)
+    {
+        if (_historyHover == index) return;
+        if (_historyHover >= 0 && _historyHover < _historyRowControls.Count)
+            _historyRowControls[_historyHover].Background = Avalonia.Media.Brushes.Transparent;
+        _historyHover = index;
+        if (index >= 0 && index < _historyRowControls.Count)
+            _historyRowControls[index].Background = new SolidColorBrush(Color.Parse("#1AFFFFFF"));
+    }
+
+    /// <summary>
+    /// Put a history entry back on the system clipboard and close the panel — the same
+    /// <see cref="WindowsClipboardWriter"/> path the tray submenu's re-copy uses. Reusing it
+    /// rather than writing a second one matters: the clipboard is a global resource, and two
+    /// writers disagreeing about, say, whether an empty string clears it is a bug nobody can
+    /// reproduce from one of them.
+    /// </summary>
+    private void ApplyHistoryRow(ClipboardHistoryRow row)
+    {
+        var entry = row.Entry;
+        var ok = entry.Kind switch
+        {
+            ClipboardItemKind.Text => WindowsClipboardWriter.WriteText(entry.Text ?? ""),
+            ClipboardItemKind.File or ClipboardItemKind.MultiFile =>
+                WindowsClipboardWriter.WriteFiles(entry.Paths ?? new List<string>()),
+            _ => false,
+        };
+        AppLog.Info(ok
+            ? $"History row applied: {entry.Kind} \"{row.Title}\""
+            : $"History row FAILED to apply: {entry.Kind} \"{row.Title}\"");
+        // The panel closes either way: a failed write is not something the user can fix by
+        // staring at the list, and leaving it open over a success would hide the result.
+        CloseHistoryPanel();
+    }
+
+    /// <summary>
+    /// Per-frame panel motion, driven from the existing 16 ms morph tick. No new timer.
+    /// <para>
+    /// The window is already growing/shrinking around the panel, so its own <c>t</c> is the
+    /// panel's progress — the two are the same movement by construction. The panel slides in
+    /// from the ball's side and fades, on the same <see cref="AnimTimeline"/> the rest of the
+    /// 1.12.4 layer uses, gated through <see cref="AnimReduced"/> so a user with animations off
+    /// gets the end state rather than a faster version of the same travel.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// Whether Windows animations are on (SPI_GETCLIENTAREAINIMATION, «Показывать анимации в
+    /// Windows»), read once and cached.
+    /// <para>
+    /// A direct SPI call, not an Avalonia property: 11.3.22 exposes no public
+    /// <c>SystemParameters.ClientAreaAnimation</c>, and Core cannot reference Avalonia types
+    /// anyway. This is the app-layer half of <see cref="AnimReduced.Resolve"/> — Core owns the
+    /// policy, the app owns the OS read, which is the split that file's docs describe.
+    /// </para>
+    /// <para>
+    /// Cached because the answer can only change while the app is running if the user leaves the
+    /// Settings app and comes back, and this is read from a per-frame animation tick: a syscall
+    /// per frame to save a frame nobody will ever see.
+    /// </para>
+    /// </summary>
+    private static bool? _osAnimationsEnabled;
+
+    private static bool OsAnimationsEnabled()
+    {
+        if (_osAnimationsEnabled is { } cached) return cached;
+        var enabled = true;
+        try
+        {
+            if (NativeMethods.SystemParametersInfo(
+                    NativeMethods.SPI_GETCLIENTAREAINIMATION, 0, out var v, 0))
+                enabled = v != 0;
+        }
+        catch (Exception ex)
+        {
+            // A failure here must not break the animation: the safe default is "animations on",
+            // which is what every user without the accessibility setting expects.
+            AppLog.Warn("SPI_GETCLIENTAREAINIMATION failed — assuming animations enabled", ex);
+            enabled = true;
+        }
+        _osAnimationsEnabled = enabled;
+        return enabled;
+    }
+
+    /// <summary>
+    /// The two P/Invokes the reduced-motion read needs, kept private and nested so the rest of
+    /// the file cannot accidentally grow a general-purpose Win32 surface.
+    /// </summary>
+    private static class NativeMethods
+    {
+        /// <summary>SPI_GETCLIENTAREAINIMATION — «Показывать анимации в Windows».</summary>
+        public const uint SPI_GETCLIENTAREAINIMATION = 0x1042;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, out int pvParam, uint fWinIni);
+    }
+
+    private void ApplyHistoryPanelAnim(double t)
+    {
+        if (_historyDir == 0) return;
+        var reversed = _historyDir < 0;
+        // One phase, 0→1: the slide and the fade are the same event. Two phases here would be
+        // two numbers to keep in sync for no gain — see AnimTimeline for what a schedule is for.
+        var (_, local) = HistoryPanelTimeline.PhaseAt(reversed ? 1.0 - t : t);
+        var reduced = AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion);
+        var eased = AnimEase.WithReducedMotion(AnimEase.Ease("power2.out", local), reduced);
+
+        HistoryPanel.Opacity = eased;
+        // 10 DIP of travel, from the direction the panel opens in: it comes FROM the ball, so
+        // the gesture that reached for the ball is continued rather than interrupted.
+        var dir = ClipboardHistoryPanel.CrossDirectionFor(_settings.Edge) > 0 ? 1 : -1;
+        _historySlide.Y = SplitIsVertical ? 0 : (1.0 - eased) * -10 * dir;
+        _historySlide.X = SplitIsVertical ? (1.0 - eased) * -10 * dir : 0;
+        HistoryPanel.RenderTransform = new TransformGroup { Children = { _historySlide, _historyScale } };
+    }
+
+    /// <summary>
+    /// Panel's resting state, called wherever a morph finishes. Mirrors <see cref="SettleBlob"/>:
+    /// the transition is allowed to end in exactly one place, so no residual opacity or offset
+    /// survives into the next open.
+    /// </summary>
+    private void SettleHistoryPanel()
+    {
+        if (_historyDir == 0) return;
+        var open = _historyOpen;
+        _historyDir = 0;
+        _historySlide.X = 0;
+        _historySlide.Y = 0;
+        HistoryPanel.Opacity = open ? 1 : 0;
+        HistoryPanel.IsVisible = open;
+        HistoryPanel.IsHitTestVisible = open;
+        if (open) return;
+        // Closed for good: drop the controls so a later open rebuilds from the current history
+        // rather than showing a stale list from ten copies ago.
+        HistoryRows.Children.Clear();
+        _historyRowControls.Clear();
+        _historyHover = -1;
+        _historyRowCount = 0;
+    }
+
+    /// <summary>
+    /// One-phase schedule for the panel, declared once so appear and dismiss cannot disagree
+    /// about what "the panel's own progress" means. Spec: the animation layer doc's AnimTimeline.
+    /// </summary>
+    private static readonly AnimTimeline HistoryPanelTimeline = new(new[] { ("panel", 0.0, 1.0) });
+
+    /// <summary>
+    /// Put the panel where <see cref="ClipboardHistoryPanel"/> says it goes, in window
+    /// coordinates. Called from the morph tick and after <see cref="ApplySize"/>, because the
+    /// panel's position is a function of the window size — the same reason
+    /// <see cref="UpdateBlobVisual"/> re-derives the ball every frame.
+    /// <para>
+    /// The panel's coordinates are taken from the CAPSULE, and the window origin is added on top.
+    /// The capsule sits at the window's leading edge on the long axis and at
+    /// <see cref="HistoryWindowSeatFor"/>'s cross origin on the short one, so those two offsets
+    /// ARE the window origin — read back rather than re-derived, so the panel cannot drift away
+    /// from the ball by a rounding error.
+    /// </para>
+    /// </summary>
+    private void PlaceHistoryPanel()
+    {
+        if (!_historyOpen) return;
+        var (capsuleLong, capsuleCross) = IslandCapsuleSize();
+        var (_, panelCross) = ClipboardHistoryPanel.SizeFor(Math.Max(1, _historyRowCount));
+        var capsuleCentre = capsuleCross / 2;
+
+        // Window-space origin of the capsule itself, from the same rule that seats the window.
+        // Identical arithmetic to HistoryWindowSeatFor on purpose: the panel and the window have
+        // to agree on where the capsule is, and two copies of that expression would drift.
+        var scale = RenderScaling <= 0 ? 1 : RenderScaling;
+        var crossOrigin = ClipboardHistoryPanel.CrossOriginFor(
+            _settings.Edge, capsuleCentre, panelCross) * scale;
+
+        var along = ClipboardHistoryPanel.PanelAlongStart(capsuleLong);
+        var cross = ClipboardHistoryPanel.PanelCrossStart(_settings.Edge, capsuleCentre);
+        // Margin is measured from the window's own top-left, so the capsule's position inside
+        // the window is added to the capsule-relative geometry.
+        HistoryPanel.Margin = SplitIsVertical
+            ? new Thickness(crossOrigin + cross, along, 0, 0)
+            : new Thickness(along, crossOrigin + cross, 0, 0);
     }
 
     private void OpenContextMenu()
@@ -858,6 +1218,16 @@ public partial class OverlayWindow : Window
         }
         var weatherLabel = _settings.WeatherEnabled ? "Погода выкл" : "Погода вкл";
         menu.Items.Add(Menu(weatherLabel, ToggleWeather));
+        // 1.12.3: an alternative way into the history panel, through the SAME OpenHistoryPanel
+        // the ball's click uses — not a second implementation. It is only offered when the ball
+        // is actually on screen (a clipboard is showing), because the panel is anchored to the
+        // ball: opening it with no ball would have nothing to hang from. A menu item that
+        // silently does nothing is worse than one that is not there.
+        if (_splitApplied)
+        {
+            menu.Items.Add(Menu(_historyOpen ? "Скрыть историю буфера" : "История буфера",
+                () => HandleBlobClick()));
+        }
         menu.Items.Add(Menu("Настроить монитор…", () => OpenSettings("system")));
         menu.Items.Add(new Separator());
         menu.Items.Add(Menu("Свернуть", () =>
@@ -1104,6 +1474,15 @@ public partial class OverlayWindow : Window
         }
         else if (e.Key == Key.Escape)
         {
+            // 1.12.3: the history panel is the topmost thing Escape can dismiss. It is checked
+            // first because Escape must close ONE layer per press, and the panel is a layer above
+            // the island — closing both at once is the shortcut that makes Escape feel broken.
+            if (_historyOpen)
+            {
+                CloseHistoryPanel();
+                e.Handled = true;
+                return;
+            }
             if (_hoverPin.IsContentExpanded)
             {
                 _hoverPin.EscapeOrUnpin();
@@ -1229,6 +1608,21 @@ public partial class OverlayWindow : Window
             _blobDir = snap.IsSplitClipboard ? 1 : -1;
             _splitApplied = snap.IsSplitClipboard;
             _blobClock.Restart();
+            // 1.12.3: the panel cannot outlive the ball. The split has its own 6 s lifetime
+            // (ClipboardHistory.MaxPillMs), so a panel left open across the expiry would keep
+            // asking for the panel-sized window while the ball retracted into the capsule — the
+            // panel would be drawn outside a window that had just shrunk around it, and the
+            // "click the ball to open history" entry point would be gone. Closing here folds the
+            // panel's dismissal into the same morph that pulls the ball back, so there is one
+            // movement rather than two.
+            if (!snap.IsSplitClipboard && _historyOpen)
+            {
+                _historyOpen = false;
+                // -1 so the panel fades out on THIS morph's t. Left at 0 it would sit at full
+                // opacity until some later morph happened to call SettleHistoryPanel, which may
+                // never come — a panel stuck on screen over a shrinking window.
+                _historyDir = -1;
+            }
             // The capsule's own length is captured further down, once (w, h) are known —
             // see _blobPeekBase.
         }
@@ -1280,11 +1674,13 @@ public partial class OverlayWindow : Window
             inflate ? _settings.AnimMorphInflate : _settings.AnimMorphCollapse);
         if (same || !AnimationTiming.IsEnabled(morphSpeed) || !IsVisible)
         {
-            // No morph will run, so nothing will ever consume _blobDir. Settle the ball to its
-            // defined resting state here instead of leaving it mid-animation.
+            // No morph will run, so nothing will ever consume _blobDir or _historyDir. Settle the
+            // ball and the panel to their defined resting states here instead of leaving them
+            // mid-animation.
             StopMorph(snapToTarget: false);
             ResetMorphVisuals();
             SettleBlob();
+            SettleHistoryPanel();
             SetSizeImmediate(w, h);
             return;
         }
@@ -1295,9 +1691,21 @@ public partial class OverlayWindow : Window
             morphSpeed, inflate, enteringNotify, leavingNotify);
     }
 
-    /// <summary>Window size for a capsule of <paramref name="w"/>×<paramref name="h"/>.</summary>
-    private (double Width, double Height) WindowFor(bool withBlob, double w, double h) =>
-        withBlob ? ClipboardBlob.WindowFor(SplitIsVertical, w, h) : (w, h);
+    /// <summary>
+    /// Window size for a capsule of <paramref name="w"/>×<paramref name="h"/>.
+    /// <para>
+    /// Three states, not two: no blob (the capsule alone), a blob, and a blob with the history
+    /// panel unfolded. The third is not derivable from the second — the panel's window is
+    /// ASYMMETRIC across the short axis, so it is a separate size, not a bigger blob window.
+    /// </para>
+    /// </summary>
+    private (double Width, double Height) WindowFor(bool withBlob, double w, double h)
+    {
+        if (!withBlob) return (w, h);
+        return _historyOpen && _historyRowCount > 0
+            ? ClipboardHistoryPanel.WindowFor(SplitIsVertical, w, h, _historyRowCount)
+            : ClipboardBlob.WindowFor(SplitIsVertical, w, h);
+    }
 
     private void SetSizeImmediate(double w, double h)
     {
@@ -1311,6 +1719,10 @@ public partial class OverlayWindow : Window
         Height = wh;
         if (_blobDir == 0) UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
         PlaceIsland();
+        // The panel's position depends on the window size it just took, so it is placed after
+        // the window is written — otherwise it would sit at the previous frame's coordinates for
+        // one frame, which on a window that grew by 250 DIP is a visible flash at the old spot.
+        PlaceHistoryPanel();
     }
 
     private void StartMorph(
@@ -1477,6 +1889,7 @@ public partial class OverlayWindow : Window
         Pill.CornerRadius = new CornerRadius(Math.Min(cw, ch) / 2);
         ApplyMorphAux(auxT, t);
         PlaceIsland();
+        PlaceHistoryPanel();
 
         if (t >= 1.0)
         {
@@ -1486,6 +1899,8 @@ public partial class OverlayWindow : Window
             // the last frame's scale/opacity. Settling also clears the direction so the next
             // attach starts from the capsule's centre again.
             SettleBlob();
+            // Same for the panel: opacity, offset and the row cleanup land in exactly one place.
+            SettleHistoryPanel();
             SetSizeImmediate(_morphToW, _morphToH);
         }
     }
@@ -1831,6 +2246,9 @@ public partial class OverlayWindow : Window
     private void ApplyMorphAux(double auxT, double rawT)
     {
         ApplyBlobMorph(rawT);
+        // 1.12.3 history panel. Same tick, same progress: the window around the panel is already
+        // morphing, so the panel's slide and fade ride that t rather than a timer of their own.
+        if (_historyDir != 0) ApplyHistoryPanelAnim(rawT);
         if (!_morphUsesNotifyStyle)
         {
             Pill.Opacity = 1;
@@ -1933,10 +2351,43 @@ public partial class OverlayWindow : Window
         {
             var winPw = (int)Math.Round(Width * scale);
             var winPh = (int)Math.Round(Height * scale);
-            (x, y) = IslandLayout.BlobWindowFor(SplitIsVertical, x, y, homePw, homePh, winPw, winPh);
+            (x, y) = HistoryWindowSeatFor(x, y, homePw, homePh, winPw, winPh);
         }
         Position = new PixelPoint(x, y);
         Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
+    }
+
+    /// <summary>
+    /// Seat the enlarged window around the capsule, honouring the panel's asymmetry.
+    /// <para>
+    /// With the panel folded this is exactly <see cref="IslandLayout.BlobWindowFor"/> — the
+    /// resting blob window is symmetric, so the capsule stays centred in it. With the panel open
+    /// it is NOT: the window grew to <see cref="ClipboardHistoryPanel.BallSideExtent"/> on the
+    /// ball's side and <see cref="ClipboardHistoryPanel.PanelSideExtent"/> on the panel's, so
+    /// splitting the slack evenly (what BlobWindowFor does) would shift the capsule by half the
+    /// difference — the island visibly jumping on a click, which is precisely what the spec
+    /// forbids. The panel's own seat is used instead.
+    /// </para>
+    /// </summary>
+    private (int X, int Y) HistoryWindowSeatFor(int x, int y, int homePw, int homePh, int winPw, int winPh)
+    {
+        if (!_historyOpen || _historyRowCount <= 0)
+            return IslandLayout.BlobWindowFor(SplitIsVertical, x, y, homePw, homePh, winPw, winPh);
+
+        // The panel's geometry is expressed against the CAPSULE, in DIP; only the resulting
+        // window offset is converted to pixels. Measuring in pixels here would put the panel
+        // half a pixel out at 150 % scaling, which is a visible seam on the ball side.
+        var scale = RenderScaling <= 0 ? 1 : RenderScaling;
+        var capsuleCross = (SplitIsVertical ? homePw : homePh) / scale;
+        var (_, panelCross) = ClipboardHistoryPanel.SizeFor(_historyRowCount);
+        var crossOrigin = ClipboardHistoryPanel.CrossOriginFor(
+            _settings.Edge, capsuleCross / 2, panelCross) * scale;
+
+        // The LONG axis keeps BlobWindowFor's answer verbatim: the capsule is Leading-anchored
+        // there, so however far the window reaches past the ball, the capsule does not move.
+        return SplitIsVertical
+            ? ((int)Math.Round(x + crossOrigin), y)
+            : (x, (int)Math.Round(y + crossOrigin));
     }
 
     private void Paint()

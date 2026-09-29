@@ -211,6 +211,30 @@ public static class OverlayTokens
     /// literal in the morph, so the code and its comments cannot drift apart.</summary>
     public const double BlobPeekShare = 0.4;
 
+    // -- Clipboard history panel (1.12.3, §«Панель истории») ----------------
+    /// <summary>Maximum rows the history panel shows. The list is newest-first, so this is
+    /// "the last N things I copied". Capped at 8 because the panel is a LIST, not a dump: a
+    /// taller panel pushes further along the short axis, and past a certain point it reaches
+    /// past the screen edge on a vertical island — so anything older belongs in the tray menu,
+    /// which has no such constraint.</summary>
+    public const int    HistoryPanelMaxRows   = 8;
+    /// <summary>Fixed width of the history panel (DIP), along the island's long axis.</summary>
+    public const double HistoryPanelW         = 260.0;
+    /// <summary>Height of one history row, icon and text line (DIP).</summary>
+    public const double HistoryPanelRowH      = 24.0;
+    /// <summary>Inner padding of the panel on the cross axis, top and bottom (DIP).</summary>
+    public const double HistoryPanelPadY      = 8.0;
+    /// <summary>Inner padding of the panel on the long axis, left and right (DIP).</summary>
+    public const double HistoryPanelPadX      = 10.0;
+    /// <summary>Gap between the panel and the blob's home spot on the long axis (DIP). The hand
+    /// that reached for the ball has to reach the panel, so the two are read as one gesture and
+    /// not as two separate surfaces that happen to be near each other.</summary>
+    public const double HistoryPanelGap       = 12.0;
+    /// <summary>Appear / dismiss duration (ms). Slightly under MorphMs so the panel settles
+    /// before the window it lives in finishes growing — a panel that lands after its own frame
+    /// reads as a repaint.</summary>
+    public const int    HistoryPanelMs        = 300;
+
     // -- Tray menu (1.12.0) -------------------------------------------------
     /// <summary>Maximum entries surfaced in the tray clipboard submenu.</summary>
     public const int    TrayClipboardSubmenuItems = 5;

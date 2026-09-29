@@ -407,5 +407,34 @@
                    Text="буфер" />
       </StackPanel>
     </Border>
+
+    <!-- 1.12.3 clipboard history panel (spec §«Панель истории»): the list a click on the ball
+         unfolds. It is a sibling of the capsule and the ball, NOT a second Window — one window
+         means one transparent surface, and a second topmost no-activate window would have to
+         re-derive the island's position independently and could only ever be a frame late.
+         IsHitTestVisible is False until a click opens it, and the Root's own False (line 25)
+         is the reason a click on the empty desktop around it still reaches the desktop: only
+         the panel itself opts in, exactly like the capsule and the ball do.
+         Painted LAST so it occludes the ball if the user drags the ball under it — see
+         ClipboardHistoryPanel.BallSideExtent. Rows are built at runtime from
+         ClipboardHistoryRows; the text and icons are NOT declared here, they come from the same
+         BuildPayload / ClipboardHalfPreview rules the ball uses. -->
+    <Border x:Name="HistoryPanel"
+            Width="260"
+            CornerRadius="12"
+            Background="#F2080808"
+            BorderBrush="#28FFFFFF"
+            BorderThickness="1"
+            Padding="10,8"
+            IsVisible="False"
+            IsHitTestVisible="False"
+            ClipToBounds="False"
+            Opacity="0"
+            RenderTransformOrigin="50%,50%">
+      <StackPanel x:Name="HistoryRows"
+                  Spacing="0"
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Top" />
+    </Border>
   </Grid>
 </Window>
