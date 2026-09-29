@@ -16,7 +16,13 @@ public enum StatsRow
     Memory,
     Battery,
     Network,
-    Date
+    Date,
+    // 1.13: the status rows. Media and Timer used to take the capsule over entirely
+    // (OverlayKind.Media / .Timer); they are rows now, so the capsule keeps showing the
+    // clock and the progress band while they run. See
+    // docs/superpowers/specs/2026-09-30--notifyisland-single-capsule.md.
+    Media,
+    Timer
 }
 
 /// <summary>Which rows the System Stats surface shows, and in what order.</summary>
@@ -117,6 +123,8 @@ public static class StatsLayout
         StatsRow.Memory  => "Память",
         StatsRow.Battery => "Батарея",
         StatsRow.Network => "Сеть",
+        StatsRow.Media   => "Плеер",
+        StatsRow.Timer   => "Таймер",
         _               => ""
     };
 
@@ -131,6 +139,8 @@ public static class StatsLayout
         StatsRow.Memory  => "Память",
         StatsRow.Battery => "Батарея",
         StatsRow.Network => "Сеть",
+        StatsRow.Media   => "Плеер",
+        StatsRow.Timer   => "Таймер",
         _               => "Дата и время"
     };
 
@@ -139,6 +149,15 @@ public static class StatsLayout
     /// label+value pair. Only <see cref="StatsRow.Date"/> qualifies.
     /// </summary>
     public static bool IsCaptionRow(StatsRow row) => row == StatsRow.Date;
+
+    /// <summary>
+    /// True for the status rows that carry their own controls (1.13). Media gets ⏮ ▶ ⏭ and
+    /// Timer gets ⏸ +1 ✕, so they render a label+value pair AND an action cluster instead of
+    /// the bare value column. They still fit the 16 DIP row budget: the buttons are 16 DIP
+    /// tall glyphs on a 16 DIP line, not a second line.
+    /// </summary>
+    public static bool HasActions(StatsRow row) =>
+        row is StatsRow.Media or StatsRow.Timer;
 
     // -- Height budget (mirrors the comment on OverlayTokens.StatsExpandedH) --------------
     // Row line box ≈ FontSize × 1.33: the FontSize 12 value line (label 11) rounds up to 16 DIP;

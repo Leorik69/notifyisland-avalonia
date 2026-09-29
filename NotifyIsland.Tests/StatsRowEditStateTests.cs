@@ -17,13 +17,23 @@ public class StatsRowEditStateTests
     // -- Seeding -------------------------------------------------------------------------
 
     [Fact]
-    public void Seed_FromFull_ShowsAllFiveInCanonicalOrder()
+    public void Seed_FromFull_ShowsAllMetricsInCanonicalOrder()
     {
+        // Full is the five metrics; the 1.13 status rows (Media/Timer) are parked below it,
+        // unchecked, so adding them never changes an existing user's monitor.
         var s = new StatsRowEditState(StatsLayout.FullRows);
         Assert.Equal(
-            new[] { StatsRow.Cpu, StatsRow.Memory, StatsRow.Battery, StatsRow.Network, StatsRow.Date },
+            new[]
+            {
+                StatsRow.Cpu, StatsRow.Memory, StatsRow.Battery, StatsRow.Network, StatsRow.Date,
+                StatsRow.Media, StatsRow.Timer
+            },
             Order(s));
-        Assert.All(s.Items, i => Assert.True(i.IsVisible));
+        // The five metric rows come in checked; Media/Timer arrive parked and unchecked, so
+        // the Full preset still means exactly what it meant in 1.12.
+        Assert.Equal(StatsLayout.FullRows, s.Items.Where(i => i.IsVisible).Select(i => i.Row));
+        Assert.False(s.IsVisible(StatsRow.Media));
+        Assert.False(s.IsVisible(StatsRow.Timer));
     }
 
     [Fact]
@@ -31,7 +41,11 @@ public class StatsRowEditStateTests
     {
         var s = new StatsRowEditState(StatsLayout.BriefRows);
         Assert.Equal(
-            new[] { StatsRow.Cpu, StatsRow.Battery, StatsRow.Memory, StatsRow.Network, StatsRow.Date },
+            new[]
+            {
+                StatsRow.Cpu, StatsRow.Battery, StatsRow.Memory, StatsRow.Network, StatsRow.Date,
+                StatsRow.Media, StatsRow.Timer
+            },
             Order(s));
         Assert.Equal(new[] { StatsRow.Cpu, StatsRow.Battery },
             s.Items.Where(i => i.IsVisible).Select(i => i.Row));
@@ -42,9 +56,7 @@ public class StatsRowEditStateTests
     {
         foreach (var s in new[] { new StatsRowEditState(null), new StatsRowEditState(new List<StatsRow>()) })
         {
-            Assert.Equal(
-                new[] { StatsRow.Cpu, StatsRow.Memory, StatsRow.Battery, StatsRow.Network, StatsRow.Date },
-                Order(s));
+            Assert.Equal(Enum.GetValues<StatsRow>(), Order(s));
             Assert.Empty(s.ToCustomRows());   // nothing visible → ResolveRows falls back to Full
         }
     }
@@ -57,7 +69,11 @@ public class StatsRowEditStateTests
             StatsRow.Network, (StatsRow)99, StatsRow.Network, StatsRow.Cpu
         });
         Assert.Equal(
-            new[] { StatsRow.Network, StatsRow.Cpu, StatsRow.Memory, StatsRow.Battery, StatsRow.Date },
+            new[]
+            {
+                StatsRow.Network, StatsRow.Cpu, StatsRow.Memory, StatsRow.Battery, StatsRow.Date,
+                StatsRow.Media, StatsRow.Timer
+            },
             Order(s));
         Assert.Equal(new[] { StatsRow.Network, StatsRow.Cpu }, s.ToCustomRows());
     }
@@ -70,7 +86,11 @@ public class StatsRowEditStateTests
         var s = new StatsRowEditState(StatsLayout.FullRows)
             .WithVisibility(StatsRow.Memory, false);
         Assert.Equal(
-            new[] { StatsRow.Cpu, StatsRow.Memory, StatsRow.Battery, StatsRow.Network, StatsRow.Date },
+            new[]
+            {
+                StatsRow.Cpu, StatsRow.Memory, StatsRow.Battery, StatsRow.Network, StatsRow.Date,
+                StatsRow.Media, StatsRow.Timer
+            },
             Order(s));
         Assert.Equal(
             new[] { StatsRow.Cpu, StatsRow.Battery, StatsRow.Network, StatsRow.Date },
@@ -105,7 +125,11 @@ public class StatsRowEditStateTests
     {
         var s = new StatsRowEditState(StatsLayout.FullRows).Move(StatsRow.Network, -1);
         Assert.Equal(
-            new[] { StatsRow.Cpu, StatsRow.Memory, StatsRow.Network, StatsRow.Battery, StatsRow.Date },
+            new[]
+            {
+                StatsRow.Cpu, StatsRow.Memory, StatsRow.Network, StatsRow.Battery, StatsRow.Date,
+                StatsRow.Media, StatsRow.Timer
+            },
             Order(s));
     }
 
@@ -114,7 +138,11 @@ public class StatsRowEditStateTests
     {
         var s = new StatsRowEditState(StatsLayout.FullRows).Move(StatsRow.Cpu, +1);
         Assert.Equal(
-            new[] { StatsRow.Memory, StatsRow.Cpu, StatsRow.Battery, StatsRow.Network, StatsRow.Date },
+            new[]
+            {
+                StatsRow.Memory, StatsRow.Cpu, StatsRow.Battery, StatsRow.Network, StatsRow.Date,
+                StatsRow.Media, StatsRow.Timer
+            },
             Order(s));
     }
 
@@ -123,7 +151,7 @@ public class StatsRowEditStateTests
     {
         var s = new StatsRowEditState(StatsLayout.FullRows);
         Assert.Equal(Order(s), Order(s.Move(StatsRow.Cpu, -1)));
-        Assert.Equal(Order(s), Order(s.Move(StatsRow.Date, +1)));
+        Assert.Equal(Order(s), Order(s.Move(StatsRow.Timer, +1)));   // last declared row
         Assert.Equal(Order(s), Order(s.Move(StatsRow.Memory, 0)));
         Assert.Equal(Order(s), Order(s.Move((StatsRow)123, -1)));   // unknown row
     }
@@ -132,15 +160,31 @@ public class StatsRowEditStateTests
     public void Move_ReordersUncheckedRowsToo_SoAParkedRowCanBePromoted()
     {
         // Brief → Свой набор parks the rest; the user drags «Дата и время» up and ticks it.
-        // Seed order is [Cpu, Battery, Memory, Network, Date], so one press of ↑ lands it above
-        // «Сеть» — the parked rows keep canonical order below the visible ones.
+        // Seed order is [Cpu, Battery, Memory, Network, Date, …], so one press of ↑ lands it
+        // above «Сеть» — the parked rows keep canonical order below the visible ones.
         var s = new StatsRowEditState(StatsLayout.BriefRows)
             .Move(StatsRow.Date, -1)
             .WithVisibility(StatsRow.Date, true);
         Assert.Equal(
-            new[] { StatsRow.Cpu, StatsRow.Battery, StatsRow.Memory, StatsRow.Date, StatsRow.Network },
+            new[]
+            {
+                StatsRow.Cpu, StatsRow.Battery, StatsRow.Memory, StatsRow.Date, StatsRow.Network,
+                StatsRow.Media, StatsRow.Timer
+            },
             Order(s));
         Assert.Equal(new[] { StatsRow.Cpu, StatsRow.Battery, StatsRow.Date }, s.ToCustomRows());
+    }
+
+    [Fact]
+    public void AStatusRowCanBePromotedFromTheParkedTail()
+    {
+        // «Плеер» is parked below the metrics in 1.13; dragging it up must place it among the
+        // visible rows so ticking it puts it in the user's custom set.
+        var s = new StatsRowEditState(StatsLayout.FullRows)
+            .Move(StatsRow.Media, -4)
+            .WithVisibility(StatsRow.Media, true);
+        Assert.Equal(StatsRow.Media, Order(s)[1]);
+        Assert.Contains(StatsRow.Media, s.ToCustomRows());
     }
 
     [Fact]
