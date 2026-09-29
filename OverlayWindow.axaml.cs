@@ -58,9 +58,20 @@ public partial class OverlayWindow : Window
     private double _idleFillA = 1.0;
     private readonly ScaleTransform _pillScale = new(1, 1);
     private readonly TransformGroup _pillTransforms = new();
-    private readonly DispatcherTimer _pulseTimer = new() { Interval = TimeSpan.FromMilliseconds(33) };
+    // One 33 ms frame clock shared by every short, self-contained capsule animation: the
+    // unread-dot pulse and the click pop. It used to belong to the pulse alone; a click
+    // starting a second loop beside a running one meant two timers stepping at two rates, so
+    // the pop rides this one instead and the window is back to zero timers as soon as the
+    // last of them finishes. No Avalonia.Animation anywhere — see PlayClickPop for why.
+    private readonly DispatcherTimer _frameTimer = new() { Interval = TimeSpan.FromMilliseconds(OverlayTokens.CapsuleFrameTickMs) };
+    private bool _frameActive;
     private double _pulsePhase;
     private bool _pulseActive;
+    private bool _clickPopActive;
+    /// <summary>Scaled ClickPopMs of the pop in flight; 0 when none is.</summary>
+    private int _clickPopMs;
+    /// <summary>Wall clock of the pop in flight — see Motion for why not an accumulator.</summary>
+    private readonly Stopwatch _clickPopWatch = new();
     private bool _hoverWired;
     private readonly HoverPinMachine _hoverPin = new();
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromMilliseconds(OverlayTokens.FullscreenPollMs) };
@@ -466,6 +477,7 @@ public partial class OverlayWindow : Window
         {
             StopMorph(snapToTarget: true);
             StopUnreadPulse(resetOpacity: false);
+            StopClickPop();
         }
         else
         {
@@ -491,36 +503,60 @@ public partial class OverlayWindow : Window
         if (_pulseActive) return;
         _pulseActive = true;
         _pulsePhase = 0;
-        _pulseTimer.Tick -= OnPulseTick;
-        _pulseTimer.Tick += OnPulseTick;
-        _pulseTimer.Start();
+        EnsureFrameTick();
     }
 
+    /// <summary>
+    /// Turn the pulse off. Deliberately does NOT stop the timer: the click pop may still be
+    /// running on the same clock, and the tick stops the timer itself as soon as nothing is
+    /// animating any more (see <see cref="OnFrameTick"/>).
+    /// </summary>
     private void StopUnreadPulse(bool resetOpacity)
     {
-        if (_pulseActive)
-        {
-            _pulseTimer.Stop();
-            _pulseTimer.Tick -= OnPulseTick;
-            _pulseActive = false;
-        }
-        if (resetOpacity)
-            UnreadDot.Opacity = 0;
+        _pulseActive = false;
+        if (resetOpacity) UnreadDot.Opacity = 0;
     }
 
-    private void OnPulseTick(object? sender, EventArgs e)
+    /// <summary>Start the shared frame clock if it is not already running.</summary>
+    private void EnsureFrameTick()
     {
+        if (_frameActive) return;
+        _frameActive = true;
+        _frameTimer.Tick -= OnFrameTick;
+        _frameTimer.Tick += OnFrameTick;
+        _frameTimer.Start();
+    }
+
+    /// <summary>
+    /// The shared 33 ms frame. Each sub-tick reports whether it is still animating; when the last
+    /// one is done the clock stops itself, so an idle capsule costs no timer at all.
+    /// </summary>
+    private void OnFrameTick(object? sender, EventArgs e)
+    {
+        var busy = TickUnreadPulse();
+        if (TickClickPop()) busy = true;
+        if (busy) return;
+        _frameTimer.Stop();
+        _frameTimer.Tick -= OnFrameTick;
+        _frameActive = false;
+    }
+
+    /// <summary>One pulse frame; false once the pulse is off or has been disabled in settings.</summary>
+    private bool TickUnreadPulse()
+    {
+        if (!_pulseActive) return false;
         var pulseSpeed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimUnreadPulse);
         if (!_settings.AnimPulseEnabled || !AnimationTiming.IsEnabled(pulseSpeed))
         {
             StopUnreadPulse(resetOpacity: false);
-            return;
+            return false;
         }
         var period = AnimationTiming.ScaleMs(AnimationTiming.PulsePeriodMs, pulseSpeed);
-        _pulsePhase += (Math.PI * 2.0) * (33.0 / Math.Max(1, period));
+        _pulsePhase += (Math.PI * 2.0) * (OverlayTokens.CapsuleFrameTickMs / Math.Max(1, period));
         if (_pulsePhase > Math.PI * 2.0) _pulsePhase -= Math.PI * 2.0;
         // Visible 0.40 ↔ 1.0 opacity pulse (no Opacity Transition fighting this timer)
         UnreadDot.Opacity = 0.70 + 0.30 * Math.Sin(_pulsePhase);
+        return true;
     }
 
     private static Color WithAlpha(Color c, double a) =>
@@ -2683,34 +2719,77 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// Click-acknowledgement pop: scale 1 → ClickPopPeak (peak holds up to ~33% of total) → 1.
-    /// Uses <see cref="Avalonia.Animation.Animation"/> with two <see cref="KeyFrame"/>s because
-    /// Avalonia 11 has no WPF-style <c>DoubleAnimation</c>.
+    /// Click-acknowledgement pop: scale 1 → <see cref="OverlayTokens.ClickPopPeak"/> → 1 over
+    /// <see cref="OverlayTokens.ClickPopMs"/>, on the shared 33 ms frame clock.
+    ///
+    /// Manual tick instead of <c>Avalonia.Animation.Animation</c>, for two reasons that both cost
+    /// the process its life. In Avalonia 11.3 the only public <c>RunAsync</c> is
+    /// <c>RunAsync(Animatable, CancellationToken)</c>: the argument is the control to animate, NOT
+    /// the transform to drive. So the obvious <c>anim.RunAsync(_pillScale)</c> compiled (a
+    /// ScaleTransform is an Animatable) and then threw
+    /// <c>InvalidCastException: ScaleTransform → Visual</c> from inside Avalonia, on every single
+    /// click. And the animation it replaced also had a <c>FillMode.Forward</c> single keyframe at
+    /// cue 0.5, so even when it did run it walked 1 → peak and then left the capsule sitting at
+    /// 1.08 forever.
+    ///
+    /// The curve is <c>clickPop</c> from <see cref="AnimEase"/> — the same one
+    /// <see cref="ApplyBlobMorph"/> already uses for the ball, reached through the dictionary so
+    /// the shape has exactly one implementation and cannot drift between the two call sites.
     /// </summary>
     private void PlayClickPop()
     {
         var speed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimClickPop);
         if (!AnimationTiming.IsEnabled(speed)) return;
-        var halfMs = AnimationTiming.ScaleMs(OverlayTokens.ClickPopMs, speed);
-        var anim = new Avalonia.Animation.Animation
+
+        // Reduced motion: land on the end state, do not show a faster pop. See
+        // AnimEase.WithReducedMotion — a quicker version of the same movement is exactly what a
+        // user who cannot tolerate animation did not ask for.
+        if (AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion))
         {
-            Duration = TimeSpan.FromMilliseconds(halfMs * 2),
-            Easing = new CubicEaseOut(),
-            FillMode = Avalonia.Animation.FillMode.Forward,
-            Children =
-            {
-                new KeyFrame
-                {
-                    Cue = new Cue(0.5),
-                    Setters =
-                    {
-                        new Setter(ScaleTransform.ScaleXProperty, OverlayTokens.ClickPopPeak),
-                        new Setter(ScaleTransform.ScaleYProperty, OverlayTokens.ClickPopPeak),
-                    }
-                },
-            }
-        };
-        _ = anim.RunAsync(_pillScale);
+            _clickPopActive = false;
+            _clickPopWatch.Reset();
+            // Same guard as TickClickPop: a morph owns the scale for its whole run, so "already
+            // at rest" means doing nothing rather than writing 1.0 over a morph's frame.
+            if (!_morphActive) _pillScale.ScaleX = _pillScale.ScaleY = 1.0;
+            return;
+        }
+
+        _clickPopMs = AnimationTiming.ScaleMs(OverlayTokens.ClickPopMs, speed);
+        _clickPopWatch.Restart();
+        _clickPopActive = true;
+        EnsureFrameTick();
+    }
+
+    /// <summary>Drop the pop without touching the scale — for when another writer owns it.</summary>
+    private void StopClickPop()
+    {
+        _clickPopActive = false;
+        _clickPopWatch.Reset();
+    }
+
+    /// <summary>One pop frame; false once the pop is done or has been taken over.</summary>
+    private bool TickClickPop()
+    {
+        if (!_clickPopActive) return false;
+
+        // A morph owns the capsule's scale for its whole run — ApplyMorphAux writes this same
+        // _pillScale every frame, and PrepareMorphVisualStart seeds it. Two writers on one
+        // transform is a visible fight, so the morph wins outright and the pop is dropped rather
+        // than half-applied over it.
+        if (_morphActive)
+        {
+            StopClickPop();
+            return false;
+        }
+
+        var t = AnimTimeline.ProgressOf(_clickPopWatch.Elapsed.TotalMilliseconds, _clickPopMs);
+        _pillScale.ScaleX = _pillScale.ScaleY = AnimEase.Ease("clickPop", t);
+        if (t < 1.0) return true;
+
+        _clickPopActive = false;
+        _clickPopWatch.Reset();
+        _pillScale.ScaleX = _pillScale.ScaleY = 1.0;
+        return false;
     }
 
     private void EnsureMediaSource()

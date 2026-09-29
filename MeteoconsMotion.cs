@@ -1,21 +1,42 @@
 using System;
-using System.Threading.Tasks;
+using System.Diagnostics;
 using Avalonia;
-using Avalonia.Animation;
-using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Media;
-using Avalonia.Styling;
+using Avalonia.Threading;
 
 namespace NotifyIsland;
 
 /// <summary>
 /// Avalonia.Svg.Skia does not execute SMIL (&lt;animate&gt; / &lt;animateTransform&gt;).
-/// Meteocons SVGs keep SMIL for browsers; here we mirror the primary motion with Avalonia animations
-/// (rotate for clear/partly, soft bob for clouds/precip, opacity pulse for storm/fog).
+/// Meteocons SVGs keep SMIL for browsers; here we mirror the primary motion with a per-frame
+/// tick (rotate for clear/partly, soft bob for clouds/precip, opacity pulse for storm/fog).
+///
+/// Why a tick and not <c>Avalonia.Animation.Animation</c>: in Avalonia 11.3 the only public
+/// <c>RunAsync</c> is <c>RunAsync(Animatable, CancellationToken)</c> — the argument is the control
+/// to animate, NOT the transform to drive. So <c>anim.RunAsync(_pillScale)</c> type-checks
+/// (a ScaleTransform is an Animatable) and then throws
+/// <c>InvalidCastException: ScaleTransform → Visual</c> from inside Avalonia, which is what killed
+/// the process on every single pill click. Worse, that same overload sets
+/// «Looping animations must not use the Run method.» on the returned Task for every
+/// <c>IterationCount.Infinite</c> animation, so all three weather loops were not just throwing
+/// away their motion — they were faulting a Task nobody awaits, which is the permanent
+/// unobserved-task-exception line in the log.
+///
+/// The frame maths itself is <see cref="MeteoconsMotionTrack"/> in Core: pure, testable without a
+/// window, and the same easing dictionary the rest of the 1.12.4 layer uses.
 /// </summary>
 public static class MeteoconsMotion
 {
+    /// <summary>
+    /// Put a Meteocons icon inside a host border that carries the mirrored movement.
+    ///
+    /// The host owns the transform (its origin is already pinned to the centre) and the tick
+    /// lifecycle: it starts when the host joins the visual tree and stops when the host leaves
+    /// it. The stop is not an optimisation — an Avalonia <c>Animation</c> run with
+    /// <c>IterationCount.Infinite</c> and no cancellation outlives the icon it was animating, so
+    /// a hidden weather slot would keep spinning (and keep a clock) for the life of the process.
+    /// </summary>
     public static Avalonia.Controls.Control Wrap(Avalonia.Controls.Control icon, string key, double size)
     {
         var host = new Border
@@ -30,72 +51,103 @@ public static class MeteoconsMotion
 
         var rotate = new RotateTransform();
         var translate = new TranslateTransform();
-        host.RenderTransform = new TransformGroup { Children = { rotate, translate } };
+        var group = new TransformGroup { Children = { rotate, translate } };
+        host.RenderTransform = group;
 
-        host.AttachedToVisualTree += (_, _) => _ = RunAsync(host, rotate, translate, key);
+        var kind = MeteoconsMotionTrack.KindFor(key);
+        if (kind != MeteoconsMotionKind.None)
+        {
+            var motion = new Motion(host, rotate, translate, kind, key);
+            host.AttachedToVisualTree += motion.OnAttached;
+            host.DetachedFromVisualTree += motion.OnDetached;
+        }
+
         return host;
     }
 
-    private static async Task RunAsync(Avalonia.Controls.Control host, RotateTransform rotate, TranslateTransform translate, string key)
+    /// <summary>
+    /// The tick for one icon host. One <see cref="DispatcherTimer"/> per host, and it only runs
+    /// between attach and detach: the weather surface keeps at most two of these (the crossfade
+    /// pair), and neither is on screen outside the weather slot.
+    /// </summary>
+    private sealed class Motion
     {
-        try
+        private readonly Avalonia.Controls.Control _host;
+        private readonly RotateTransform _rotate;
+        private readonly TranslateTransform _translate;
+        private readonly MeteoconsMotionKind _kind;
+        private readonly string _key;
+        private readonly int _periodMs;
+        private readonly DispatcherTimer _timer;
+        // Wall clock, not an accumulator of tick intervals: DispatcherTimer intervals are a
+        // request, not a contract, and an accumulator drifts visibly on a machine that drops a
+        // frame — which on a 3 s bob is a cloud that visibly skips.
+        private readonly Stopwatch _watch = new();
+        private bool _running;
+
+        public Motion(Avalonia.Controls.Control host, RotateTransform rotate, TranslateTransform translate,
+                       MeteoconsMotionKind kind, string key)
         {
-            var k = key.Trim().ToLowerInvariant();
-            if (k is "weather-clear" or "weather-partly")
+            _host = host;
+            _rotate = rotate;
+            _translate = translate;
+            _kind = kind;
+            _key = key;
+            _periodMs = MeteoconsMotionTrack.PeriodMsFor(key);
+            _timer = new DispatcherTimer
             {
-                var spin = new Animation
-                {
-                    Duration = TimeSpan.FromSeconds(k == "weather-clear" ? 6 : 10),
-                    IterationCount = IterationCount.Infinite,
-                    Easing = new LinearEasing(),
-                    Children =
-                    {
-                        new KeyFrame { Cue = new Cue(0d), Setters = { new Setter(RotateTransform.AngleProperty, 0d) } },
-                        new KeyFrame { Cue = new Cue(1d), Setters = { new Setter(RotateTransform.AngleProperty, 360d) } }
-                    }
-                };
-                await spin.RunAsync(rotate);
-                return;
-            }
-
-            if (k is "weather-cloud" or "weather-drizzle" or "weather-rain" or "weather-snow" or "weather-sleet")
-            {
-                var bob = new Animation
-                {
-                    Duration = TimeSpan.FromSeconds(3),
-                    IterationCount = IterationCount.Infinite,
-                    Easing = new SineEaseInOut(),
-                    Children =
-                    {
-                        new KeyFrame { Cue = new Cue(0d), Setters = { new Setter(TranslateTransform.YProperty, 0d) } },
-                        new KeyFrame { Cue = new Cue(0.5d), Setters = { new Setter(TranslateTransform.YProperty, -2.5d) } },
-                        new KeyFrame { Cue = new Cue(1d), Setters = { new Setter(TranslateTransform.YProperty, 0d) } }
-                    }
-                };
-                await bob.RunAsync(translate);
-                return;
-            }
-
-            if (k is "weather-storm" or "weather-fog")
-            {
-                var pulse = new Animation
-                {
-                    Duration = TimeSpan.FromSeconds(k == "weather-storm" ? 1.2 : 2.4),
-                    IterationCount = IterationCount.Infinite,
-                    Easing = new SineEaseInOut(),
-                    Children =
-                    {
-                        new KeyFrame { Cue = new Cue(0d), Setters = { new Setter(Visual.OpacityProperty, 1.0) } },
-                        new KeyFrame { Cue = new Cue(0.5d), Setters = { new Setter(Visual.OpacityProperty, k == "weather-storm" ? 0.55 : 0.72) } },
-                        new KeyFrame { Cue = new Cue(1d), Setters = { new Setter(Visual.OpacityProperty, 1.0) } }
-                    }
-                };
-                await pulse.RunAsync(host);
-            }
+                Interval = TimeSpan.FromMilliseconds(OverlayTokens.MeteoconsTickMs)
+            };
+            _timer.Tick += OnTick;
         }
-        catch
+
+        internal void OnAttached(object? sender, EventArgs e)
         {
-            // Animation cancelled when control detaches — ignore.
+            if (_running) return;
+            _running = true;
+            // Restart at 0 on every attach rather than resuming: a host that was off the tree for
+            // a minute must come back at the start of a cycle, not at whatever phase it was
+            // frozen in — that freeze is the visible "stuck icon" the infinite Animation used to
+            // produce.
+            _watch.Restart();
+            _timer.Start();
+            // Apply frame 0 straight away, otherwise the icon shows its pre-motion pose for one
+            // whole interval (33 ms of visible "no animation") on every attach.
+            Apply(MeteoconsMotionTrack.FrameAt(_kind, _key, _periodMs, 0));
+        }
+
+        internal void OnDetached(object? sender, EventArgs e)
+        {
+            if (!_running) return;
+            _running = false;
+            _timer.Stop();
+            _watch.Reset();
+            // Neutral pose on the way out, so a re-attach cannot inherit a stale half-bob and the
+            // same host reused for a different condition never starts from a leftover angle.
+            _rotate.Angle = 0;
+            _translate.Y = 0;
+            _host.Opacity = 1;
+        }
+
+        private void OnTick(object? sender, EventArgs e) =>
+            Apply(MeteoconsMotionTrack.FrameAt(_kind, _key, _periodMs, _watch.Elapsed.TotalMilliseconds));
+
+        private void Apply(MeteoconsFrame f)
+        {
+            // Each kind writes one channel and leaves the other two at rest, so the unused
+            // transform never has to be reset per frame.
+            switch (_kind)
+            {
+                case MeteoconsMotionKind.Spin:
+                    _rotate.Angle = f.Angle;
+                    break;
+                case MeteoconsMotionKind.Bob:
+                    _translate.Y = f.OffsetY;
+                    break;
+                case MeteoconsMotionKind.Pulse:
+                    _host.Opacity = f.Opacity;
+                    break;
+            }
         }
     }
 }

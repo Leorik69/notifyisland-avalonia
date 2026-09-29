@@ -36,6 +36,41 @@ public static class OverlayTokens
     public const int IconCrossfadeMs = 240;
     /// <summary>Outline icon stroke width (shared language).</summary>
     public const double IconStroke = 1.75;
+
+    // -- Meteocons mirror motion ------------------------------------------------------------
+    // The vendored SVGs keep their upstream SMIL (<animate> / <animateTransform>) for browsers;
+    // Avalonia.Svg.Skia draws a static frame, so MeteoconsMotion re-plays the primary movement
+    // on a tick. Periods and amplitudes live here for the same reason every other number does:
+    // one place to read them, and MeteoconsMotionTrackTests can pin them.
+    /// <summary>One full 360° turn of the clear icon (ms).</summary>
+    public const int MeteoconsSpinClearMs = 6_000;
+    /// <summary>One full 360° turn of the partly-cloudy icon (ms) — slower, the sun peeks out.</summary>
+    public const int MeteoconsSpinPartlyMs = 10_000;
+    /// <summary>One up-and-down bob of a cloud / precipitation icon (ms).</summary>
+    public const int MeteoconsBobMs = 3_000;
+    /// <summary>Bob amplitude in DIP. Negative: the clouds ride UP, which is the SMIL's read.</summary>
+    public const double MeteoconsBobDip = -2.5;
+    /// <summary>One full opacity pulse of the storm icon (ms).</summary>
+    public const int MeteoconsPulseStormMs = 1_200;
+    /// <summary>One full opacity pulse of the fog icon (ms) — slower than the storm's.</summary>
+    public const int MeteoconsPulseFogMs = 2_400;
+    /// <summary>Opacity trough of the storm pulse.</summary>
+    public const double MeteoconsPulseStormMin = 0.55;
+    /// <summary>Opacity trough of the fog pulse — shallower, fog barely flickers.</summary>
+    public const double MeteoconsPulseFogMin = 0.72;
+    /// <summary>
+    /// Frame interval of the Meteocons motion tick (ms). 33 ≈ 30 fps: the mirrored movements are
+    /// 1.2–10 s long, so 60 fps would cost twice the frames to draw a difference nobody sees.
+    /// </summary>
+    public const int MeteoconsTickMs = 33;
+
+    /// <summary>
+    /// Frame interval of the capsule's own short animations — the unread-dot pulse and the
+    /// click pop (ms). 33 for the pulse (its sine is a gentle breathe, not a strobe); the click
+    /// pop is <see cref="ClickPopMs"/> long, so 33 ms is ~6 frames of a curve that peaks in the
+    /// first third — smooth without a timer of its own per click.
+    /// </summary>
+    public const int CapsuleFrameTickMs = 33;
     /// <summary>Legacy fixed DIP sizes (fallback when FontSize unavailable).</summary>
     public const double IconSizeCollapsed = 12;
     public const double IconSizeKind = 11;
