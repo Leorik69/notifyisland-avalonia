@@ -171,6 +171,19 @@ public static class OverlayTokens
     /// <summary>Peak scale of the split half: 1.0 → 1.06 → 1.0. Same shape as ClickPop.</summary>
     public const double ClipboardHalfPopPeak = 1.06;
 
+    // -- Goo blob (1.12.3) ---------------------------------------------------
+    /// <summary>Diameter of the clipboard blob (DIP).</summary>
+    public const double BlobD = 64.0;
+    /// <summary>Clear length of the bridge between the capsule edge and the ball.</summary>
+    public const double BlobBridgeMin = 18.0;
+    /// <summary>Half-width of the bridge where it leaves the capsule (DIP).</summary>
+    public const double BlobBridgeBaseHalf = 12.0;
+    /// <summary>Half-width of the bridge where it meets the ball (DIP). Non-zero on
+    /// purpose: the bridge must always overlap the ball so it can never read as detached.</summary>
+    public const double BlobBridgeTipHalf = 5.0;
+    /// <summary>How far the blob may be dragged from its home spot, every direction.</summary>
+    public const double BlobDragMaxPx = 100.0;
+
     // -- Tray menu (1.12.0) -------------------------------------------------
     /// <summary>Maximum entries surfaced in the tray clipboard submenu.</summary>
     public const int    TrayClipboardSubmenuItems = 5;

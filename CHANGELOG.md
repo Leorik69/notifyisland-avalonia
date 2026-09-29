@@ -2,6 +2,17 @@
 
 ## Unreleased — Idle breath removed + Clipboard history (1.12.0-preview)
 
+### Changed — Goo blob (1.12.3)
+Supersedes the 1.12.2 split-pill behaviour below: the clipboard no longer takes a compartment of the capsule. It detaches into a round ball in the spirit of World of Goo, joined to the island by a bridge, and the island itself never moves.
+- **Окно больше капсулы.** Капсула остаётся островом (`Pill.Width/Height`), а `Width/Height` окна — отдельная величина: `ClipboardBlob.WindowFor` = капсула + мостик 18 DIP + шар 64 DIP + полный радиус перетаскивания 100 DIP по длинной оси, и `max(высота капсулы, диаметр шара) + 2 × 100` по короткой. Остров прижат к «дому» (Leading по длинной оси, Center по короткой), а `IslandLayout.BlobWindowFor` ставит окно вокруг него — поэтому **остров не сдвигается ни на одном кадре морфа**, а не только в покое.
+- **Кликабельность окна.** Прозрачное окно 352×264 перехватило бы все клики по рабочему столу, поэтому корневой контейнер `IsHitTestVisible="False"`, а капсула и шар opt-in'ятся отдельно. Мостик не кликабелен: он тянется за шаром, а не живёт своей жизнью.
+- **Шар можно перетаскивать** на 50–100 px, круговым clamp'ом (`ClipboardBlob.ClampOffset`): круг, а не квадрат — квадрат дал бы по диагонали 141 DIP, и окно, резервирующее 100, обрезало бы шар краем. Смещение обнуляется на каждом settle: домашняя точка — это и есть определение покоя.
+- **Мостик неразрывен по построению**, а не по анимации: один конец на 2 DIP внутри капсулы, другой — центр шара, полуширины `ClipboardBlob.BridgeHalfAt` (12 → 5 DIP, оба конца > 0, поэтому мостик всегда перекрывает обе фигуры). Геометрия строится кодом, потому что её концы — те же числа, что и позиция шара. Контур `#28FFFFFF` — иначе тёмный мостик на тёмном фоне не читался и две фигуры выглядели как два отдельных круга.
+- **Клик по шарику** порогом `ClickMaxPx` отличается от перетаскивания и ведёт в историю буфера (на этом шаге — лог + звук, панель истории отдельным этапом). Клик по шарику физически не может вызвать `HandleIdlePillClick`: шар — сосед капсулы, а не её половина.
+- Анимация едет на существующем морф-таймере, новой инфраструктуры нет: шар выезжает из центра капсулы по кривой ClickPop с задержкой `ClipboardHalfFadeDelay`, в покое — breathe ±0.5 DIP по поперечной оси.
+- Новое: `NotifyIsland.Core/ClipboardBlob.cs` (окно, домашняя точка, круговой clamp, полуширина мостика) и `IslandLayout.BlobWindowFor`. Токены: `BlobD`, `BlobBridgeMin`, `BlobBridgeBaseHalf`, `BlobBridgeTipHalf`, `BlobDragMaxPx`.
+- Живой прогон поймал два бага, которых не видели ни тесты, ни ревью: (1) поперечная ось шара считалась от капсулы, а не от окна, — шар уезжал за верхний край экрана на (winCross − capsuleCross) / 2; (2) окно по короткой оси считалось как капсула + 2 × drag, чего не хватало на сам шар — тест `Window_ReservesDragRangeOnBothSidesOfTheCrossAxis` поймал это до запуска.
+
 ### Changed — Split clipboard pill (1.12.2)
 Supersedes the «Added — Clipboard history (1.12.0-preview)» pill behaviour below: the clipboard no longer takes the whole capsule over, it attaches as a second half while the island keeps whatever it was showing.
 - Копирование больше **не занимает всю пилюлю**. Островок остаётся на одной стороне (часы, дата, погода, батарея, точка unread), а на другой появляется половина с буфером: иконка формата (`clipboard` / `file` / `files`) + превью. Обе половины — один Border, одна капсула, общий угол скругления.

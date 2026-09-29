@@ -100,6 +100,33 @@ public static class IslandLayout
     }
 
     /// <summary>
+    /// 1.12.3 (goo blob, spec docs/superpowers/specs/2026-09-29--notifyisland-goo-blob.md):
+    /// shift a blob-sized window so that the capsule inside it stays exactly where
+    /// <see cref="Place"/> put it. With a blob the window is much larger than the capsule —
+    /// it has to hold the ball and its whole drag disc — but the island's own geometry (edge
+    /// anchor, user offsets, click zones, hit test) is all defined against the capsule, and
+    /// letting the window drag the capsule along with it would move the island on every
+    /// attach. So Place() keeps positioning the capsule and this only re-seats the window:
+    /// <list type="bullet">
+    ///   <item>horizontal (Top/Bottom): the long axis is X, the window grows rightwards, so
+    ///     X is kept verbatim and the cross-axis slack is split evenly above and below;</item>
+    ///   <item>vertical (Left/Right): the same with the axes swapped — the long axis is Y and
+    ///     the window grows downwards, so Y is kept and X is centred on the capsule.</item>
+    /// </list>
+    /// The capsule itself is pinned inside the window by alignment (Leading on the long axis,
+    /// Center on the cross axis), so no other island code has to know the window grew.
+    /// Sizes are pixels; slack can never be negative by construction, but a caller that hands
+    /// in a stale measurement must not move the window backwards, hence the max(0, …).
+    /// </summary>
+    public static (int X, int Y) BlobWindowFor(
+        bool isVertical, int homeX, int homeY, int homeW, int homeH, int windowW, int windowH)
+    {
+        if (isVertical)
+            return (homeX - Math.Max(0, windowW - homeW) / 2, homeY);
+        return (homeX, homeY - Math.Max(0, windowH - homeH) / 2);
+    }
+
+    /// <summary>
     /// After a user drag, derive OffsetX/OffsetY so Place() reproduces the new position
     /// for the current edge (inverse of Place, ignoring clamp).
     /// </summary>

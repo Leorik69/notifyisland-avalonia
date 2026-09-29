@@ -12,20 +12,40 @@
         TransparencyBackgroundFallback="#080808"
         Background="Transparent"
         WindowStartupLocation="Manual">
-  <Border x:Name="Pill"
+  <!-- 1.12.3 goo blob (spec: docs/superpowers/specs/2026-09-29 goo-blob.md).
+       The window is now much bigger than the capsule (≈352×264 instead of 170×30): it has to
+       hold the ball plus its whole BlobDragMaxPx disc around it. A transparent window that
+       large would swallow every click on the desktop behind it, so the root container is
+       NOT hit-testable and the two shapes that are — the capsule and the ball — opt back in
+       individually. The bridge deliberately stays out: it is drawn *behind* the ball and
+       belongs to the ball's drag, not to its own hit area.
+       Child order is the paint order: bridge under the capsule and the ball, so the bridge's
+       ends are always hidden inside one of them and can never read as detached. -->
+  <Grid x:Name="Root"
+        IsHitTestVisible="False">
+    <!-- Bridge geometry is rebuilt in code every frame from the capsule's edge to the ball's
+         centre (see OverlayWindow.UpdateBlobBridge), not declared here: continuity between
+         the two shapes is a property of how it is constructed, not of an animation. -->
+    <Path x:Name="BlobBridge"
+          IsVisible="False"
+          IsHitTestVisible="False"
+          StrokeThickness="1"
+          Fill="#080808"
+          Stroke="#28FFFFFF" />
+    <Border x:Name="Pill"
           Width="170" Height="30"
           CornerRadius="15"
           Background="#080808"
           BorderBrush="#28FFFFFF"
           BorderThickness="1"
-          HorizontalAlignment="Center"
+          HorizontalAlignment="Left"
           VerticalAlignment="Center"
           ClipToBounds="False"
           RenderTransformOrigin="50%,50%">
-    <!-- Island and clipboard half share this container: it spans the WHOLE pill in both
-         states so the Right-anchored half lands in the right compartment. Only the clock
-         row and the seconds strip are clamped to the island's half, via a trailing
-         margin in Paint(). -->
+    <!-- Island content. The capsule is the island again: 1.12.3 moved the clipboard out of
+         the pill into the ball, so this container spans the capsule and nothing else, and the
+         ⅓/⅓/⅓ cycle zones and the seconds strip are measured against the capsule's own
+         length without any slack compensation. -->
     <Grid x:Name="CollapsedArea">
       <!-- Collapsed: visible ‹/› chevrons + clock/date/weather + unread dot.
            System-stats metrics live in SystemStatsPanel (expanded view only, 1.12.1).
@@ -154,75 +174,6 @@
                      Foreground="#C8C8CC" />
         </Border>
       </StackPanel>
-
-      <!-- 1.12.2 split clipboard half. Sibling of CollapsedRow inside the same Pill Border,
-           so the capsule keeps one shared corner radius and one hit region. Hidden until
-           Paint() sees OverlaySnapshot.IsSplitClipboard. The half is anchored at the far end
-           of the pill's LONG axis — right on Top/Bottom, bottom on Left/Right — and adds no
-           length of its own: the pill already grew in ApplySize, and the divider is a 1 px
-           line centred on the existing boundary (negative half-line margin), never a spacer.
-           The numbers below are the horizontal defaults only; ApplyClipboardHalfLayout()
-           drives the whole block from IslandLayout.IsVertical and ClipboardSplit, so a
-           vertical edge gets a 30×200 half on the long axis instead of a 200×30 one. -->
-      <Grid x:Name="ClipboardHalf"
-            IsVisible="False"
-            IsHitTestVisible="False"
-            ClipToBounds="True"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Center"
-            Width="200"
-            Height="30">
-       <!-- 1.12.2 transform ownership. Three writers need a transform at once and must not
-            clobber each other, so they live on three different elements:
-              · ClipboardHalfContent → the orientation (RotateTransform on a vertical edge,
-                                      so a 200-DIP run of text fits the 30-DIP cross axis)
-              · ClipboardHalf        → the 200 ms breathe, on the CROSS axis
-                                      (TranslateTransform.Y horizontal / .X vertical)
-              · ClipboardHalfMotion  → the 16 ms morph, TranslateTransform along the LONG
-                                      axis (X horizontal / Y vertical) + ScaleTransform
-            The morph is the only element it touches, and the axis it writes is the one the
-            breathe never writes, so the two can never collide on either orientation. -->
-       <Grid x:Name="ClipboardHalfMotion"
-             RenderTransformOrigin="50%,50%">
-        <!-- Boundary line. Thickness 1 centred on the half start, with a negative half-thickness
-             margin taken from ClipboardSplit.DividerFor so the two halves read as one capsule.
-             The 8 DIP ClipboardHalfGap stays inner padding (4 DIP per half) instead of extra
-             length. Horizontal here; ApplyClipboardHalfLayout() makes it a horizontal line
-             spanning 16 DIP of the cross axis on Left/Right. -->
-        <Border x:Name="ClipboardHalfDivider"
-                Width="1" Height="18"
-                Background="#3DFFFFFF"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Center"
-                IsHitTestVisible="False" />
-        <!-- 4 DIP clearance from the divider, then icon + trimmed preview. The row is
-             pinned Left and clipped: at the grown pill the half is 185 DIP, and a
-             StackPanel sized by its content (12 icon + 4 spacing + MaxWidth + 4/8 margins)
-             would otherwise overhang the divider and print the preview over the clock.
-             MaxWidth 150 keeps the whole row at 178 DIP inside that 185, so
-             CharacterEllipsis does the trimming without ever widening the half. On a
-             vertical edge this stays a 200×30 row and is rotated as a whole, so the
-             trimming budget (ClipboardHalfPreview.TextMaxChars) is unchanged. -->
-        <StackPanel x:Name="ClipboardHalfContent"
-                    Orientation="Horizontal"
-                    Spacing="4"
-                    HorizontalAlignment="Left"
-                    VerticalAlignment="Center"
-                    RenderTransformOrigin="50%,50%"
-                    Margin="4,0,8,0">
-          <Viewbox x:Name="ClipboardHalfIcon" Width="12" Height="12" VerticalAlignment="Center" />
-          <TextBlock x:Name="ClipboardHalfText"
-                     VerticalAlignment="Center"
-                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                     FontSize="11"
-                     FontWeight="Medium"
-                     Foreground="#C8C8CC"
-                     MaxWidth="150"
-                     TextTrimming="CharacterEllipsis"
-                     Text="буфер" />
-        </StackPanel>
-       </Grid>
-      </Grid>
 
       <!-- Expanded single-row: icon | title/subtitle | badge | (system-stats expanded when SystemStats kind) -->
       <DockPanel x:Name="OverlayPanel"
@@ -390,4 +341,40 @@
                    IsVisible="False" />
     </Grid>
   </Border>
+
+    <!-- The goo ball. Sized and positioned from code (OverlayTokens.BlobD, ClipboardBlob):
+         the margin carries the home spot plus the clamped drag offset, the single
+         ScaleTransform carries the ClickPop of the detach. Hit-testable because the user has
+         to grab and click it — that is the ONE piece of the enlarged window that is. The row
+         inside stays on one line with CharacterEllipsis trimming: a ball is round, so text has
+         to be short by construction rather than reflowed. -->
+    <Border x:Name="Blob"
+            Width="64" Height="64"
+            CornerRadius="32"
+            Background="#080808"
+            BorderBrush="#28FFFFFF"
+            BorderThickness="1"
+            IsVisible="False"
+            IsHitTestVisible="True"
+            ClipToBounds="True"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            RenderTransformOrigin="50%,50%">
+      <StackPanel Orientation="Horizontal"
+                  Spacing="3"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center">
+        <Viewbox x:Name="BlobIcon" Width="13" Height="13" VerticalAlignment="Center" />
+        <TextBlock x:Name="BlobText"
+                   VerticalAlignment="Center"
+                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                   FontSize="9"
+                   FontWeight="Medium"
+                   Foreground="#C8C8CC"
+                   MaxWidth="26"
+                   TextTrimming="CharacterEllipsis"
+                   Text="буфер" />
+      </StackPanel>
+    </Border>
+  </Grid>
 </Window>

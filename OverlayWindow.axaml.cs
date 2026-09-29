@@ -72,36 +72,41 @@ public partial class OverlayWindow : Window
     private SystemSnapshot? _lastStats;
     // 1.12.2: the split half's preview cap lives in ClipboardHalfPreview.TextMaxChars —
     // truncating text is a tested rule now, not a constant hiding in the view.
-    /// <summary>1.12.2: set at press time — did this press start on the clipboard half?</summary>
-    private bool _pressOnClipboardHalf;
 
-    // 1.12.2 split half animation. The half has three independent transform writers and they
-    // are parked on three different elements so they cannot clobber each other:
-    //   · ClipboardHalfContent (orientation) → _halfRotate, RotateTransform −90° on a vertical edge
-    //   · ClipboardHalf        (breathe)      → _halfBreathe, on the CROSS axis
-    //                                        (Y horizontal / X vertical)
-    //   · ClipboardHalfMotion  (morph)        → _halfMorph, on the LONG axis
-    //                                        (X horizontal / Y vertical) + ScaleTransform
-    // The morph and the breathe are on different elements *and* on different axes, so no frame
-    // of one destroys the other on any of the four edges; see ApplySplitHalfMorph /
-    // ApplySplitHalfBreathe.
-    private readonly TranslateTransform _halfBreathe = new();
-    private readonly TranslateTransform _halfMorph = new();
-    private readonly ScaleTransform _halfScale = new(1, 1);
-    private readonly TransformGroup _halfTransforms = new();
-    private readonly RotateTransform _halfRotate = new(-90);
-    /// <summary>Wall clock for the breathe sine, started when the split goes idle.</summary>
-    private readonly Stopwatch _halfClock = new();
-    /// <summary>Split state the half is currently drawn for; the last settled value.</summary>
+    // 1.12.3 goo blob. See docs/superpowers/specs/2026-09-29--notifyisland-goo-blob.md.
+    // The ball has exactly ONE transform writer: a uniform scale for the ClickPop of the
+    // detach. Its position is NOT a transform — it is the Margin, recomputed from the home
+    // spot, the drag offset and the morph travel, because a layout-driven position keeps the
+    // bridge's arithmetic and the hit test reading the same number. The bridge has no
+    // transform at all: its outline is rebuilt from the capsule edge to the ball centre on
+    // every frame, so the two shapes cannot come apart.
+    private readonly ScaleTransform _blobScale = new(1, 1);
+    /// <summary>Wall clock for the ball's breathe sine, started when the blob goes idle.</summary>
+    private readonly Stopwatch _blobClock = new();
+    /// <summary>Split state the ball is currently drawn for; the last settled value.</summary>
     private bool _splitApplied;
-    /// <summary>0 = no split transition in flight, +1 = attaching, -1 = detaching.</summary>
-    private int _splitHalfDir;
+    /// <summary>0 = no blob transition in flight, +1 = detaching out, -1 = retracting.</summary>
+    private int _blobDir;
+    /// <summary>Ball offset from its home spot, already clamped to the BlobDragMaxPx disc.</summary>
+    private double _blobDragAlong, _blobDragCross;
+    private bool _blobDragging;
+    private Point _blobPressOrigin;
+    private double _blobDragStartAlong, _blobDragStartCross;
+    private double _blobOpacity;
+    /// <summary>Cross-axis breathe offset in DIP, written by the 200 ms tick.</summary>
+    private double _blobBreathe;
 
     // Explicit width/height morph (Avalonia Window Width Transitions are unreliable).
+    // _morphFrom/To are the CAPSULE sizes; _winFrom/To are the WINDOW sizes. They are two
+    // separate pairs on purpose: 1.12.3 leaves the capsule exactly the size the island wants
+    // and grows the window around it for the ball, so an attach is a pure window change that
+    // the capsule does not see. Both pairs ride the same eased progress, so the capsule and
+    // the window it lives in can never be out of step mid-morph.
     private readonly DispatcherTimer _morphTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
     private readonly Stopwatch _morphWatch = new();
     private bool _morphActive;
     private double _morphFromW, _morphFromH, _morphToW, _morphToH;
+    private double _winFromW, _winFromH, _winToW, _winToH;
     private int _morphDurationMs = OverlayTokens.MorphMs;
     private bool _morphInflate = true;
     private NotifyAppearStyle _morphAppear = NotifyAppearStyle.Inflate;
@@ -135,12 +140,9 @@ public partial class OverlayWindow : Window
         _pillTransforms.Children.Add(_pillScale);
         _pillTransforms.Children.Add(_pillTranslate);
         Pill.RenderTransform = _pillTransforms;
-        // 1.12.2: two transform owners on two elements — see the field docs.
-        _halfTransforms.Children.Add(_halfScale);
-        _halfTransforms.Children.Add(_halfMorph);
-        ClipboardHalfMotion.RenderTransform = _halfTransforms;
-        ClipboardHalf.RenderTransform = _halfBreathe;
-        ApplySplitHalfRest(attached: false);
+        // 1.12.3: the ball's only transform is the detach pop — see the field docs.
+        Blob.RenderTransform = _blobScale;
+        ApplyBlobRest(attached: false);
         _settings = AppSettings.Load();
         _settings.Normalize();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
@@ -170,6 +172,7 @@ public partial class OverlayWindow : Window
 
         EnableMorphTransitions();
         WirePointerClicks();
+        WireBlobPointer();
         ConfigureHoverPinFromSettings();
         SeedIcons();
         ApplyWeatherSide();
@@ -245,10 +248,10 @@ public partial class OverlayWindow : Window
             Paint();
             UpdateSecondsStrip();
             if (before != after || hoverChanged || splitBefore != splitAfter) ApplySize();
-            // 1.12.2 idle breathe of the waiting half. Reuses this 200 ms tick (the one that
-            // already expires the split) — a 2.4 s sine at 200 ms is 12 samples per period,
-            // smooth enough for a ±0.5 DIP drift, and it adds no timer.
-            ApplySplitHalfBreathe();
+            // 1.12.3 idle breathe of the ball. Reuses this 200 ms tick (the one that already
+            // expires the split) — a 2.4 s sine at 200 ms is 12 samples per period, smooth
+            // enough for a ±0.5 DIP drift, and it adds no timer.
+            ApplyBlobBreathe();
             var unread = _machine.UnreadCount;
             if (unread != _lastTrayUnread)
             {
@@ -368,6 +371,7 @@ public partial class OverlayWindow : Window
             Pill.BorderBrush = new SolidColorBrush(Color.Parse(
                 _hoverPin.IsPinned ? "#88FFFFFF" : "#55FFFFFF"));
             Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, Math.Min(1.0, _idleFillA + 0.06)));
+            SyncBlobFill();
             IslandSounds.Play(IslandSoundKind.Hover, _settings);
             OnPillHoverEnter();
         };
@@ -494,6 +498,26 @@ public partial class OverlayWindow : Window
     {
         _idleFillA = Math.Clamp(_settings.Opacity, 0.35, 1.0);
         Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, _idleFillA));
+        SyncBlobFill();
+    }
+
+    /// <summary>
+    /// 1.12.3: the ball and its bridge are painted in the capsule's own colours, so they have
+    /// to follow every brush change the capsule makes (palette, opacity slider, hover). The
+    /// bridge in particular is a plain filled Path with no reference to the capsule, so without
+    /// this it would stay the XAML default colour and the "one goo structure" reading would
+    /// break as soon as the user changed the capsule colour.
+    /// </summary>
+    private void SyncBlobFill()
+    {
+        Blob.Background = Pill.Background;
+        Blob.BorderBrush = Pill.BorderBrush;
+        BlobBridge.Fill = Pill.Background;
+        // The neck gets the capsule's outline too. It is the only thing separating the two
+        // shapes on a dark desktop: filled with the capsule colour it was literally the same
+        // value as the wallpaper behind it, so the connection was invisible and the pair read
+        // as two loose circles. The outline is what makes it one goo structure.
+        BlobBridge.Stroke = Pill.BorderBrush;
     }
 
     /// <summary>Apply user palette (capsule / accent / text) live from settings.</summary>
@@ -578,76 +602,36 @@ public partial class OverlayWindow : Window
         var vertical = IslandLayout.IsVertical(_settings.Orientation, _settings.Edge);
         CollapsedRow.Orientation = vertical ? Avalonia.Layout.Orientation.Vertical : Avalonia.Layout.Orientation.Horizontal;
         MinimalWeather.Orientation = vertical ? Avalonia.Layout.Orientation.Vertical : Avalonia.Layout.Orientation.Horizontal;
-        ApplyClipboardHalfLayout(vertical);
+        ApplyBlobAnchor(vertical);
     }
 
-    // -- 1.12.2 split half: orientation, hit test, cycle zones --------------------
+    // -- 1.12.3 goo blob: anchor, hit test, drag ---------------------------------------
 
     /// <summary>
-    /// True when the pill's long axis is its height (Left/Right edges). Everything about the
-    /// clipboard half keys off this one flag: the half is anchored along the long axis, the
-    /// hit test reads the long-axis coordinate, the cycle zones measure the long axis, and the
-    /// morph translates along it while the breathe drifts across it.
+    /// True when the capsule's long axis is its height (Left/Right edges). The ball's home
+    /// spot, its drag disc, the bridge geometry and the window growth all key off this one
+    /// flag: the long axis is X on Top/Bottom and Y on Left/Right.
     /// </summary>
     private bool SplitIsVertical => IslandLayout.IsVertical(_settings.Orientation, _settings.Edge);
 
     /// <summary>
-    /// Orient the clipboard half to the long axis. The markup carries the horizontal
-    /// (Top/Bottom) case; on Left/Right the long axis is the height, so the half becomes a
-    /// 30×200 block anchored at the *bottom* of the capsule, the divider turns into a
-    /// horizontal line across that same boundary, and the content row is rotated as a whole so
-    /// a 200-DIP run of text still fits the 30-DIP cross axis. The half's cross-axis size is
-    /// <see cref="OverlayTokens.CollapsedH"/> — the cross axis every split-capable kind keeps
-    /// (IslandLayout.SizeFor pins it), so the half can never draw outside the capsule.
-    /// Every number here comes from ClipboardSplit, not from the live Pill, so the first frame
-    /// of a split is already laid out correctly.
+    /// Pin the capsule to its corner of the enlarged window: Leading on the long axis (the
+    /// window only ever grows towards the ball) and Center on the cross axis (it grows evenly
+    /// both ways). This is the layout half of "the island does not move" — the other half is
+    /// IslandLayout.BlobWindowFor, which positions the window around the capsule. Together
+    /// they keep the capsule on the same screen pixels for the whole morph, not just at rest.
     /// </summary>
-    private void ApplyClipboardHalfLayout(bool vertical)
+    private void ApplyBlobAnchor(bool vertical)
     {
-        if (vertical)
-        {
-            ClipboardHalf.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
-            ClipboardHalf.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom;
-            ClipboardHalf.Width = OverlayTokens.CollapsedH;
-            ClipboardHalf.Height = OverlayTokens.ClipboardHalfW;
-        }
-        else
-        {
-            ClipboardHalf.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
-            ClipboardHalf.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
-            ClipboardHalf.Width = OverlayTokens.ClipboardHalfW;
-            ClipboardHalf.Height = OverlayTokens.CollapsedH;
-        }
-
-        // Divider: thickness and length from the same record the geometry tests pin. It sits at
-        // the half's near edge, so its margin is the constant NearMargin on the long axis.
-        var div = ClipboardSplit.DividerFor(vertical, PillLongAxisTarget(), CollapsedBaseLongAxis());
-        ClipboardHalfDivider.Margin = vertical
-            ? new Thickness(0, div.NearMargin, 0, 0)
-            : new Thickness(div.NearMargin, 0, 0, 0);
-        ClipboardHalfDivider.Width = vertical ? div.Cross : div.Thickness;
-        ClipboardHalfDivider.Height = vertical ? div.Thickness : div.Cross;
-        ClipboardHalfDivider.HorizontalAlignment = vertical
+        Pill.HorizontalAlignment = vertical
             ? Avalonia.Layout.HorizontalAlignment.Center
             : Avalonia.Layout.HorizontalAlignment.Left;
-        ClipboardHalfDivider.VerticalAlignment = vertical
+        Pill.VerticalAlignment = vertical
             ? Avalonia.Layout.VerticalAlignment.Top
             : Avalonia.Layout.VerticalAlignment.Center;
-
-        // Content: on a vertical edge the row is laid out at its natural 200×30 and rotated
-        // −90° about its centre, which lands it exactly inside the 30×200 half box. Centring
-        // the unrotated box first is what makes the rotation land centred rather than offset.
-        ClipboardHalfContent.RenderTransform = vertical ? _halfRotate : null;
-        ClipboardHalfContent.Width = vertical ? OverlayTokens.ClipboardHalfW : double.NaN;
-        ClipboardHalfContent.Height = vertical ? OverlayTokens.CollapsedH : double.NaN;
-        ClipboardHalfContent.HorizontalAlignment = vertical
-            ? Avalonia.Layout.HorizontalAlignment.Center
-            : Avalonia.Layout.HorizontalAlignment.Stretch;
-        ClipboardHalfContent.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
-        ClipboardHalfContent.Margin = vertical ? new Thickness(0) : new Thickness(4, 0, 10, 0);
     }
 
-    /// <summary>Pill's current long-axis extent: the height on a vertical edge, else the width.</summary>
+    /// <summary>Capsule's current long-axis extent: the height on a vertical edge, else the width.</summary>
     private double PillLongAxis()
     {
         var b = Pill.Bounds;
@@ -655,64 +639,82 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// The long axis the settled pill will have, split included — the counterpart of
-    /// <see cref="PillLongAxis"/> for when the capsule is not mid-morph. Only
-    /// <see cref="ClipboardSplit.DividerFrame.NearMargin"/>, <c>Cross</c> and <c>Thickness</c>
-    /// are consumed from the divider frame, and none of them depend on the seconds/peek
-    /// inflation ApplySize adds on top, so those extras are deliberately not folded in here.
-    /// </summary>
-    private double PillLongAxisTarget()
-    {
-        var snap = _machine.Snapshot();
-        var batteryChip = _settings.ShowBatteryInCollapsed
-            && _lastPower is { HasBattery: true }
-            && snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed;
-        var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation,
-            _settings.Edge, batteryChip, _machine.StatsMetricCount, _machine.StatsRowCount,
-            snap.IsSplitClipboard);
-        return SplitIsVertical ? h : w;
-    }
-
-    /// <summary>
-    /// Extent of the island's own half along the long axis. Without a split that is the whole
-    /// pill; with a split it stops at the half boundary
-    /// (<see cref="ClipboardSplit.IslandHalfExtent"/>), which is what the ⅓/⅓/⅓ cycle zones
-    /// are measured against. Identical arithmetic on both orientations, so the zones do not
-    /// move when the pill splits.
+    /// Extent of the island along the long axis, which is what the ⅓/⅓/⅓ clipboard cycle
+    /// zones are measured against. In 1.12.2 the capsule grew by a half and the zones had to
+    /// stop at the divider; in 1.12.3 the capsule IS the island again (the clipboard moved out
+    /// into the ball, which lives in the window around it), so the island's extent is simply
+    /// the capsule's own length and the zones cannot move when the blob attaches.
     /// </summary>
     private double IslandHalfExtent()
     {
         var longAxis = PillLongAxis();
-        if (longAxis <= 0) return OverlayTokens.CollapsedW;
-        return ClipboardSplit.IslandHalfExtent(SplitIsVertical, _machine.IsSplitClipboard,
-            longAxis, CollapsedBaseLongAxis());
+        return longAxis > 0 ? longAxis : OverlayTokens.CollapsedW;
     }
 
-    /// <summary>Collapsed-pill long axis without the clipboard half, from the same tokens G1 uses.</summary>
-    private double CollapsedBaseLongAxis()
+    /// <summary>Wire the ball's own press/move/release. The bridge is not wired: it belongs to
+    /// the ball's drag, and a hit area that follows the ball would swallow clicks meant for
+    /// the desktop between the two shapes.</summary>
+    private void WireBlobPointer()
     {
-        var snap = _machine.Snapshot();
-        var batteryChip = _settings.ShowBatteryInCollapsed
-            && _lastPower is { HasBattery: true }
-            && snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed;
-        var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation,
-            _settings.Edge, batteryChip, _machine.StatsMetricCount, _machine.StatsRowCount);
-        return SplitIsVertical ? h : w;
+        Blob.PointerPressed += OnBlobPointerPressed;
+        Blob.PointerMoved += OnBlobPointerMoved;
+        Blob.PointerReleased += OnBlobPointerReleased;
+        Blob.PointerCaptureLost += (_, _) => _blobDragging = false;
     }
 
-    /// <summary>
-    /// 1.12.2: does a press land on the clipboard half? Reads the coordinate on the pill's long
-    /// axis — X on Top/Bottom, Y on Left/Right — and compares it against
-    /// <see cref="ClipboardSplit.ClipboardHalfStart"/>, the very boundary the half's markup is
-    /// anchored to. Render and hit test therefore share one function and cannot disagree.
-    /// </summary>
-    private bool IsInClipboardHalf(Point pos)
+    private void OnBlobPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (!_machine.IsSplitClipboard) return false;
-        var longAxis = PillLongAxis();
-        if (longAxis <= 0) return false;
-        return ClipboardSplit.IsInHalf(SplitIsVertical,
-            SplitIsVertical ? pos.Y : pos.X, longAxis, CollapsedBaseLongAxis());
+        var props = e.GetCurrentPoint(this).Properties;
+        if (props.IsRightButtonPressed)
+        {
+            OpenContextMenu();
+            e.Handled = true;
+            return;
+        }
+
+        if (!props.IsLeftButtonPressed) return;
+
+        _blobPressOrigin = e.GetPosition(this);
+        _blobDragStartAlong = _blobDragAlong;
+        _blobDragStartCross = _blobDragCross;
+        _blobDragging = true;
+        // Same capture as the capsule: the drag must survive the pointer leaving the ball,
+        // which it always does as soon as it moves by more than the ball's own radius.
+        e.Pointer.Capture(Blob);
+        e.Handled = true;
+    }
+
+    private void OnBlobPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_blobDragging) return;
+        var pos = e.GetPosition(this);
+        // Circular clamp, not per-axis: a per-axis clamp would let a diagonal drag reach
+        // BlobDragMaxPx·√2 ≈ 141 DIP and the ball would be clipped by the window edge,
+        // because the window only reserves BlobDragMaxPx in every direction.
+        (_blobDragAlong, _blobDragCross) = ClipboardBlob.ClampOffset(
+            _blobDragStartAlong + (pos.X - _blobPressOrigin.X),
+            _blobDragStartCross + (pos.Y - _blobPressOrigin.Y),
+            OverlayTokens.BlobDragMaxPx);
+        UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
+        e.Handled = true;
+    }
+
+    private void OnBlobPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_blobDragging) return;
+        _blobDragging = false;
+        e.Pointer.Capture(null);
+
+        var pos = e.GetPosition(this);
+        var dx = pos.X - _blobPressOrigin.X;
+        var dy = pos.Y - _blobPressOrigin.Y;
+        // The capsule's own click threshold, so "dragged" and "clicked" cannot be confused.
+        var dist = Math.Sqrt(dx * dx + dy * dy);
+        e.Handled = true;
+        if (dist > OverlayTokens.ClickMaxPx) return;
+        // Past a drag the ball simply stays where it was dropped; ApplyBlobRest resets the
+        // offset when the blob detaches, so the home spot is always the resting definition.
+        HandleBlobClick();
     }
 
     /// <summary>Clicks only (1.8.1). Swipe L/R/U/D cycle/collapse removed — CycleNext/Prev remain for API/tests/demo.</summary>
@@ -736,10 +738,10 @@ public partial class OverlayWindow : Window
         if (!props.IsLeftButtonPressed) return;
 
         _pressOrigin = e.GetPosition(this);
-        // 1.12.2: both halves are one Border, so the branch is decided once at press time from
-        // the long-axis coordinate against the half boundary — the release handler then acts on
-        // that decision.
-        _pressOnClipboardHalf = IsInClipboardHalf(_pressOrigin);
+        // 1.12.3: no half to disambiguate any more — the capsule is the island again and the
+        // ball is a separate element with its own handlers, so a press here is always the
+        // island's. The two hit regions cannot overlap: the capsule is anchored to the
+        // window's leading corner and the ball lives beyond its far edge.
         _pressing = true;
         _pressWatch.Restart();
         e.Pointer.Capture(Pill);
@@ -763,20 +765,10 @@ public partial class OverlayWindow : Window
         // Clicks only — any drag beyond ClickMaxPx is ignored (no swipe cycle / expand / collapse).
         if (dist <= OverlayTokens.ClickMaxPx)
         {
-            // 1.12.2: a press that started on the clipboard half acts on the half, whatever the
-            // release position is; right-click still short-circuits into the context menu in Press.
-            if (_pressOnClipboardHalf)
-            {
-                HandleClipboardHalfClick();
-                e.Handled = true;
-                return;
-            }
-
-            // Position on the pill's long axis relative to the island half's leading edge
-            // (the pill's own edge, 0) so the ⅓/⅓/⅓ clipboard-cycle zones keep their
-            // collapsed-pill positions once the pill grows by a half. zoneExtent is the island
-            // half's length, so `third` is 170/3 and not 370/3 — without both halves of this
-            // the zones would slide outboard on split. Same numbers on both orientations.
+            // Position on the capsule's long axis relative to its leading edge (0) so the
+            // ⅓/⅓/⅓ clipboard-cycle zones keep their collapsed-pill positions. Since 1.12.3
+            // the capsule never grows, so zoneExtent is just the capsule's own length and the
+            // zones cannot slide outboard when the blob attaches.
             var zoneExtent = IslandHalfExtent();
             var zonePos = SplitIsVertical ? pos.Y : pos.X;
 
@@ -814,31 +806,19 @@ public partial class OverlayWindow : Window
     private void ResetPressState()
     {
         _pressing = false;
-        _pressOnClipboardHalf = false;
     }
 
     /// <summary>
-    /// 1.12.2: click on the clipboard half runs the user's ClipboardClickAction —
-    /// Dismiss just drops the half, DismissAndClear also empties the system clipboard —
-    /// then the island repaints at its collapsed width.
+    /// 1.12.3: click on the ball. It must NOT fall through to the idle-pill click: the ball is
+    /// a sibling of the capsule, not a child, and the press/release pair is handled and marked
+    /// here, so HandleIdlePillClick is never reached and the island stays open.
+    /// The history panel itself is the next stage (spec §«Панель истории»); until it exists
+    /// the click is logged and acknowledged so the wiring is live and observable.
     /// </summary>
-    private void HandleClipboardHalfClick()
+    private void HandleBlobClick()
     {
-        _machine.DismissSplitClipboard();
-        if (_settings.ClipboardClickAction == ClipboardClickAction.DismissAndClear)
-        {
-            // WriteText("") opens the clipboard, EmptyClipboard()s it and writes nothing — the
-            // paranoia mode the setting asks for. No paste, no focus change.
-            var cleared = WindowsClipboardWriter.WriteText("");
-            AppLog.Info($"Clipboard half clicked: action={_settings.ClipboardClickAction}, cleared={cleared}");
-        }
-        else
-        {
-            AppLog.Info("Clipboard half clicked: action=Dismiss");
-        }
+        AppLog.Info("Blob click: open clipboard history");
         IslandSounds.Play(IslandSoundKind.Hover, _settings);
-        ApplySize();
-        Paint();
     }
 
     private void OpenContextMenu()
@@ -1004,6 +984,9 @@ public partial class OverlayWindow : Window
         // Hide without closing — keep tray/settings alive
         Opacity = _settings.IslandVisible ? 1 : 0;
         IsHitTestVisible = _settings.IslandVisible;
+        // 1.12.3: the window is much bigger than the capsule, so hit-testing is decided by the
+        // root container (see the XAML comment) and has to follow island visibility too.
+        Root.IsHitTestVisible = _settings.IslandVisible;
         ShowInTaskbar = false;
         if (_settings.IslandVisible)
         {
@@ -1215,27 +1198,27 @@ public partial class OverlayWindow : Window
     {
         var snap = _machine.Snapshot();
         ApplyOrientationLayout();
-        // 1.12.2: does this call carry a split attach/detach? Both routes into a changed
-        // IsSplitClipboard — the DismissSplitClipboard command (HandleClipboardHalfClick)
-        // and the half's own expiry in OverlayMachine.Tick — land here, because both callers
-        // follow the dispatch with ApplySize. The capsule size itself morphs through the
-        // normal StartMorph path below (SizeFor already reports the split long axis), so
-        // nothing extra is needed for the pill; what is needed is the direction for the half's
-        // own motion, which is recorded here and consumed per-frame in ApplySplitHalfMorph.
+        // 1.12.3: does this call carry a blob attach/retract? Both routes into a changed
+        // IsSplitClipboard — the machine's own expiry in OverlayMachine.Tick and the capture
+        // command — land here, because both callers follow the dispatch with ApplySize. The
+        // capsule size morphs through the normal StartMorph path below; what is recorded here
+        // is the DIRECTION, which drives the ball's own travel and scale per frame in
+        // ApplyBlobMorph. The window size target is derived separately, below.
         if (snap.IsSplitClipboard != _splitApplied)
         {
-            _splitHalfDir = snap.IsSplitClipboard ? 1 : -1;
+            _blobDir = snap.IsSplitClipboard ? 1 : -1;
             _splitApplied = snap.IsSplitClipboard;
-            _halfClock.Restart();
+            _blobClock.Restart();
         }
         var batteryChip = _settings.ShowBatteryInCollapsed
             && _lastPower is { HasBattery: true }
             && snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed;
-        // 1.12.2: splitClipboard grows the long axis by ClipboardHalfW so the pill reaches
-        // 370 DIP and the half's right-anchored markup lands exactly at the boundary.
+        // 1.12.3: the capsule is the island again — SizeFor is asked for the plain island size
+        // and NOT for the split long axis. The clipboard no longer takes a compartment of the
+        // pill; it lives in the ball, in the window around it. This is what makes the whole
+        // rest of the island (click zones, seconds strip, hit test) work off the capsule again.
         var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation,
-            _settings.Edge, batteryChip, _machine.StatsMetricCount, _machine.StatsRowCount,
-            snap.IsSplitClipboard);
+            _settings.Edge, batteryChip, _machine.StatsMetricCount, _machine.StatsRowCount);
         if (snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed)
         {
             var peek = _hoverPin.IsContentExpanded;
@@ -1246,51 +1229,75 @@ public partial class OverlayWindow : Window
                 w += OverlayTokens.IdlePeekExtraW;
         }
 
+        // The window is a separate target: with a blob it must be big enough for the ball and
+        // its whole drag disc, and it follows the NEW split state while the capsule target
+        // above does not — that is what makes an attach a window-only morph.
+        var (winToW, winToH) = WindowFor(snap.IsSplitClipboard, w, h);
+
         // If width is morphing, measure from the settled base so we don't spuriously morph.
-        var fromW = Pill.Width > 0 ? Pill.Width : Width;
-        var fromH = Pill.Height > 0 ? Pill.Height : Height;
+        var fromW = Pill.Width > 0 ? Pill.Width : w;
+        var fromH = Pill.Height > 0 ? Pill.Height : h;
         if (fromW <= 0) fromW = w;
         if (fromH <= 0) fromH = h;
+        var winFromW = Width > 0 ? Width : winToW;
+        var winFromH = Height > 0 ? Height : winToH;
 
-        var same = Math.Abs(fromW - w) < 0.5 && Math.Abs(fromH - h) < 0.5;
-        var inflate = (w * h) >= (fromW * fromH);
+        var same = Math.Abs(fromW - w) < 0.5 && Math.Abs(fromH - h) < 0.5
+                   && Math.Abs(winFromW - winToW) < 0.5 && Math.Abs(winFromH - winToH) < 0.5;
+        // Inflate is decided on whichever of the two grew: with a blob attach the capsule does
+        // not move at all and only the window does, and that has to count as an inflate.
+        var inflate = (w * h) >= (fromW * fromH) || (winToW * winToH) >= (winFromW * winFromH);
         var morphSpeed = AnimationTiming.Effective(
             _settings.AnimationSpeed,
             inflate ? _settings.AnimMorphInflate : _settings.AnimMorphCollapse);
         if (same || !AnimationTiming.IsEnabled(morphSpeed) || !IsVisible)
         {
-            // No morph will run, so nothing will ever consume _splitHalfDir. Settle the half
-            // to its defined resting state here instead of leaving it mid-animation.
+            // No morph will run, so nothing will ever consume _blobDir. Settle the ball to its
+            // defined resting state here instead of leaving it mid-animation.
             StopMorph(snapToTarget: false);
             ResetMorphVisuals();
-            SettleSplitHalf();
+            SettleBlob();
             SetSizeImmediate(w, h);
             return;
         }
 
         var enteringNotify = inflate && snap.Kind == OverlayKind.Notification;
         var leavingNotify = !inflate && _prevKind == OverlayKind.Notification;
-        StartMorph(fromW, fromH, w, h, morphSpeed, inflate, enteringNotify, leavingNotify);
+        StartMorph(fromW, fromH, w, h, winFromW, winFromH, winToW, winToH,
+            morphSpeed, inflate, enteringNotify, leavingNotify);
     }
+
+    /// <summary>Window size for a capsule of <paramref name="w"/>×<paramref name="h"/>.</summary>
+    private (double Width, double Height) WindowFor(bool withBlob, double w, double h) =>
+        withBlob ? ClipboardBlob.WindowFor(SplitIsVertical, w, h) : (w, h);
 
     private void SetSizeImmediate(double w, double h)
     {
-        Width = w;
-        Height = h;
+        // The capsule keeps its own size; only the window around it grows. PlaceIsland() then
+        // re-seats the window so the capsule lands on the same screen pixels either way.
         Pill.Width = w;
         Pill.Height = h;
         Pill.CornerRadius = new CornerRadius(Math.Min(w, h) / 2);
+        var (ww, wh) = WindowFor(_splitApplied || _blobDir != 0, w, h);
+        Width = ww;
+        Height = wh;
+        if (_blobDir == 0) UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
         PlaceIsland();
     }
 
     private void StartMorph(
         double fromW, double fromH, double toW, double toH,
+        double winFromW, double winFromH, double winToW, double winToH,
         AnimationSpeed morphSpeed, bool inflate, bool enteringNotify, bool leavingNotify)
     {
         _morphFromW = fromW;
         _morphFromH = fromH;
         _morphToW = toW;
         _morphToH = toH;
+        _winFromW = winFromW;
+        _winFromH = winFromH;
+        _winToW = winToW;
+        _winToH = winToH;
         _morphInflate = inflate;
         _morphUsesNotifyStyle = enteringNotify || leavingNotify;
         _morphAppear = ResolveAppearStyle(enteringNotify);
@@ -1314,6 +1321,8 @@ public partial class OverlayWindow : Window
         {
             _morphFromW = Pill.Width > 0 ? Pill.Width : fromW;
             _morphFromH = Pill.Height > 0 ? Pill.Height : fromH;
+            _winFromW = Width > 0 ? Width : winFromW;
+            _winFromH = Height > 0 ? Height : winFromH;
         }
         else
         {
@@ -1429,8 +1438,12 @@ public partial class OverlayWindow : Window
 
         var cw = Math.Max(20, _morphFromW + (_morphToW - _morphFromW) * widthT);
         var ch = Math.Max(8, _morphFromH + (_morphToH - _morphFromH) * widthT);
-        Width = cw;
-        Height = ch;
+        // The window follows its own pair on the SAME eased progress, so a frame never shows a
+        // window and a capsule that were computed from different points in the animation.
+        var ww = Math.Max(20, _winFromW + (_winToW - _winFromW) * widthT);
+        var wh = Math.Max(8, _winFromH + (_winToH - _winFromH) * widthT);
+        Width = ww;
+        Height = wh;
         Pill.Width = cw;
         Pill.Height = ch;
         Pill.CornerRadius = new CornerRadius(Math.Min(cw, ch) / 2);
@@ -1441,86 +1454,197 @@ public partial class OverlayWindow : Window
         {
             StopMorph(snapToTarget: false);
             ResetMorphVisuals();
-            // A split morph that just finished must land on the half's resting values, not on
-            // the last frame's translate/opacity/scale. Detach also clears the direction so
-            // the next split starts from HalfFor(0, entering: true).
-            SettleSplitHalf();
+            // A blob morph that just finished must land on the ball's resting values, not on
+            // the last frame's scale/opacity. Settling also clears the direction so the next
+            // attach starts from the capsule's centre again.
+            SettleBlob();
             SetSizeImmediate(_morphToW, _morphToH);
         }
     }
 
-    // -- 1.12.2 split half animation -------------------------------------------------
+    // -- 1.12.3 goo blob animation and geometry -----------------------------------------
 
     /// <summary>
-    /// Per-frame half motion. <see cref="_splitHalfDir"/> is 0 unless this morph is carrying
-    /// a split attach (+1) or detach (-1), so an unrelated morph (notify appear, hover peek)
-    /// leaves the half completely alone. No new timer: this rides the existing 16 ms morph
-    /// tick and shares its clock.
+    /// Per-frame ball motion. <see cref="_blobDir"/> is 0 unless this morph is carrying a blob
+    /// attach (+1) or retract (-1), so an unrelated morph (notify appear, hover peek) leaves
+    /// the ball alone. No new timer: this rides the existing 16 ms morph tick.
+    ///
+    /// <paramref name="travel"/> is 0 = ball at the capsule's own centre, 1 = ball at its home
+    /// spot; the caller derives it from the ClickPop curve so the ball overshoots its home and
+    /// settles back, and the bridge is rebuilt from the capsule edge to wherever the ball
+    /// currently is — that is what makes the pair look welded together at every frame instead
+    /// of only at the ends.
     /// </summary>
-    private void ApplySplitHalfMorph(double t)
+    private void ApplyBlobMorph(double t)
     {
-        if (_splitHalfDir == 0) return;
-        var f = ClipboardSplit.HalfFor(t, entering: _splitHalfDir > 0);
-        // Morph-owned transform: translate along the long axis + uniform scale. The long axis
-        // is X on Top/Bottom and Y on Left/Right; the cross axis is explicitly held at 0 here
-        // so the breathe on the parent element survives this frame on either edge.
-        if (SplitIsVertical) { _halfMorph.Y = f.Translate; _halfMorph.X = 0; }
-        else { _halfMorph.X = f.Translate; _halfMorph.Y = 0; }
-        _halfScale.ScaleX = f.Scale;
-        _halfScale.ScaleY = f.Scale;
-        // A detaching half must stay visible for the whole morph or the collapse reads as a
-        // snap; Paint() will hide it once the direction clears in SettleSplitHalf.
-        ClipboardHalf.IsVisible = true;
-        ClipboardHalf.Opacity = f.Opacity;
+        if (_blobDir == 0) return;
+        var entering = _blobDir > 0;
+        // The ball is invisible for the first ClipboardHalfFadeDelay of the morph: the window
+        // is already growing there, so holding the ball back makes it read as catching up with
+        // the island rather than appearing in lockstep with it.
+        var p = entering
+            ? Math.Clamp((t - OverlayTokens.ClipboardHalfFadeDelay) /
+                         (1.0 - OverlayTokens.ClipboardHalfFadeDelay), 0.0, 1.0)
+            : Math.Clamp(t / (1.0 - OverlayTokens.ClipboardHalfFadeDelay), 0.0, 1.0);
+        // ClickPop peaks above 1; remap its 1..peak range onto 0..1 so the overshoot becomes a
+        // nudge past the home spot on the travel axis instead of a change of size.
+        var pop = AnimationEasing.ClickPop(p);
+        var eased = (pop - 1.0) / (OverlayTokens.ClipboardHalfPopPeak - 1.0);
+        var travel = entering ? eased : 1.0 - eased;
+        var opacity = entering
+            ? Math.Clamp(p / 0.2, 0.0, 1.0)
+            : 1.0 - Math.Clamp(p, 0.0, 1.0);
+        UpdateBlobVisual(travel, opacity);
+        // A retracting ball must stay visible for the whole morph or the collapse reads as a
+        // snap; SettleBlob hides it once the direction clears.
+        Blob.IsVisible = true;
+        BlobBridge.IsVisible = opacity > 0.01;
+        _blobScale.ScaleX = _blobScale.ScaleY = entering ? pop : 2.0 - pop;
     }
 
     /// <summary>
-    /// Land the half on its defined resting state and clear the transition. Attached →
-    /// <see cref="ClipboardSplit.Resting"/>; detached → <see cref="ClipboardSplit.Detached"/>
-    /// with the element hidden. This is the only place a split morph is allowed to end, which
-    /// is what guarantees no residual offset survives into the next split.
+    /// Land the ball on its defined resting state and clear the transition. Attached → ball at
+    /// its home spot, visible, bridge drawn; detached → hidden. This is the only place a blob
+    /// morph is allowed to end, which is what guarantees no residual offset, scale or drag
+    /// survives into the next attach.
     /// </summary>
-    private void SettleSplitHalf()
+    private void SettleBlob()
     {
-        if (_splitHalfDir == 0 && _splitApplied) return;
-        ApplySplitHalfRest(_splitApplied);
-        _splitHalfDir = 0;
-        _halfClock.Restart();
+        if (_blobDir == 0 && _splitApplied) return;
+        ApplyBlobRest(_splitApplied);
+        _blobDir = 0;
+        _blobClock.Restart();
     }
 
-    /// <summary>Write one well-defined resting frame, from Core, onto both transform owners.</summary>
-    private void ApplySplitHalfRest(bool attached)
+    /// <summary>Write one well-defined resting frame of the ball and its bridge.</summary>
+    private void ApplyBlobRest(bool attached)
     {
-        var f = attached ? ClipboardSplit.Resting : ClipboardSplit.Detached;
-        // Translate is 0 in both resting states, but both axes are cleared explicitly: which
-        // of them is the long one depends on the edge, and a stale value on the other axis
-        // would show up as a half that lands off-centre after an edge change.
-        _halfMorph.X = f.Translate;
-        _halfMorph.Y = f.Translate;
-        _halfScale.ScaleX = f.Scale;
-        _halfScale.ScaleY = f.Scale;
-        _halfBreathe.X = 0;
-        _halfBreathe.Y = 0;
-        ClipboardHalf.IsVisible = attached;
-        ClipboardHalf.Opacity = f.Opacity;
+        _blobScale.ScaleX = 1;
+        _blobScale.ScaleY = 1;
+        // The home spot is the resting definition, so a drag offset never outlives the blob —
+        // a re-attach always brings the ball back to exactly where the geometry says it goes.
+        _blobDragAlong = 0;
+        _blobDragCross = 0;
+        _blobOpacity = attached ? 1.0 : 0.0;
+        _blobBreathe = 0;
+        Blob.IsVisible = attached;
+        BlobBridge.IsVisible = attached;
+        if (attached) UpdateBlobVisual(travel: 1.0, opacity: 1.0);
+        else BlobBridge.Data = null;
     }
 
     /// <summary>
     /// Idle breathe, called from the existing 200 ms tick — the same tick that already drives
-    /// the split's own expiry, so no timer is added. It writes only
-    /// <see cref="_halfBreathe"/> (the parent <c>ClipboardHalf</c>) and only on the cross axis:
-    /// Y on a horizontal pill, X on a vertical one, with the other held at 0. The morph writes
-    /// the long axis on a *different* element, so the two can never collide on any edge.
-    /// Suppressed while any morph is running: the half is not idle-waiting during a split or
-    /// collapse, and a 200 ms sine step during a 420 ms morph would fight it.
+    /// the split's own expiry, so no timer is added. ±<see cref="OverlayTokens.ClipboardHalfBreathePx"/>
+    /// DIP across the short axis, on the sine ClipboardSplit already owns. Suppressed while a
+    /// morph runs: the ball is mid-travel then, and a 200 ms step would fight the morph.
     /// </summary>
-    private void ApplySplitHalfBreathe()
+    private void ApplyBlobBreathe()
     {
-        if (!_splitApplied || _splitHalfDir != 0 || _morphActive) return;
-        var offset = ClipboardSplit.CrossBreatheOffset((int)_halfClock.ElapsedMilliseconds);
-        if (SplitIsVertical) { _halfBreathe.X = offset; _halfBreathe.Y = 0; }
-        else { _halfBreathe.Y = offset; _halfBreathe.X = 0; }
+        if (!_splitApplied || _blobDir != 0 || _morphActive) return;
+        _blobBreathe = ClipboardSplit.CrossBreatheOffset((int)_blobClock.ElapsedMilliseconds);
+        UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
     }
+
+    /// <summary>
+    /// Put the ball and the bridge where they belong for a given travel fraction. The single
+    /// place that knows the ball's coordinates, shared by the morph, the drag and the breathe,
+    /// so render and hit test cannot drift apart.
+    ///
+    /// The ball's centre is <see cref="ClipboardBlob.BlobHomeAlong"/> from the capsule's
+    /// trailing edge plus the clamped drag offset; on the cross axis it sits on the capsule's
+    /// centre line (the window grows evenly around that line, so the two agree), which is also
+    /// why the drag clamp is a disc and not a box.
+    /// </summary>
+    private void UpdateBlobVisual(double travel, double opacity)
+    {
+        var vertical = SplitIsVertical;
+        var capsuleLong = vertical ? Pill.Height : Pill.Width;
+        var capsuleCross = vertical ? Pill.Width : Pill.Height;
+        if (capsuleLong <= 0 || capsuleCross <= 0) return;
+
+        _blobOpacity = opacity;
+        var homeAlong = ClipboardBlob.BlobHomeAlong(capsuleLong);
+        // The cross coordinate is measured from the WINDOW's edge, not the capsule's: the
+        // window grew evenly around the capsule's cross centre (see IslandLayout.BlobWindowFor
+        // and ApplyBlobAnchor), so the capsule's centre line sits at windowCross / 2 and not
+        // at capsuleCross / 2. Measuring from the capsule instead put the ball a full
+        // (windowCross - capsuleCross) / 2 too high — far enough to push it off the top of
+        // the screen, which is exactly what the first live run showed.
+        var windowCross = vertical ? Width : Height;
+        var capsuleCentre = windowCross / 2;
+        var cross = capsuleCentre + _blobDragCross + _blobBreathe;
+        // travel 0 starts the ball at the capsule's own centre, so it grows out of the island
+        // rather than sliding in from the side; travel 1 is the home spot plus the drag.
+        var along = (capsuleLong / 2) * (1.0 - travel) + (homeAlong + _blobDragAlong) * travel;
+
+        var x = vertical ? cross : along;
+        var y = vertical ? along : cross;
+        Blob.Margin = new Thickness(x - OverlayTokens.BlobD / 2, y - OverlayTokens.BlobD / 2, 0, 0);
+        Blob.Opacity = opacity;
+        UpdateBlobBridge(vertical, capsuleLong, capsuleCross, along, cross, opacity);
+    }
+
+    /// <summary>
+    /// Rebuild the bridge outline between the capsule's leading edge and the ball's centre.
+    ///
+    /// Continuity is structural, not animated: one end sits 2 DIP INSIDE the capsule and the
+    /// other end is the ball's centre, and both are drawn under the capsule and the ball, so
+    /// there is no frame on which either end can be seen. The half-widths come from
+    /// <see cref="ClipboardBlob.BridgeHalfAt"/> (wide at the capsule, narrow at the ball) and
+    /// stay positive at both ends, which is what makes the two read as one goo structure
+    /// rather than a bar floating between two circles. Rebuilt from code, not declared in
+    /// XAML, because the endpoints are the same numbers the ball is placed from.
+    /// </summary>
+    private void UpdateBlobBridge(
+        bool vertical, double capsuleLong, double capsuleCross, double along, double cross, double opacity)
+    {
+        const double inset = 2.0;
+        // Both endpoints are window coordinates: the long axis starts at the capsule's own
+        // leading edge (the window only grows towards the ball), the cross axis is the
+        // window's centre line, where the centred capsule sits. Measuring the cross end
+        // from the capsule height instead would start the neck above the ball and the two
+        // would visibly come apart at the top of the screen.
+        var sx = capsuleLong - inset;
+        var sy = (vertical ? Width : Height) / 2;
+        var dx = along - sx;
+        var dy = cross - sy;
+        var len = Math.Sqrt(dx * dx + dy * dy);
+        if (len < 0.5 || opacity <= 0.01)
+        {
+            // Degenerate: the ball is still inside the capsule, so there is no neck to draw.
+            BlobBridge.Data = null;
+            BlobBridge.IsVisible = false;
+            return;
+        }
+
+        // Unit perpendicular to the bridge, used to give each end its own half-width.
+        var px = -dy / len;
+        var py = dx / len;
+        var h0 = ClipboardBlob.BridgeHalfAt(0);
+        var h1 = ClipboardBlob.BridgeHalfAt(1);
+        var a = ToWindow(vertical, sx + px * h0, sy + py * h0);
+        var b = ToWindow(vertical, sx - px * h0, sy - py * h0);
+        var c = ToWindow(vertical, along - px * h1, cross - py * h1);
+        var d = ToWindow(vertical, along + px * h1, cross + py * h1);
+
+        var geo = new StreamGeometry();
+        using (var ctx = geo.Open())
+        {
+            ctx.BeginFigure(a, isFilled: true);
+            ctx.LineTo(b);
+            ctx.LineTo(c);
+            ctx.LineTo(d);
+            ctx.EndFigure(isClosed: true);
+        }
+        BlobBridge.Data = geo;
+        BlobBridge.Opacity = opacity;
+        BlobBridge.IsVisible = true;
+    }
+
+    /// <summary>Along/cross coordinates to window X/Y, swapping on a vertical island.</summary>
+    private static Point ToWindow(bool vertical, double along, double cross) =>
+        vertical ? new Point(cross, along) : new Point(along, cross);
 
     private static (double widthT, double auxT) AppearProgress(double t, NotifyAppearStyle style) => style switch
     {
@@ -1541,14 +1665,14 @@ public partial class OverlayWindow : Window
     };
 
     /// <summary>
-    /// 1.12.2: the split half's own motion, driven from the same morph <c>t</c> as the pill
-    /// width so the capsule growing and the half arriving are one movement. Runs before the
-    /// notify-style branch because a split morph is not a notify morph — the half must
+    /// 1.12.3: the ball's own motion, driven from the same morph <c>t</c> as the capsule and
+    /// the window so the island growing and the ball leaving it are one movement. Runs before
+    /// the notify-style branch because a blob morph is not a notify morph — the ball must
     /// animate for both, and the early return below would otherwise skip it.
     /// </summary>
     private void ApplyMorphAux(double auxT, double rawT)
     {
-        ApplySplitHalfMorph(rawT);
+        ApplyBlobMorph(rawT);
         if (!_morphUsesNotifyStyle)
         {
             Pill.Opacity = 1;
@@ -1629,11 +1753,25 @@ public partial class OverlayWindow : Window
         if (screen is null) return;
         var wa = screen.WorkingArea;
         var scale = RenderScaling <= 0 ? 1 : RenderScaling;
-        var pw = (int)Math.Round(Width * scale);
-        var ph = (int)Math.Round(Height * scale);
+        // 1.12.3: with a blob the WINDOW is much larger than the capsule, but everything the
+        // island is — the edge anchor, the user's offsets, the click zones, the hit region — is
+        // defined against the CAPSULE. So Place() is still given the capsule's pixel size, and
+        // the window is then re-seated around that spot by BlobWindowFor. Doing it the other
+        // way round (placing the window and letting the capsule ride along) is what would make
+        // the island jump sideways every time the ball attached. This runs on every morph
+        // frame, so the capsule holds its screen position during the morph too, not just at
+        // rest.
+        var homePw = (int)Math.Round((Pill.Width > 0 ? Pill.Width : Width) * scale);
+        var homePh = (int)Math.Round((Pill.Height > 0 ? Pill.Height : Height) * scale);
         var (x, y) = IslandLayout.Place(
-            wa.X, wa.Y, wa.Width, wa.Height, pw, ph,
+            wa.X, wa.Y, wa.Width, wa.Height, homePw, homePh,
             _settings.Edge, _settings.OffsetX, _settings.OffsetY);
+        if (_splitApplied || _blobDir != 0)
+        {
+            var winPw = (int)Math.Round(Width * scale);
+            var winPh = (int)Math.Round(Height * scale);
+            (x, y) = IslandLayout.BlobWindowFor(SplitIsVertical, x, y, homePw, homePh, winPw, winPh);
+        }
         Position = new PixelPoint(x, y);
         Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
     }
@@ -1650,49 +1788,17 @@ public partial class OverlayWindow : Window
         OverlayPanel.IsVisible = overlayOn && kind != OverlayKind.SystemStats;
         CollapsedRow.IsVisible = !overlayOn;
 
-        // 1.12.2 split clipboard half. Visibility is driven here (not from the sampling
-        // callback) so it flips on the same UI turn as the command that attached/detached it.
-        // While split, the collapsed row moves to the left half so the two halves read as
-        // separate content instead of the clock floating in the middle of the wider pill.
-        var split = snap.IsSplitClipboard;
-        // 1.12.2: visibility follows the machine, except while a split transition is in
-        // flight. The tick runs Paint() before ApplySize(), so on the expiry turn the machine
-        // has already dropped the half while _splitApplied still says attached — comparing
-        // the two defers the hide to SettleSplitHalf() instead of flashing it off for one
-        // frame before the collapse morph starts.
-        if (_splitHalfDir == 0 && split == _splitApplied) ClipboardHalf.IsVisible = split;
-        // 1.12.2: the island side gets its own compartment, exactly the island's half of the
-        // long axis. CollapsedRow and SecondsStrip centre themselves inside CollapsedArea, and
-        // that container also holds ClipboardHalf — so it must keep spanning the WHOLE pill
-        // (the half is anchored Right on the long axis and needs the full width to land in
-        // the right compartment). Giving the rows the slack as a trailing margin instead
-        // centres them in the island's own half and stops the seconds strip at the divider,
-        // so the split reads as "one capsule, divided" rather than "the island slid apart".
-        if (split)
-        {
-            var slack = PillLongAxis() - IslandHalfExtent();
-            var slackPositive = Math.Max(0, slack);
-            if (SplitIsVertical)
-            {
-                CollapsedRow.Margin = new Thickness(0, 0, slackPositive, 0);
-                SecondsStrip.Margin = new Thickness(10, 0, 10, 2 + slackPositive);
-            }
-            else
-            {
-                // The slack goes on the TRAILING edge: centring inside a box that starts
-                // where the island half starts puts the row in the island's compartment.
-                CollapsedRow.Margin = new Thickness(0, 0, slackPositive, 0);
-                SecondsStrip.Margin = new Thickness(10, 0, 10 + slackPositive, 2);
-            }
-        }
-        else
-        {
-            CollapsedRow.Margin = new Thickness(0);
-            SecondsStrip.Margin = new Thickness(10, 0, 10, 2);
-        }
+        // 1.12.3 goo blob. The ball's visibility is owned by the blob transition (SettleBlob /
+        // ApplyBlobMorph), not by this paint: the window is already growing while the ball is
+        // still held back, so flipping it here would pop it in one frame early. All Paint does
+        // is refill the ball's content on the same UI turn as the capture that produced it.
+        // The island itself needs no compensation any more: the capsule never grew, so
+        // CollapsedRow and SecondsStrip just centre themselves in it.
+        if (snap.IsSplitClipboard) ApplyBlobContent(snap.SplitClipboard);
+        CollapsedRow.Margin = new Thickness(0);
+        SecondsStrip.Margin = new Thickness(10, 0, 10, 2);
         CollapsedRow.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
         SecondsStrip.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
-        if (split) ApplyClipboardHalfContent(snap.SplitClipboard);
 
         // 1.12.1: panel visibility follows the FSM kind immediately (Paint runs on the same
         // UI turn as the command that changed the kind). It must NOT wait for the next
@@ -1825,26 +1931,26 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// 1.12.2: fill the split clipboard half from the payload BuildPayload already produced —
-    /// format icon per <see cref="ClipboardItemKind"/> plus the preview text. Both the icon
-    /// key and the wording/truncation/empty-fallback rules live in
+    /// 1.12.3: fill the ball from the payload BuildPayload already produced — format icon per
+    /// <see cref="ClipboardItemKind"/> plus the preview text. Both the icon key and the
+    /// wording/truncation/empty-fallback rules live in
     /// <see cref="ClipboardHalfPreview"/> and are unit-tested there, so this stays a pure
     /// "put it on screen" step. The plural («5 файлов») is BuildPayload's, not ours.
     /// </summary>
-    private void ApplyClipboardHalfContent(OverlayPayload cp)
+    private void ApplyBlobContent(OverlayPayload cp)
     {
         var brush = new SolidColorBrush(Colors.White);
-        ClipboardHalfIcon.Child = IconPackService.Create(
+        BlobIcon.Child = IconPackService.Create(
             _settings.IconPack, ClipboardHalfPreview.IconKeyFor(cp.ClipboardItemKind),
             CurrentIconCollapsed(), brush);
 
-        ClipboardHalfText.Text = ClipboardHalfPreview.TextFor(cp);
-        ToolTip.SetTip(ClipboardHalf, cp.ClipboardItemKind switch
+        BlobText.Text = ClipboardHalfPreview.TextFor(cp);
+        ToolTip.SetTip(Blob, cp.ClipboardItemKind switch
         {
             ClipboardItemKind.Text => "Скопирован текст",
             ClipboardItemKind.File => "Скопирован файл",
             ClipboardItemKind.MultiFile => "Скопированы файлы",
-            _ => "Буфер обмена",
+            _ => "Буфер обмена — нажмите для истории",
         });
     }
 
@@ -2469,14 +2575,10 @@ public partial class OverlayWindow : Window
                 return;
             }
 
-            // 1.12.2: the strip belongs to the island half, so its dots are counted from the
-            // island's own extent, not from the whole pill. Counting from the grown pill made
-            // the strip wider than its compartment, and since nothing clips it the dots ran
-            // on under the clipboard half and across the divider — a bridge between halves
-            // where the split should be.
-            var stripW = _machine.IsSplitClipboard
-                ? Math.Max(1, IslandHalfExtent())
-                : (Pill.Width > 0 ? Pill.Width : Width);
+            // 1.12.3: the strip belongs to the capsule, which is the island again, so its dots
+            // are counted from the capsule's own width. No split compensation is needed — the
+            // ball lives outside the capsule and nothing clips the strip any more.
+            var stripW = Pill.Width > 0 ? Pill.Width : Width;
             if (stripW <= 0) stripW = OverlayTokens.CollapsedW;
             var slots = SecondsStripLogic.SlotCountForWidth(stripW, SecondsStripView.DotWidth + 1.5);
             var lit = SecondsStripLogic.LitCount(DateTime.Now, slots);
@@ -2592,6 +2694,7 @@ public partial class OverlayWindow : Window
         // (Expand, Collapse, Escape, etc.). Idempotent.
         if (_hoverPin.IsPinned)
             Pill.BorderBrush = new SolidColorBrush(Color.Parse("#88FFFFFF"));
+            SyncBlobFill();
     }
 
     /// <summary>
