@@ -60,15 +60,29 @@ public static class IslandTimerLogic
         ClampPresetMinutes(minutes) * 60;
 
     /// <summary>
-    /// Running/paused timer owns the island over SMTC until cancel/complete,
-    /// unless the user explicitly opened Media (click path).
+    /// Whether a running timer should keep the capsule away from the media row. Since 1.13
+    /// the timer is a row too, so nothing owns the capsule and this only decides which row
+    /// the user is likely looking at: an explicit Media click wins over a timer that was
+    /// merely started.
     /// </summary>
     public static bool TimerOwnsIsland(OverlayKind kind, bool userOpenedMedia) =>
         !userOpenedMedia && kind == OverlayKind.Timer;
 
-    public static bool ShouldCompleteCountdown(OverlayKind kind, OverlayPayload payload) =>
-        kind == OverlayKind.Timer
-        && !payload.CountUp
+    /// <summary>
+    /// True when a countdown is running and has run out. Since 1.13 this reads the payload
+    /// alone, not the kind: the timer lives in a monitor row and in the capsule's progress
+    /// band, so "which kind is on screen" no longer says anything about the timer.
+    /// </summary>
+    public static bool ShouldCompleteCountdown(OverlayPayload payload) =>
+        !payload.CountUp
         && payload.Playing
         && payload.RemainingSeconds <= 0;
+
+    /// <summary>
+    /// Runs a completion check against a kind/payload pair. Kept for the demo path, which
+    /// still drives a timer through a kind; the real timer uses
+    /// <see cref="ShouldCompleteCountdown(OverlayPayload)"/>.
+    /// </summary>
+    public static bool ShouldCompleteCountdown(OverlayKind kind, OverlayPayload payload) =>
+        kind == OverlayKind.Timer && ShouldCompleteCountdown(payload);
 }

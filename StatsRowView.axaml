@@ -1,32 +1,88 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="NotifyIsland.StatsRowView">
-  <!-- One row of the System Stats surface. Two visual shapes, matching the two shapes the
-       panel used before rows became dynamic:
+             x:Class="NotifyIsland.StatsRowView"
+             ClipToBounds="False">
+  <!-- One row of the System Stats surface. Three visual shapes (spec: the 1.13
+       single-capsule spec under docs/superpowers/specs, September 2026):
          pair    — label left (FontSize 11, #8A8A92), value right (FontSize 12, #C8C8CC)
          caption — one centred line (FontSize 10, #8A8A92), used by the Date row
-       The heights here feed StatsLayout.StatsHeightFor, so do not change the font sizes. -->
-  <Grid ColumnDefinitions="*,Auto">
+         status  — pair plus a 2 DIP bar and a button cluster, used by Media / Timer since
+                   1.13 moved them out of the capsule and into this panel
+       The heights here feed StatsLayout.StatsHeightFor, so do not change the font sizes.
+       The status row stays inside the same 16 DIP budget: its bar is 2 DIP tucked under the
+       text, and the buttons are 16 DIP glyphs on the same line — a taller row would change
+       the panel height formula and every test that pins it. -->
+  <Grid ColumnDefinitions="*,Auto"
+        RowDefinitions="Auto,Auto">
     <TextBlock x:Name="LabelBlock"
-               Grid.Column="0"
+               Grid.Row="0" Grid.Column="0"
                FontSize="11"
                Foreground="#8A8A92"
                VerticalAlignment="Center" />
     <TextBlock x:Name="ValueBlock"
-               Grid.Column="1"
+               Grid.Row="0" Grid.Column="1"
                FontSize="12"
                Foreground="#C8C8CC"
                TextAlignment="Right"
                VerticalAlignment="Center"
                Text="—" />
     <TextBlock x:Name="CaptionBlock"
-               Grid.Column="0"
-               Grid.ColumnSpan="2"
+               Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
                FontSize="10"
                Foreground="#8A8A92"
                TextAlignment="Center"
                VerticalAlignment="Center"
                Margin="0,2,0,0"
                IsVisible="False" />
+
+    <!-- 1.13 status-row furniture. Both are off for every other row kind. -->
+    <ProgressBar x:Name="StatusBar"
+                 Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                 Height="2"
+                 Minimum="0" Maximum="1"
+                 Foreground="#3D9CF0"
+                 Background="Transparent"
+                 VerticalAlignment="Top"
+                 Margin="0,2,0,0"
+                 IsVisible="False"
+                 IsHitTestVisible="False" />
+    <TextBlock x:Name="StatusDetail"
+               Grid.Row="0" Grid.Column="1"
+               FontSize="10"
+               Foreground="#6E6E76"
+               TextAlignment="Right"
+               VerticalAlignment="Center"
+               Margin="0,0,8,0"
+               IsVisible="False" />
+
+    <!-- Buttons live in their own overlay cell so the value keeps the full width when they
+         are hidden: a Button with a glyph and no border is ~20 DIP wide, and three of them
+         would otherwise permanently steal width from every status row's value. -->
+    <StackPanel x:Name="ActionsHost"
+                Grid.Row="0" Grid.Column="1"
+                Orientation="Horizontal"
+                Spacing="2"
+                VerticalAlignment="Center"
+                IsVisible="False">
+      <Button x:Name="ActionA" Classes="rowAction" Click="OnActionAClick" />
+      <Button x:Name="ActionB" Classes="rowAction" Click="OnActionBClick" />
+      <Button x:Name="ActionC" Classes="rowAction" Click="OnActionCClick" />
+    </StackPanel>
   </Grid>
+  <UserControl.Styles>
+    <Style Selector="Button.rowAction">
+      <Setter Property="Padding" Value="3,0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#3D9CF0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="MinWidth" Value="0" />
+    </Style>
+    <!-- The cancel action reads as destructive, so it is the one glyph in the row that is
+         not the accent colour. -->
+    <Style Selector="Button.rowAction.danger">
+      <Setter Property="Foreground" Value="#E8A0A0" />
+    </Style>
+  </UserControl.Styles>
 </UserControl>

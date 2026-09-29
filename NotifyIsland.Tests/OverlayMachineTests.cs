@@ -31,24 +31,26 @@ public class OverlayMachineTests
         m.Dispatch(OverlayCommand.Expand, new OverlayPayload { Title = "Hi" });
         Assert.Equal(OverlayKind.Expanded, m.Snapshot().Kind);
 
+        // 1.13: a notification no longer hijacks the kind, so there is nothing to return
+        // FROM — it fills the payload and bumps unread while the capsule stays put. This is
+        // the test that used to be called "NotifyReturnsToPrevious"; the behaviour it pinned
+        // is gone on purpose, and the no-takeover behaviour is pinned in its place below.
         m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Ping" });
-        Assert.Equal(OverlayKind.Notification, m.Snapshot().Kind);
-
-        m.Tick(OverlayTokens.DefaultNotifyMs);
         Assert.Equal(OverlayKind.Expanded, m.Snapshot().Kind);
+        Assert.Equal("Ping", m.Snapshot().Payload.Title);
 
         m.Dispatch(OverlayCommand.Clear);
         Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
 
         m.Dispatch(OverlayCommand.SetProgress, new OverlayPayload { Progress = 0.5 });
-        Assert.Equal(OverlayKind.Progress, m.Snapshot().Kind);
+        Assert.True(m.ProgressActive);
 
         m.Dispatch(OverlayCommand.SetMedia, new OverlayPayload());
-        Assert.Equal("Без названия", m.Snapshot().Payload.Title);
+        Assert.Equal("Без названия", m.MediaRow.Title);
 
         m.Dispatch(OverlayCommand.SetTimer, new OverlayPayload { RemainingSeconds = 10, Playing = true });
         m.Tick(2500);
-        Assert.InRange(m.Snapshot().Payload.RemainingSeconds, 7.45, 7.55);
+        Assert.InRange(m.TimerRow.RemainingSeconds, 7.45, 7.55);
 
         m.Dispatch(OverlayCommand.SetError, new OverlayPayload());
         Assert.Equal("Ошибка", m.Snapshot().Payload.Title);
@@ -58,15 +60,19 @@ public class OverlayMachineTests
     }
 
     [Fact]
-    public void Notify_CustomDuration_ReturnsToMedia()
+    public void Notify_CustomDuration_NoLongerDrivesTheKind()
     {
+        // The old test asserted "Notification for 1000 ms, then back to Media". With the
+        // takeover gone, the countdown is irrelevant to the kind — but the payload and the
+        // unread bump are what the user actually perceives, so those are pinned here.
         var m = new OverlayMachine { NotifyDurationMs = 1000 };
         m.Dispatch(OverlayCommand.SetMedia, new OverlayPayload { Title = "A", Subtitle = "B" });
         m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "N" });
-        m.Tick(500);
-        Assert.Equal(OverlayKind.Notification, m.Snapshot().Kind);
-        m.Tick(500);
-        Assert.Equal(OverlayKind.Media, m.Snapshot().Kind);
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
+        Assert.Equal(1, m.Snapshot().UnreadCount);
+        Assert.True(m.MediaActive);
+        m.Tick(5000);
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
     }
 
     [Fact]
@@ -273,14 +279,154 @@ public class OverlayMachineTests
             Playing = false,
             ArtworkBytes = new byte[] { 9 }
         });
-        var snap = m.Snapshot();
-        Assert.Equal(OverlayKind.Media, snap.Kind);
-        Assert.Equal("Track", snap.Payload.Title);
-        Assert.Equal("Band", snap.Payload.Subtitle);
-        Assert.Equal(0.75, snap.Payload.Progress);
-        Assert.False(snap.Payload.Playing);
-        Assert.NotNull(snap.Payload.ArtworkBytes);
-        Assert.Equal(9, snap.Payload.ArtworkBytes![0]);
+        // 1.13: media is a monitor row, so its data lives in MediaRow and the capsule kind
+        // stays put. A song starting must not replace the clock.
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
+        Assert.True(m.MediaActive);
+        var media = m.MediaRow;
+        Assert.Equal("Track", media.Title);
+        Assert.Equal("Band", media.Subtitle);
+        Assert.Equal(0.75, media.Progress);
+        Assert.False(media.Playing);
+        Assert.NotNull(media.ArtworkBytes);
+        Assert.Equal(9, media.ArtworkBytes![0]);
+    }
+
+    [Fact]
+    public void Media_ChangesNothingOnTheCapsuleButTheBand()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetMedia, new OverlayPayload { Title = "Song", Progress = 0.4 });
+        Assert.Equal(ProgressBandOwner.Media, CapsuleProgressBand.OwnerOf(m.BandState()));
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
+    }
+
+    [Fact]
+    public void ClearMedia_FreesTheRowAndTheBand()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetMedia, new OverlayPayload { Title = "Song" });
+        m.ClearMedia();
+        Assert.False(m.MediaActive);
+        Assert.Equal(ProgressBandOwner.None, CapsuleProgressBand.OwnerOf(m.BandState()));
+    }
+
+    [Fact]
+    public void Timer_LeavesTheCapsuleAlone_AndClaimsTheBand()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.CountdownPayload(60));
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
+        Assert.True(m.TimerActive);
+        Assert.Equal(ProgressBandOwner.Timer, CapsuleProgressBand.OwnerOf(m.BandState()));
+    }
+
+    [Fact]
+    public void ClearTimer_KeepsTheCapsuleAndThePayloadAlone()
+    {
+        // Cancelling a row must not collapse the capsule the user was reading.
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.Expand, new OverlayPayload { Title = "Hi" });
+        m.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.CountdownPayload(60));
+        m.ClearTimer();
+        Assert.False(m.TimerActive);
+        Assert.Equal(OverlayKind.Expanded, m.Snapshot().Kind);
+        Assert.Equal("Hi", m.Snapshot().Payload.Title);
+    }
+
+    [Fact]
+    public void Progress_LeavesTheCapsuleAlone_AndClaimsTheBand()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetProgress, new OverlayPayload { Title = "Копирование", Progress = 0.5 });
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
+        Assert.True(m.ProgressActive);
+        Assert.Equal(ProgressBandOwner.Clipboard, CapsuleProgressBand.OwnerOf(m.BandState()));
+        Assert.Equal(0.5, CapsuleProgressBand.FractionFor(m.BandState()));
+    }
+
+    [Fact]
+    public void ClipboardProgress_OutranksMedia()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetMedia, new OverlayPayload { Title = "Song" });
+        m.Dispatch(OverlayCommand.SetProgress, new OverlayPayload { Progress = 0.2 });
+        Assert.Equal(ProgressBandOwner.Clipboard, CapsuleProgressBand.OwnerOf(m.BandState()));
+    }
+
+    [Fact]
+    public void Notify_LeavesTheCapsuleAlone_AndBumpsUnread()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.Expand, new OverlayPayload { Title = "Hi" });
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Ping" });
+        // 1.13: no takeover. The unread dot on the capsule is the whole interruption now.
+        Assert.Equal(OverlayKind.Expanded, m.Snapshot().Kind);
+        Assert.Equal(1, m.Snapshot().UnreadCount);
+    }
+
+    [Fact]
+    public void Battery_IsStillTheOnlyCapsuleTakeover()
+    {
+        var m = new OverlayMachine { NotifyDurationMs = 1000 };
+        m.Dispatch(OverlayCommand.SetBattery, BatteryAlertLogic.ChargePayload(55));
+        Assert.Equal(OverlayKind.Battery, m.Snapshot().Kind);
+        Assert.Equal("Зарядка", m.Snapshot().Payload.Title);
+        Assert.Equal(0, m.Snapshot().UnreadCount);
+        m.Tick(1000);
+        Assert.NotEqual(OverlayKind.Battery, m.Snapshot().Kind);
+    }
+
+    [Fact]
+    public void Battery_ReturnsToWhateverWasOnScreen()
+    {
+        var m = new OverlayMachine { NotifyDurationMs = 1000 };
+        m.Dispatch(OverlayCommand.SetSystemStats, new OverlayPayload
+        {
+            SystemStats = SystemSnapshot.Empty
+        });
+        m.Dispatch(OverlayCommand.SetBattery, BatteryAlertLogic.ChargePayload(55));
+        m.Tick(1000);
+        Assert.Equal(OverlayKind.SystemStats, m.Snapshot().Kind);
+    }
+
+    [Fact]
+    public void Timer_TickToZero_ParksInTheRow_WithoutTakingTheCapsule()
+    {
+        // 1.13: a finished countdown must not vanish and must not take the capsule either.
+        // It parks in the timer row for TimerDoneMs and bumps unread (the capsule's dot).
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.CountdownPayload(2));
+        m.Tick(2000);
+        Assert.True(m.TimerActive);
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
+        Assert.Equal("Время вышло", m.TimerRow.Body);
+        Assert.Equal(0.0, m.TimerRow.RemainingSeconds);
+        Assert.Equal(1, m.Snapshot().UnreadCount);
+        // The band is released: nothing is running any more.
+        Assert.Equal(ProgressBandOwner.None, CapsuleProgressBand.OwnerOf(m.BandState()));
+    }
+
+    [Fact]
+    public void TimerCompletionNotice_ExpiresOnItsOwn()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.CountdownPayload(2));
+        m.Tick(2000);
+        Assert.True(m.TimerActive);
+        m.Tick(OverlayMachine.TimerDoneMs + 1);
+        Assert.False(m.TimerActive);
+    }
+
+    [Fact]
+    public void Countdown_RemembersItsTotalForTheBandFraction()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.CountdownPayload(60));
+        m.Tick(20000);
+        // 40 of 60 seconds left, so the band shows the remaining third.
+        Assert.Equal(60.0, m.TimerTotalSeconds);
+        Assert.InRange(CapsuleProgressBand.FractionFor(m.BandState()), 0.32, 0.34);
     }
 
     [Fact]
@@ -296,7 +442,9 @@ public class OverlayMachineTests
         Assert.Equal(320, OverlayMachine.WidthFor(OverlayKind.Battery));
 
         m.Tick(1000);
-        Assert.Equal(OverlayKind.Media, m.Snapshot().Kind);
+        // 1.13: the charge pill used to return to the Media takeover; media is a row now, so
+        // the capsule is simply idle again.
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
     }
 
     [Fact]
@@ -321,61 +469,6 @@ public class OverlayMachineTests
         Assert.Equal(OverlayKind.Battery, saw);
     }
 
-
-    [Fact]
-    public void Timer_Tick_OnlyWhilePlaying()
-    {
-        var m = new OverlayMachine();
-        m.Dispatch(OverlayCommand.SetTimer, new OverlayPayload { RemainingSeconds = 10, Playing = false });
-        m.Tick(3000);
-        Assert.Equal(10, m.Snapshot().Payload.RemainingSeconds);
-        Assert.Equal(OverlayKind.Timer, m.Snapshot().Kind);
-
-        m.Dispatch(OverlayCommand.SetTimer, new OverlayPayload { RemainingSeconds = 10, Playing = true });
-        m.Tick(2000);
-        Assert.InRange(m.Snapshot().Payload.RemainingSeconds, 7.9, 8.1);
-    }
-
-    [Fact]
-    public void Timer_TickToZero_BecomesNotifyThenIdle()
-    {
-        var m = new OverlayMachine { NotifyDurationMs = 1000 };
-        m.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.CountdownPayload(2));
-        Assert.Equal(OverlayKind.Timer, m.Snapshot().Kind);
-
-        m.Tick(2000);
-        var snap = m.Snapshot();
-        Assert.Equal(OverlayKind.Notification, snap.Kind);
-        Assert.Equal("Таймер", snap.Payload.Title);
-        Assert.Equal("Время вышло", snap.Payload.Body);
-        Assert.True(snap.UnreadCount >= 1);
-
-        m.Tick(1000);
-        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
-    }
-
-    [Fact]
-    public void Timer_Paused_DoesNotCompleteAtZero()
-    {
-        var m = new OverlayMachine();
-        m.Dispatch(OverlayCommand.SetTimer, new OverlayPayload
-        {
-            Title = "Таймер", RemainingSeconds = 0, Playing = false, CountUp = false
-        });
-        m.Tick(500);
-        Assert.Equal(OverlayKind.Timer, m.Snapshot().Kind);
-    }
-
-    [Fact]
-    public void Stopwatch_Tick_CountsUp()
-    {
-        var m = new OverlayMachine();
-        m.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.StopwatchPayload());
-        m.Tick(1500);
-        Assert.Equal(OverlayKind.Timer, m.Snapshot().Kind);
-        Assert.InRange(m.Snapshot().Payload.RemainingSeconds, 1.4, 1.6);
-        Assert.True(m.Snapshot().Payload.CountUp);
-    }
 
     [Fact]
     public void ClipboardCycle_SetPreviews_PopulatesPayload()

@@ -163,7 +163,9 @@ public class ClipboardSplitTests
         m.Tick(2000);
         Assert.Equal(ClipboardHistory.MaxPillMs - 2000, m.Snapshot().SplitMsLeft);
 
-        // A notification arrives mid-wait: it restarts its own timer, the half's is untouched.
+        // A notification arrives mid-wait: it bumps unread, the half's budget is untouched.
+        // Since 1.13 it no longer even becomes a kind, so the split half and the notification
+        // are separate by construction now.
         m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Уведомление" });
         Assert.Equal(1, m.UnreadCount);
         Assert.Equal(ClipboardHistory.MaxPillMs - 2000, m.Snapshot().SplitMsLeft);
@@ -172,9 +174,7 @@ public class ClipboardSplitTests
         m.Tick(ClipboardHistory.MaxPillMs - 2000);
         Assert.False(m.IsSplitClipboard);
 
-        // …without touching the notification that is still running.
-        Assert.Equal(OverlayKind.Notification, m.Snapshot().Kind);
-        Assert.True(m.Snapshot().NotifyMsLeft > 0);
+        // …and the notification's unread count is still there to be cleared by a click.
         Assert.Equal(1, m.UnreadCount);
     }
 
@@ -190,12 +190,12 @@ public class ClipboardSplitTests
     public void DismissSplitClipboard_LeavesTheKindAlone()
     {
         var m = new OverlayMachine();
-        m.Dispatch(OverlayCommand.SetMedia, new OverlayPayload { Title = "Night Drive" });
+        m.Dispatch(OverlayCommand.Expand, new OverlayPayload { Title = "Night Drive" });
         m.Dispatch(OverlayCommand.SetClipboardSplit, TextPayload());
 
         var snap = m.DismissSplitClipboard();
         Assert.False(snap.IsSplitClipboard);
-        Assert.Equal(OverlayKind.Media, snap.Kind);
+        Assert.Equal(OverlayKind.Expanded, snap.Kind);
         Assert.Equal("Night Drive", snap.Payload.Title);
     }
 

@@ -25,8 +25,6 @@ public partial class OverlayWindow : Window
     private WindowsWeatherSource _weather;
     private WindowsMediaSessionSource? _mediaSource;
     private bool _mediaFromSmtc;
-    /// <summary>User clicked into Media while a timer might still be desired — SMTC may own island.</summary>
-    private bool _userOpenedMedia;
     private WindowsPowerSource? _powerSource;
     private PowerStatusSnapshot? _lastPower;
     private int? _prevPowerPercent;
@@ -291,11 +289,17 @@ public partial class OverlayWindow : Window
             // without changing Kind. Track it too or the pill would stay 370 DIP after the
             // half's 6 s timer runs out.
             var splitBefore = _machine.IsSplitClipboard;
+            // 1.13: the timer's digits live in a monitor row now, so its countdown is
+            // refreshed from here. The row is only rebuilt when the panel is on screen —
+            // a timer ticking against a closed panel would be work nobody can see.
+            var timerBefore = _machine.TimerActive;
             _machine.Tick(200);
             var after = _machine.Snapshot().Kind;
             var splitAfter = _machine.IsSplitClipboard;
             if (before != after) OnKindChanged(before, after);
             var hoverChanged = TickHoverPin(200);
+            if (_machine.TimerActive != timerBefore || SystemStatsPanel.IsVisible)
+                ApplyTimerRow();
             Paint();
             UpdateSecondsStrip();
             if (before != after || hoverChanged || splitBefore != splitAfter) ApplySize();
@@ -378,9 +382,9 @@ public partial class OverlayWindow : Window
         OverlayTitle.FontFamily = family;
         BadgeText.FontSize = Math.Max(9, fs - 2);
         BadgeText.FontFamily = family;
-        MediaPlayGlyph.FontSize = Math.Max(10, fs - 1);
-        MediaPrevGlyph.FontSize = Math.Max(10, fs - 1);
-        MediaNextGlyph.FontSize = Math.Max(10, fs - 1);
+        // 1.13: the media/timer glyphs moved into StatsRowView, so they are no longer scaled
+        // from the capsule's font size here — a control that lives in the monitor panel should
+        // follow the panel's type scale, not the capsule clock's.
         ApplyIconSizes(fs);
     }
 
@@ -635,12 +639,8 @@ public partial class OverlayWindow : Window
         });
         UnreadBadge.Background = new SolidColorBrush(accent);
         AppIcon.Background = new SolidColorBrush(accent);
-        OverlayProgress.Foreground = new SolidColorBrush(accent);
-        MediaPlayGlyph.Foreground = new SolidColorBrush(accent);
-        MediaPrevGlyph.Foreground = new SolidColorBrush(accent);
-        MediaNextGlyph.Foreground = new SolidColorBrush(accent);
-        TimerPauseGlyph.Foreground = new SolidColorBrush(accent);
-        TimerPlusGlyph.Foreground = new SolidColorBrush(accent);
+        // 1.13: the media/timer control glyphs are gone from the capsule; their accent now
+        // lives in the row styles (StatsRowView), which the theme does not reach into.
         // Soft “dot matrix” unread: slightly squarer corners + tighter glow
         UnreadDot.CornerRadius = new CornerRadius(2);
         UnreadDot.Width = 6;
@@ -880,16 +880,12 @@ public partial class OverlayWindow : Window
                     // instead of being swallowed by the metrics surface. Right click → context menu.
                     HandleIdlePillClick(zonePos, zoneExtent);
                 }
-            else if (kind == OverlayKind.Timer)
-            {
-                // Click keeps timer visible with controls (already expanded overlay).
-                IslandSounds.Play(IslandSoundKind.Expand, _settings);
-            }
-            else if (kind == OverlayKind.Media)
-            {
-                // Explicit media focus — allow SMTC to keep ownership vs timer reclaim.
-                _userOpenedMedia = true;
-            }
+                // 1.13: the Timer and Media cases are gone. Both used to be capsule kinds whose
+                // click had something to decide (keep expanded / claim ownership from the
+                // timer); both are monitor rows now, so their controls are clicked where they
+                // are drawn and the capsule's own click path no longer has to know about them.
+                // That is also what retired _userOpenedMedia: there is no longer a capsule for
+                // SMTC and a timer to fight over.
             }
             catch (Exception ex)
             {
@@ -1269,7 +1265,7 @@ public partial class OverlayWindow : Window
             menu.Items.Add(Menu("Таймер 1 мин", () => StartCountdownMinutes(1)));
             menu.Items.Add(Menu("Таймер 5 мин", () => StartCountdownMinutes(5)));
             menu.Items.Add(Menu($"Таймер {_settings.TimerDefaultMinutes} мин (F12)", () => StartCountdownMinutes(_settings.TimerDefaultMinutes)));
-            if (_machine.Snapshot().Kind == OverlayKind.Timer)
+            if (_machine.TimerActive)
                 menu.Items.Add(Menu("Отменить таймер", CancelTimer));
         }
         var weatherLabel = _settings.WeatherEnabled ? "Погода выкл" : "Погода вкл";
@@ -1344,16 +1340,22 @@ public partial class OverlayWindow : Window
         _weather = new WindowsWeatherSource(_settings.Latitude, _settings.Longitude);
         if (!_settings.WeatherEnabled && _machine.Snapshot().Kind == OverlayKind.Weather)
             _machine.Dispatch(OverlayCommand.Collapse);
-        if (!_settings.TimerEnabled && _machine.Snapshot().Kind == OverlayKind.Timer)
-            _machine.Dispatch(OverlayCommand.Clear);
+        if (!_settings.TimerEnabled && _machine.TimerActive)
+        {
+            // 1.13: cancelling a timer is ClearTimer, not a full Clear — a disabled timer must
+            // not wipe whatever the capsule was showing.
+            _machine.ClearTimer();
+            ApplyTimerRow();
+        }
         if (!_settings.ShowNowPlaying)
         {
             _mediaSource?.Stop();
             _mediaSource = null;
-            if (_mediaFromSmtc && _machine.Snapshot().Kind == OverlayKind.Media)
+            if (_mediaFromSmtc)
             {
                 _mediaFromSmtc = false;
-                _machine.Dispatch(OverlayCommand.Clear);
+                _machine.ClearMedia();
+                ApplyMediaRow();
             }
         }
         else
@@ -2556,22 +2558,19 @@ public partial class OverlayWindow : Window
             else
                 sub = "";
         }
-        else if (kind == OverlayKind.Timer)
-        {
-            sub = IslandTimerLogic.FormatRemaining(p.RemainingSeconds);
-            if (!p.Playing && !p.CountUp)
-                title = string.IsNullOrWhiteSpace(p.Title) ? "Пауза" : p.Title;
-        }
-        else if (kind == OverlayKind.Progress && string.IsNullOrWhiteSpace(sub))
-            sub = $"{(int)Math.Round(p.Progress * 100)}%";
         else if (kind == OverlayKind.Battery && string.IsNullOrWhiteSpace(sub))
             sub = $"{(int)Math.Round(p.Progress * 100)}%";
+        // 1.13: the Timer and Progress branches are gone — neither is a capsule kind any
+        // more, so neither ever reaches this point. Their text is formatted by the monitor
+        // rows (ApplyTimerRow / ApplyMediaRow) and their fraction by CapsuleProgressBand.
 
         OverlayTitle.Text = string.IsNullOrWhiteSpace(sub) ? title : $"{title} · {sub}";
         OverlaySubtitle.Text = "";
 
-        OverlayProgress.Value = p.Progress * 100;
-        OverlayProgress.IsVisible = kind is OverlayKind.Progress or OverlayKind.Media or OverlayKind.Battery;
+        // 1.13: the capsule's bottom 8 DIP are one shared band. Whoever owns it draws, and
+        // the other one yields — seconds digits and a progress bar are two readings of the
+        // same strip, and both at once reads as a glitch rather than as two things happening.
+        ApplyProgressBand();
 
         var textPrimary = ParseColor(_settings.ColorTextPrimary, OverlayTokens.TextHex);
         var accent = ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex);
@@ -2584,16 +2583,10 @@ public partial class OverlayWindow : Window
         else
             SetKindIcon(kind);
 
-        MediaControls.IsVisible = kind == OverlayKind.Media;
-        MediaPlayGlyph.Text = p.Playing ? "||" : "▶";
-        ApplyMediaArtwork(kind == OverlayKind.Media ? p.ArtworkBytes : null);
-
-        TimerControls.IsVisible = kind == OverlayKind.Timer;
-        if (kind == OverlayKind.Timer)
-        {
-            TimerPauseGlyph.Text = p.Playing ? "||" : "▶";
-            TimerPlusBtn.IsVisible = !p.CountUp;
-        }
+        // 1.13: the artwork and both control clusters left the capsule. They are drawn in the
+        // Плеер and Таймер monitor rows now (StatsRowView.SetStatus), so the capsule only ever
+        // carries the icon, the title and the progress band.
+        ApplyMediaArtwork(null);
 
         var unread = snap.UnreadCount;
         var showBadge = overlayOn && unread > 0 && kind is OverlayKind.Notification or OverlayKind.Expanded;
@@ -2862,37 +2855,24 @@ public partial class OverlayWindow : Window
         if (!_settings.ShowNowPlaying)
             return;
 
+        // 1.13: the media session is a monitor row and a band claimant, not a capsule
+        // takeover. So a snapshot arrives once per second and must NOT run a full morph —
+        // the previous code called ApplySize()+Paint() every tick, which with the old design
+        // was the only way to move the capsule. Now the kind never changes, the panel row is
+        // refilled and the band is re-arbitrated, which is a repaint and nothing more.
         if (snap is null)
         {
-            if (_mediaFromSmtc && _machine.Snapshot().Kind == OverlayKind.Media)
-            {
-                _mediaFromSmtc = false;
-                var before = _machine.Snapshot().Kind;
-                _machine.Dispatch(OverlayCommand.Clear);
-                var after = _machine.Snapshot().Kind;
-                if (before != after) OnKindChanged(before, after);
-                ApplySize();
-                Paint();
-            }
+            _mediaFromSmtc = false;
+            _machine.ClearMedia();
+            ApplyMediaRow();
+            ApplyProgressBand();
             return;
         }
 
-        // Do not interrupt an active notification toast.
-        var kind = _machine.Snapshot().Kind;
-        if (kind == OverlayKind.Notification)
-            return;
-
-        // Running/paused timer owns the island until cancel/complete (unless user opened Media).
-        if (IslandTimerLogic.TimerOwnsIsland(kind, _userOpenedMedia))
-            return;
-
-        var before2 = kind;
         _mediaFromSmtc = true;
         _machine.Dispatch(OverlayCommand.SetMedia, snap.ToPayload());
-        var after2 = _machine.Snapshot().Kind;
-        if (before2 != after2) OnKindChanged(before2, after2);
-        ApplySize();
-        Paint();
+        ApplyMediaRow();
+        ApplyProgressBand();
     }
 
     private void ApplyMediaArtwork(byte[]? bytes)
@@ -3059,6 +3039,11 @@ public partial class OverlayWindow : Window
     /// <summary>The rows currently in the panel, in render order (empty until first sync).</summary>
     private readonly List<StatsRowView> _statsRows = new();
 
+    // 1.13: the two status rows, resolved lazily because the user may not have them in the
+    // preset. Null simply means "that row is not in the panel right now".
+    private StatsRowView? _mediaRowView;
+    private StatsRowView? _timerRowView;
+
     /// <summary>Row kinds behind <see cref="_statsRows"/>, index-aligned with it.</summary>
     private readonly List<StatsRow> _statsRowKinds = new();
 
@@ -3093,10 +3078,23 @@ public partial class OverlayWindow : Window
                     Label = StatsLayout.LabelFor(row),
                     Value = "—"
                 };
+                // 1.13: a status row's buttons are wired once, at build time. The handler only
+                // needs the index — which row it belongs to is already known by then.
+                if (StatsLayout.HasActions(row))
+                {
+                    var kind = row;
+                    view.ActionClicked += index => OnStatsRowAction(kind, index);
+                }
                 _statsRows.Add(view);
                 _statsRowKinds.Add(row);
                 SystemStatsPanel.Children.Add(view);
             }
+            // Rebuilding the panel loses whatever the live sources were showing, so refill
+            // them right away instead of waiting for the next tick.
+            _mediaRowView = null;
+            _timerRowView = null;
+            ApplyMediaRow();
+            ApplyTimerRow();
         }
         // Height budget always follows the resolved count, so a preset change that keeps the
         // same rows but the same count also stays correct after a settings edit.
@@ -3109,6 +3107,79 @@ public partial class OverlayWindow : Window
         for (var i = 0; i < a.Count; i++)
             if (a[i] != b[i]) return false;
         return true;
+    }
+
+    /// <summary>
+    /// The panel row for a given kind, or null when the user's preset does not include it.
+    /// Resolved on demand rather than cached because <see cref="SyncStatsRows"/> rebuilds the
+    /// whole panel on every settings change.
+    /// </summary>
+    private StatsRowView? RowFor(StatsRow kind, ref StatsRowView? cache)
+    {
+        if (cache is not null) return cache;
+        for (var i = 0; i < _statsRowKinds.Count && i < _statsRows.Count; i++)
+        {
+            if (_statsRowKinds[i] != kind) continue;
+            cache = _statsRows[i];
+            return cache;
+        }
+        return null;
+    }
+
+    /// <summary>Push the live SMTC session into the Плеер row (1.13).</summary>
+    private void ApplyMediaRow()
+    {
+        var view = RowFor(StatsRow.Media, ref _mediaRowView);
+        if (view is null) return;
+        var active = _machine.MediaActive;
+        var m = _machine.MediaRow;
+        view.SetStatus(new StatusRowModel
+        {
+            Kind = StatusRowKind.Media,
+            Label = StatsLayout.LabelFor(StatsRow.Media),
+            Value = m.Title,
+            Detail = m.Subtitle,
+            Progress = m.Progress > 0 || active ? Math.Clamp(m.Progress, 0, 1) : null,
+            Active = active,
+            Playing = m.Playing
+        });
+    }
+
+    /// <summary>
+    /// Route a status row's button press. The action set is fixed per row kind
+    /// (see <see cref="StatsRowView.SetStatus"/>), so the index is all that is needed.
+    /// </summary>
+    private void OnStatsRowAction(StatsRow kind, int index)
+    {
+        try
+        {
+            switch (kind)
+            {
+                // Routed through the old capsule handlers on purpose: they carry the click pop
+                // and the ShowNowPlaying check, and the 1.13 row buttons are the same actions
+                // with a different home. Rewriting them inline would have left two copies.
+                case StatsRow.Media:
+                    if (index == 0) OnMediaPrev(this, null!);
+                    else if (index == 1) OnMediaPlay(this, null!);
+                    else if (index == 2) OnMediaNext(this, null!);
+                    break;
+
+                case StatsRow.Timer:
+                    if (index == 0) OnTimerPauseResume(this, null!);
+                    else if (index == 1) OnTimerPlusOne(this, null!);
+                    else CancelTimer();
+                    break;
+            }
+            ApplyMediaRow();
+            ApplyTimerRow();
+            Paint();
+        }
+        catch (Exception ex)
+        {
+            // A media key that the focused app refuses throws through SMTC. The panel must
+            // survive it: the row is an instrument readout, not a window.
+            AppLog.Warn("stats row action failed", ex);
+        }
     }
 
     /// <summary>Render one SystemSnapshot into the current stats rows. Idempotent.</summary>
@@ -3248,13 +3319,10 @@ public partial class OverlayWindow : Window
     public void StartCountdownMinutes(int minutes)
     {
         if (!_settings.TimerEnabled) return;
-        _userOpenedMedia = false;
-        var secs = IslandTimerLogic.PresetToSeconds(minutes);
-        var before = _machine.Snapshot().Kind;
-        _machine.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.CountdownPayload(secs));
-        var after = _machine.Snapshot().Kind;
-        if (before != after) OnKindChanged(before, after);
-        ApplySize();
+        _machine.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.CountdownPayload(minutes * 60));
+        // 1.13: the timer is a monitor row, not a capsule takeover, so no kind change and no
+        // morph — the capsule is exactly where it was, one row of the panel now has content.
+        ApplyTimerRow();
         Paint();
         _tray?.RefreshLabels();
         _winTray?.RefreshLabels();
@@ -3263,60 +3331,126 @@ public partial class OverlayWindow : Window
     public void StartStopwatchFromSettings()
     {
         if (!_settings.TimerEnabled) return;
-        _userOpenedMedia = false;
-        var before = _machine.Snapshot().Kind;
         _machine.Dispatch(OverlayCommand.SetTimer, IslandTimerLogic.StopwatchPayload());
-        var after = _machine.Snapshot().Kind;
-        if (before != after) OnKindChanged(before, after);
-        ApplySize();
-        Paint();
-    }
-
-    public void CancelTimer()
-    {
-        if (_machine.Snapshot().Kind != OverlayKind.Timer) return;
-        var before = _machine.Snapshot().Kind;
-        _machine.Dispatch(OverlayCommand.Clear);
-        var after = _machine.Snapshot().Kind;
-        if (before != after) OnKindChanged(before, after);
-        ApplySize();
+        ApplyTimerRow();
         Paint();
         _tray?.RefreshLabels();
         _winTray?.RefreshLabels();
     }
 
-    public bool IsTimerActive => _machine.Snapshot().Kind == OverlayKind.Timer;
+    public void CancelTimer()
+    {
+        if (!_machine.TimerActive) return;
+        _machine.ClearTimer();
+        ApplyTimerRow();
+        Paint();
+        _tray?.RefreshLabels();
+        _winTray?.RefreshLabels();
+    }
+
+    public bool IsTimerActive => _machine.TimerActive;
 
     private void OnTimerPauseResume(object? sender, RoutedEventArgs e)
     {
-        var snap = _machine.Snapshot();
-        if (snap.Kind != OverlayKind.Timer) return;
-        var next = OverlayMachine.Sanitize(snap.Payload);
+        if (!_machine.TimerActive) return;
+        var next = _machine.TimerRow;
         next.Playing = !next.Playing;
         _machine.Dispatch(OverlayCommand.SetTimer, next);
+        ApplyTimerRow();
         Paint();
     }
 
     private void OnTimerPlusOne(object? sender, RoutedEventArgs e)
     {
-        var snap = _machine.Snapshot();
-        if (snap.Kind != OverlayKind.Timer || snap.Payload.CountUp) return;
-        var next = OverlayMachine.Sanitize(snap.Payload);
+        if (!_machine.TimerActive) return;
+        var next = _machine.TimerRow;
+        if (next.CountUp) return;
         next.RemainingSeconds = Math.Min(359999, next.RemainingSeconds + 60);
         _machine.Dispatch(OverlayCommand.SetTimer, next);
+        ApplyTimerRow();
         Paint();
     }
 
     private void OnTimerCancel(object? sender, RoutedEventArgs e) => CancelTimer();
 
     /// <summary>
+    /// Push the live timer into its monitor row. The row keeps its own text so the capsule
+    /// only has to arbitrate the band — the digits are the row's business (1.13).
+    /// </summary>
+    private void ApplyTimerRow()
+    {
+        var active = _machine.TimerActive;
+        var t = _machine.TimerRow;
+        _timerRowView?.SetStatus(new StatusRowModel
+        {
+            Kind = StatusRowKind.Timer,
+            Label = StatsLayout.LabelFor(StatsRow.Timer),
+            Value = IslandTimerLogic.FormatRemaining(t.RemainingSeconds),
+            Detail = t.CountUp
+                ? (t.Playing ? "Секундомер" : "Пауза")
+                : (t.Playing ? t.Title : "Пауза"),
+            Progress = !t.CountUp && _machine.TimerTotalSeconds > 0
+                ? Math.Clamp(t.RemainingSeconds / _machine.TimerTotalSeconds, 0, 1)
+                : null,
+            Active = active,
+            Playing = t.Playing
+        });
+    }
+
+    /// <summary>
+    /// Arbitrate the capsule's bottom 8 DIP between the progress band and the seconds strip,
+    /// and give the band its owner-specific accent.
+    /// <para>
+    /// The charge pill is deliberately NOT a claimant: the user kept battery as a real
+    /// takeover, so a charge bar is drawn by the pill itself, never by this strip.
+    /// </para>
+    /// <para>
+    /// Called from Paint and from every source that can start or stop a claimant (SMTC tick,
+    /// timer start/cancel), because the seconds strip has its own visibility rule that must
+    /// yield immediately rather than on the next seconds refresh.
+    /// </para>
+    /// </summary>
+    private void ApplyProgressBand()
+    {
+        var state = _machine.BandState();
+        var owner = CapsuleProgressBand.OwnerOf(state);
+        var bandOn = owner != ProgressBandOwner.None
+            && _settings.IslandVisible && !_hiddenByFullscreen;
+
+        OverlayProgress.IsVisible = bandOn;
+        if (bandOn)
+        {
+            OverlayProgress.Value = CapsuleProgressBand.FractionFor(state) * 100;
+            // One accent for all three claimants. They are not competing for the strip and
+            // they never overlap, so a per-owner colour would only add a second thing to keep
+            // in sync with the theme for no gain.
+            OverlayProgress.Foreground =
+                new SolidColorBrush(ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex));
+            ToolTip.SetTip(OverlayProgress, CapsuleProgressBand.LabelFor(state));
+        }
+
+        // The strip yields to the band, and only there — it is a pure repaint, no morph.
+        if (bandOn)
+            SecondsStrip.IsVisible = false;
+    }
+
+    /// <summary>
     /// FontAudio digital-dot seconds strip along bottom of Idle/Collapsed (incl. hover/pin peek).
-    /// Hidden while expanded overlay kinds show OverlayProgress / panel.
+    /// Yields to the progress band, which owns the same 8 DIP (1.13).
     /// </summary>
     private void UpdateSecondsStrip()
     {
         try
         {
+            // The band wins the shared strip outright. Checked here as well as in
+            // ApplyProgressBand because this runs on its own timer and would otherwise
+            // bring the strip back a frame after the band took it.
+            if (CapsuleProgressBand.BandActive(_machine.BandState()))
+            {
+                SecondsStrip.IsVisible = false;
+                return;
+            }
+
             var kind = _machine.Snapshot().Kind;
             var idle = kind is OverlayKind.Idle or OverlayKind.Collapsed;
             var show = idle && _settings.ShowSecondsStrip && _settings.IslandVisible && !_hiddenByFullscreen;

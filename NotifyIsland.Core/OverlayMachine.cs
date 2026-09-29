@@ -136,6 +136,93 @@ public sealed class OverlayMachine
     private bool _isSplitClipboard;
     private int _splitMs;
 
+    // 1.13: media / timer / progress stopped taking the capsule over. They live here as
+    // status-row data and as a progress-band arbitration input, both independent of _kind.
+    // This is the whole point of the change: the capsule keeps the clock and only the band
+    // reacts, so a song starting no longer hides the time and a timer no longer sits on
+    // screen forever. See docs/superpowers/specs/2026-09-30--notifyisland-single-capsule.md.
+    // Not readonly: ApplyTo fills them through a ref, and readonly fields may not be passed
+    // as ref outside a constructor. They are still never reassigned, only mutated in place.
+    private OverlayPayload _media = new();
+    private bool _mediaActive;
+    private OverlayPayload _timer = new();
+    private bool _timerActive;
+    private double _timerTotalSeconds;
+    private int _timerDoneMs;
+    private OverlayPayload _progress = new();
+    private bool _progressActive;
+
+    /// <summary>Live media session, for the monitor's Плеер row and the capsule band.</summary>
+    public OverlayPayload MediaRow => Clone(_media);
+
+    /// <summary>True while an SMTC session is being shown.</summary>
+    public bool MediaActive => _mediaActive;
+
+    /// <summary>Live timer, for the monitor's Таймер row and the capsule band.</summary>
+    public OverlayPayload TimerRow => Clone(_timer);
+
+    /// <summary>True while a countdown/stopwatch exists (running or paused, not cancelled).</summary>
+    public bool TimerActive => _timerActive;
+
+    /// <summary>
+    /// How long a finished countdown keeps showing "Время вышло" in its row (ms). Long enough
+    /// to be read if the panel happens to be open, short enough that a later timer start is
+    /// not fighting a stale notice.
+    /// </summary>
+    public const int TimerDoneMs = 12000;
+
+    /// <summary>Total length of a countdown, needed for the band's remaining fraction. 0 = stopwatch.</summary>
+    public double TimerTotalSeconds => _timerTotalSeconds;
+
+    /// <summary>
+    /// Drop the timer. Separate from <see cref="OverlayCommand.Clear"/> on purpose: cancel
+    /// must not collapse the capsule or wipe the payload the user was reading — the timer is
+    /// a row, and cancelling a row only removes that row.
+    /// </summary>
+    public void ClearTimer()
+    {
+        _timerActive = false;
+        _timerTotalSeconds = 0;
+        _timer = new OverlayPayload();
+    }
+
+    /// <summary>Drop the media row (the SMTC session ended).</summary>
+    public void ClearMedia()
+    {
+        _mediaActive = false;
+        _media = new OverlayPayload();
+    }
+
+    /// <summary>Drop the generic progress job, freeing the capsule band.</summary>
+    public void ClearProgress() => _progressActive = false;
+
+    /// <summary>Live generic progress, for the capsule band (copy operations).</summary>
+    public OverlayPayload ProgressRow => Clone(_progress);
+
+    /// <summary>True while a generic progress job is running.</summary>
+    public bool ProgressActive => _progressActive;
+
+    /// <summary>
+    /// The capsule's bottom band arbitration input, assembled from whatever is running right
+    /// now. Built on every call rather than cached: it is read once per Paint (~60 Hz) and
+    /// has no allocation beyond the record itself.
+    /// </summary>
+    public ProgressBandState BandState() => new()
+    {
+        ClipboardActive = _progressActive,
+        ClipboardProgress = _progressActive ? _progress.Progress : 0,
+        MediaActive = _mediaActive,
+        MediaProgress = _mediaActive ? _media.Progress : 0,
+        // A finished timer still occupies its row (that is where "Время вышло" is read),
+        // but it is NOT running and so must not keep the band: a parked completion notice
+        // holding the capsule's only progress strip would push out whatever actually started
+        // in the meantime. Played out the other way, the band is a lie about progress.
+        TimerActive = _timerActive && _timer.Playing,
+        TimerCountUp = _timer.CountUp,
+        TimerSeconds = _timer.RemainingSeconds,
+        TimerTotalSeconds = _timerTotalSeconds
+    };
+
     public int NotifyDurationMs
     {
         get => _notifyDurationMs;
@@ -196,42 +283,47 @@ public sealed class OverlayMachine
                 _notifyMs = 0;
                 break;
             case OverlayCommand.Notify:
-                if (_kind != OverlayKind.Notification)
-                    _returnTo = _kind == OverlayKind.Collapsed ? OverlayKind.Idle : _kind;
-                _kind = OverlayKind.Notification;
-                Apply(data);
+                // 1.13: a notification no longer takes the capsule. It fills the payload the
+                // monitor and the band read, and the kind is left alone, so a toast can
+                // arrive while the stats surface is open without collapsing it.
                 if (string.IsNullOrWhiteSpace(_payload.Title))
                     _payload.Title = "Уведомление";
+                if (string.IsNullOrWhiteSpace(data.Title))
+                    data.Title = _payload.Title;
+                if (string.IsNullOrWhiteSpace(data.Body))
+                    data.Body = _payload.Body;
+                Apply(data);
                 _notifyMs = NotifyDurationMs;
                 _unreadCount = Math.Min(_unreadCount + 1, 99);
                 break;
             case OverlayCommand.SetProgress:
-                _kind = OverlayKind.Progress;
-                Apply(data);
-                _notifyMs = 0;
+                // 1.13: the band takes it; the kind does not move.
+                ApplyTo(ref _progress, data);
+                _progressActive = true;
                 break;
             case OverlayCommand.SetMedia:
-                _kind = OverlayKind.Media;
-                Apply(data);
-                if (string.IsNullOrWhiteSpace(_payload.Title))
-                    _payload.Title = "Без названия";
-                if (string.IsNullOrWhiteSpace(_payload.Subtitle))
-                    _payload.Subtitle = "Неизвестный исполнитель";
-                _notifyMs = 0;
+                ApplyTo(ref _media, data);
+                if (string.IsNullOrWhiteSpace(_media.Title))
+                    _media.Title = "Без названия";
+                if (string.IsNullOrWhiteSpace(_media.Subtitle))
+                    _media.Subtitle = "Неизвестный исполнитель";
+                _mediaActive = true;
                 break;
             case OverlayCommand.SetTimer:
-                _kind = OverlayKind.Timer;
-                Apply(data);
-                if (string.IsNullOrWhiteSpace(_payload.Title))
-                    _payload.Title = _payload.CountUp ? "Секундомер" : "Таймер";
-                _notifyMs = 0;
+                ApplyTo(ref _timer, data);
+                if (string.IsNullOrWhiteSpace(_timer.Title))
+                    _timer.Title = _timer.CountUp ? "Секундомер" : "Таймер";
+                // The first countdown defines the total the band's fraction is measured
+                // against; a stopwatch has none and reports 0 on purpose.
+                if (!_timer.CountUp && data.RemainingSeconds > 0)
+                    _timerTotalSeconds = data.RemainingSeconds;
+                _timerActive = true;
                 break;
             case OverlayCommand.SetError:
-                _kind = OverlayKind.Error;
+                // 1.13: like Notify — the kind stays, the payload carries the message.
+                if (string.IsNullOrWhiteSpace(data.Body) && string.IsNullOrWhiteSpace(data.Title))
+                    data.Title = "Ошибка";
                 Apply(data);
-                if (string.IsNullOrWhiteSpace(_payload.Body) && string.IsNullOrWhiteSpace(_payload.Title))
-                    _payload.Title = "Ошибка";
-                _notifyMs = 0;
                 break;
             case OverlayCommand.SetWeather:
                 ApplyWeather(data);
@@ -347,18 +439,17 @@ public sealed class OverlayMachine
         var dt = Math.Max(0, deltaMs);
         // 1.12.1: SystemStats no longer auto-collapses on a wall-clock timer.
         // Exit is driven by pointer leave (HoverPinMachine grace) or an explicit Collapse.
-        if (_kind is OverlayKind.Notification or OverlayKind.Battery or OverlayKind.Clipboard)
+        // 1.13: Notification and Battery keep their transient lifetime — they are the only
+        // two kinds left that own the capsule outright. A notification no longer CHANGES
+        // the kind, it only sets the payload, so _kind stays whatever the user was looking
+        // at and the countdown below returns the capsule to that.
+        if (_kind == OverlayKind.Battery)
         {
             _notifyMs -= dt;
             if (_notifyMs <= 0)
             {
                 _notifyMs = 0;
-                var collapseTarget = _kind == OverlayKind.Clipboard
-                    ? OverlayKind.Idle
-                    : (_returnTo == OverlayKind.Notification || _returnTo == OverlayKind.Battery
-                        ? OverlayKind.Idle
-                        : _returnTo);
-                _kind = collapseTarget;
+                _kind = _returnTo == OverlayKind.Battery ? OverlayKind.Idle : _returnTo;
                 if (_kind == OverlayKind.Idle)
                     _returnTo = OverlayKind.Idle;
             }
@@ -376,20 +467,39 @@ public sealed class OverlayMachine
                 ClearSplit();
             }
         }
-        if (_kind == OverlayKind.Timer && _payload.Playing)
+        if (_timerActive && _timer.Playing)
         {
-            if (_payload.CountUp)
-                _payload.RemainingSeconds = Math.Min(359999, _payload.RemainingSeconds + dt / 1000.0);
-            else if (_payload.RemainingSeconds > 0)
-                _payload.RemainingSeconds = Math.Max(0, _payload.RemainingSeconds - dt / 1000.0);
+            if (_timer.CountUp)
+                _timer.RemainingSeconds = Math.Min(359999, _timer.RemainingSeconds + dt / 1000.0);
+            else if (_timer.RemainingSeconds > 0)
+                _timer.RemainingSeconds = Math.Max(0, _timer.RemainingSeconds - dt / 1000.0);
 
-            if (IslandTimerLogic.ShouldCompleteCountdown(_kind, _payload))
+            // A finished countdown must not vanish silently, and it must not take the capsule
+            // either — the user kept battery as the only takeover. So it parks in the timer
+            // row for TimerDoneMs with the completion text, and bumps the unread count, which
+            // is what makes the capsule's unread dot pulse. The signal survives; the clock
+            // stays on screen.
+            if (IslandTimerLogic.ShouldCompleteCountdown(_timer))
             {
-                _returnTo = OverlayKind.Idle;
-                _kind = OverlayKind.Notification;
-                Apply(IslandTimerLogic.CompletedPayload());
-                _notifyMs = NotifyDurationMs;
+                _timer.RemainingSeconds = 0;
+                _timer.Playing = false;
+                _timer.CountUp = false;
+                _timer.Title = "Таймер";
+                _timer.Body = "Время вышло";
+                _timerDoneMs = TimerDoneMs;
                 _unreadCount = Math.Min(_unreadCount + 1, 99);
+            }
+        }
+        else if (_timerDoneMs > 0)
+        {
+            // The completion notice is a guest: after its budget the row goes back to empty
+            // and the band is free for whatever runs next.
+            _timerDoneMs = Math.Max(0, _timerDoneMs - dt);
+            if (_timerDoneMs == 0)
+            {
+                _timerActive = false;
+                _timerTotalSeconds = 0;
+                _timer = new OverlayPayload();
             }
         }
         return Snapshot();
@@ -574,28 +684,39 @@ public sealed class OverlayMachine
         Dispatch(cmd, sample);
     }
 
-    private void Apply(OverlayPayload data)
+    private void Apply(OverlayPayload data) => CopyInto(_payload, data);
+
+    /// <summary>
+    /// Copy a payload's fields into an arbitrary target. Used both for the capsule's own
+    /// payload (<see cref="Apply"/>) and for the 1.13 status rows (media / timer / progress),
+    /// which are the same record stored somewhere else — one copy routine, so a new payload
+    /// field cannot be added to one and forgotten in the other.
+    /// </summary>
+    private static void CopyInto(OverlayPayload target, OverlayPayload data)
     {
-        _payload.Title = data.Title;
-        _payload.Subtitle = data.Subtitle;
-        _payload.Body = data.Body;
-        _payload.Progress = data.Progress;
-        _payload.Playing = data.Playing;
-        _payload.RemainingSeconds = data.RemainingSeconds;
-        _payload.CountUp = data.CountUp;
-        _payload.TemperatureC = data.TemperatureC;
-        _payload.WeatherCode = data.WeatherCode;
-        _payload.PrecipProb = data.PrecipProb;
-        _payload.ArtworkBytes = data.ArtworkBytes;
-        _payload.ClipboardItemKind = data.ClipboardItemKind;
-        _payload.ClipboardPaths = data.ClipboardPaths;
-        _payload.ClipboardCapturedAt = data.ClipboardCapturedAt;
-        _payload.ClipboardCycleIndex = data.ClipboardCycleIndex;
-        _payload.ClipboardCycleCount = data.ClipboardCycleCount;
-        _payload.ClipboardCyclePreview = data.ClipboardCyclePreview;
-        _payload.ClipboardCyclePreviews = data.ClipboardCyclePreviews;
-        _payload.SystemStats = data.SystemStats;
+        target.Title = data.Title;
+        target.Subtitle = data.Subtitle;
+        target.Body = data.Body;
+        target.Progress = data.Progress;
+        target.Playing = data.Playing;
+        target.RemainingSeconds = data.RemainingSeconds;
+        target.CountUp = data.CountUp;
+        target.TemperatureC = data.TemperatureC;
+        target.WeatherCode = data.WeatherCode;
+        target.PrecipProb = data.PrecipProb;
+        target.ArtworkBytes = data.ArtworkBytes;
+        target.ClipboardItemKind = data.ClipboardItemKind;
+        target.ClipboardPaths = data.ClipboardPaths;
+        target.ClipboardCapturedAt = data.ClipboardCapturedAt;
+        target.ClipboardCycleIndex = data.ClipboardCycleIndex;
+        target.ClipboardCycleCount = data.ClipboardCycleCount;
+        target.ClipboardCyclePreview = data.ClipboardCyclePreview;
+        target.ClipboardCyclePreviews = data.ClipboardCyclePreviews;
+        target.SystemStats = data.SystemStats;
     }
+
+    /// <summary>Fill one of the 1.13 status-row payloads (media / timer / progress).</summary>
+    private static void ApplyTo(ref OverlayPayload target, OverlayPayload data) => CopyInto(target, data);
 
     public static OverlayPayload Sanitize(OverlayPayload raw)
     {

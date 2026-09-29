@@ -217,82 +217,10 @@
                      Text="1" />
         </Border>
 
-        <StackPanel x:Name="MediaControls"
-                    DockPanel.Dock="Right"
-                    Orientation="Horizontal"
-                    Spacing="2"
-                    Margin="6,0,0,0"
-                    VerticalAlignment="Center"
-                    IsVisible="False">
-          <Button x:Name="MediaPrev"
-                  Padding="4,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Click="OnMediaPrev"
-                  ToolTip.Tip="Предыдущий"
-                  AutomationProperties.Name="Предыдущий трек">
-            <TextBlock x:Name="MediaPrevGlyph" Text="⏮" FontSize="11" Foreground="#3D9CF0" VerticalAlignment="Center"/>
-          </Button>
-          <Button x:Name="MediaPlay"
-                  Padding="4,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Click="OnMediaPlay"
-                  ToolTip.Tip="Воспроизведение"
-                  AutomationProperties.Name="Воспроизведение">
-            <TextBlock x:Name="MediaPlayGlyph"
-                       Text="▶"
-                       FontSize="11"
-                       Foreground="#3D9CF0"
-                       VerticalAlignment="Center" />
-          </Button>
-          <Button x:Name="MediaNext"
-                  Padding="4,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Click="OnMediaNext"
-                  ToolTip.Tip="Следующий"
-                  AutomationProperties.Name="Следующий трек">
-            <TextBlock x:Name="MediaNextGlyph" Text="⏭" FontSize="11" Foreground="#3D9CF0" VerticalAlignment="Center"/>
-          </Button>
-        </StackPanel>
-
-        <StackPanel x:Name="TimerControls"
-                    DockPanel.Dock="Right"
-                    Orientation="Horizontal"
-                    Spacing="2"
-                    Margin="6,0,0,0"
-                    VerticalAlignment="Center"
-                    IsVisible="False">
-          <Button x:Name="TimerPauseBtn"
-                  Padding="4,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Click="OnTimerPauseResume"
-                  ToolTip.Tip="Пауза / продолжить"
-                  AutomationProperties.Name="Пауза таймера">
-            <TextBlock x:Name="TimerPauseGlyph" Text="||" FontSize="11" Foreground="#3D9CF0" VerticalAlignment="Center"/>
-          </Button>
-          <Button x:Name="TimerPlusBtn"
-                  Padding="4,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Click="OnTimerPlusOne"
-                  ToolTip.Tip="+1 мин"
-                  AutomationProperties.Name="Добавить минуту">
-            <TextBlock x:Name="TimerPlusGlyph" Text="+1" FontSize="10" FontWeight="SemiBold" Foreground="#3D9CF0" VerticalAlignment="Center"/>
-          </Button>
-          <Button x:Name="TimerCancelBtn"
-                  Padding="4,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Click="OnTimerCancel"
-                  ToolTip.Tip="Отмена"
-                  AutomationProperties.Name="Отменить таймер">
-            <TextBlock x:Name="TimerCancelGlyph" Text="✕" FontSize="11" Foreground="#E8A0A0" VerticalAlignment="Center"/>
-          </Button>
-        </StackPanel>
-
+        <!-- 1.13: the media and timer control clusters were removed from the capsule. Both
+             live in their own monitor rows (StatsRowView draws ⏮ ▶ ⏭ and ⏸ +1 ✕ next to
+             Плеер / Таймер), because a control cluster on the capsule is what made those two
+             take the capsule over in the first place. -->
         <TextBlock x:Name="OverlayTitle"
                    VerticalAlignment="Center"
                    FontFamily="Segoe UI Variable, Inter, Segoe UI"
@@ -320,7 +248,14 @@
                   IsVisible="False"
                   Margin="12,6,12,6" />
 
-      <!-- FontAudio digital-dot seconds strip (Idle/Collapsed); complementary to HH:mm[:ss] -->
+      <!-- FontAudio digital-dot seconds strip (Idle/Collapsed); complementary to HH:mm[:ss].
+
+           1.13: the bottom 8 DIP of the capsule are a SHARED band. ProgressBar (below) and
+           SecondsStrip both anchor to VerticalAlignment=Bottom, and only one of them may be
+           visible: seconds digits and a moving progress bar are two different readings of the
+           same strip, and drawing both reads as a glitch. CapsuleProgressBand decides which
+           one gets it. The band is why CollapsedH stays 30 DIP — the progress bar did not
+           need a taller capsule, it needed the strip the seconds were already using. -->
       <StackPanel x:Name="SecondsStrip"
                   Orientation="Horizontal"
                   HorizontalAlignment="Center"
@@ -331,6 +266,9 @@
                   IsVisible="False"
                   IsHitTestVisible="False" />
 
+      <!-- 1.13 capsule progress band: 2 DIP bar in the strip the seconds just yielded.
+           Value/visibility come from CapsuleProgressBand (owner = clipboard > media > timer).
+           Accent is set per owner in Paint so the bar reads as belonging to its source. -->
       <ProgressBar x:Name="OverlayProgress"
                    Height="2"
                    Minimum="0" Maximum="100"
