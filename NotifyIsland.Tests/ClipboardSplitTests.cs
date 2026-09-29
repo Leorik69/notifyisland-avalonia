@@ -760,7 +760,7 @@ public class ClipboardSplitTests
     {
         // The pill is 370 DIP and must stay there whatever was copied. The half is
         // ClipboardHalfW wide; the text is capped at TextMaxChars including the ellipsis,
-        // and the TextBlock keeps MaxWidth=166 + CharacterEllipsis on top of that.
+        // and the TextBlock keeps MaxWidth=150 + CharacterEllipsis on top of that.
         var text = ClipboardHalfPreview.TextFor(new OverlayPayload
         {
             ClipboardItemKind = ClipboardItemKind.Text,
@@ -769,5 +769,23 @@ public class ClipboardSplitTests
         Assert.True(text.Length <= ClipboardHalfPreview.TextMaxChars);
         Assert.True(ClipboardHalfPreview.TextMaxChars < OverlayTokens.ClipboardHalfW,
             "the character budget must stay well inside the half, so CharacterEllipsis never has to widen it");
+    }
+
+    [Fact]
+    public void Text_RowFitsInsideTheSplitHalfAtTheGrownPillSize()
+    {
+        // 1.12.2: the glyph row is a StackPanel, so it takes its content's width — icon +
+        // spacing + MaxWidth + margins. When the pill grows to 370 the half is only 185,
+        // and an over-wide row does not ellipsize, it overhangs the divider and prints the
+        // preview over the clock: the halves "run into" each other instead of splitting.
+        // These are the numbers in OverlayWindow.axaml, pinned here so the next tweak to a
+        // margin, the icon or MaxWidth cannot quietly break the layout again.
+        const double icon = 12, spacing = 4, textMaxWidth = 150;
+        const double marginLeft = 4, marginRight = 8;
+        var row = icon + spacing + textMaxWidth + marginLeft + marginRight;
+        var halfAtSplit = OverlayTokens.ClipboardHalfW;
+
+        Assert.True(row <= halfAtSplit,
+            $"the preview row ({row} DIP) must fit the split half ({halfAtSplit} DIP)");
     }
 }

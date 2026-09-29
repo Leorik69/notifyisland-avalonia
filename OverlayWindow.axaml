@@ -22,7 +22,11 @@
           VerticalAlignment="Center"
           ClipToBounds="False"
           RenderTransformOrigin="50%,50%">
-    <Grid>
+    <!-- Island and clipboard half share this container: it spans the WHOLE pill in both
+         states so the Right-anchored half lands in the right compartment. Only the clock
+         row and the seconds strip are clamped to the island's half, via a trailing
+         margin in Paint(). -->
+    <Grid x:Name="CollapsedArea">
       <!-- Collapsed: visible ‹/› chevrons + clock/date/weather + unread dot.
            System-stats metrics live in SystemStatsPanel (expanded view only, 1.12.1).
            When clipboard cycle is active (≥2 items), clock is hidden and the
@@ -163,6 +167,7 @@
       <Grid x:Name="ClipboardHalf"
             IsVisible="False"
             IsHitTestVisible="False"
+            ClipToBounds="True"
             HorizontalAlignment="Right"
             VerticalAlignment="Center"
             Width="200"
@@ -185,21 +190,26 @@
              length. Horizontal here; ApplyClipboardHalfLayout() makes it a horizontal line
              spanning 16 DIP of the cross axis on Left/Right. -->
         <Border x:Name="ClipboardHalfDivider"
-                Width="1" Height="16"
-                Background="#1AFFFFFF"
+                Width="1" Height="18"
+                Background="#3DFFFFFF"
                 HorizontalAlignment="Left"
                 VerticalAlignment="Center"
                 IsHitTestVisible="False" />
-        <!-- 4 DIP clearance from the divider, then icon + trimmed preview. MaxWidth keeps
-             the TextBlock inside the half so CharacterEllipsis does the trimming. On a vertical
-             edge this stays a 200×30 row and is rotated as a whole, so the trimming budget
-             (ClipboardHalfPreview.TextMaxChars, MaxWidth 166) is unchanged. -->
+        <!-- 4 DIP clearance from the divider, then icon + trimmed preview. The row is
+             pinned Left and clipped: at the grown pill the half is 185 DIP, and a
+             StackPanel sized by its content (12 icon + 4 spacing + MaxWidth + 4/8 margins)
+             would otherwise overhang the divider and print the preview over the clock.
+             MaxWidth 150 keeps the whole row at 178 DIP inside that 185, so
+             CharacterEllipsis does the trimming without ever widening the half. On a
+             vertical edge this stays a 200×30 row and is rotated as a whole, so the
+             trimming budget (ClipboardHalfPreview.TextMaxChars) is unchanged. -->
         <StackPanel x:Name="ClipboardHalfContent"
                     Orientation="Horizontal"
                     Spacing="4"
+                    HorizontalAlignment="Left"
                     VerticalAlignment="Center"
                     RenderTransformOrigin="50%,50%"
-                    Margin="4,0,10,0">
+                    Margin="4,0,8,0">
           <Viewbox x:Name="ClipboardHalfIcon" Width="12" Height="12" VerticalAlignment="Center" />
           <TextBlock x:Name="ClipboardHalfText"
                      VerticalAlignment="Center"
@@ -207,7 +217,7 @@
                      FontSize="11"
                      FontWeight="Medium"
                      Foreground="#C8C8CC"
-                     MaxWidth="166"
+                     MaxWidth="150"
                      TextTrimming="CharacterEllipsis"
                      Text="буфер" />
         </StackPanel>

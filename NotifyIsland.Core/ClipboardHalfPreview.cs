@@ -18,11 +18,11 @@ public static class ClipboardHalfPreview
 {
     /// <summary>
     /// Characters of preview text kept before the ellipsis is added, ellipsis included in
-    /// the budget. The half is 200 DIP wide and the <c>TextBlock</c> only 166 DIP after the
-    /// 12 DIP icon and the 4/10 DIP margins; at the pill's 11 DIP Segoe UI that is roughly
-    /// 22 characters of Cyrillic, so a longer cut only ever produced text the
-    /// <c>CharacterEllipsis</c> threw away again. It is a ceiling, not a quota: a cut that
-    /// lands on a space gives that space back.
+    /// the budget. The half is ClipboardHalfW wide and the <c>TextBlock</c> only 150 DIP
+    /// after the 12 DIP icon, the 4 DIP spacing and the 4/8 DIP margins; at the pill's
+    /// 11 DIP Segoe UI that is roughly 22 characters of Cyrillic, so a longer cut only
+    /// ever produced text the <c>CharacterEllipsis</c> threw away again. It is a ceiling,
+    /// not a quota: a cut that lands on a space gives that space back.
     /// </summary>
     public const int TextMaxChars = 22;
 
@@ -60,7 +60,7 @@ public static class ClipboardHalfPreview
     /// <para>
     /// Truncation is character-based, not pixel-based, so it is testable and DPI- and
     /// font-independent; the <c>TextBlock</c> keeps <c>CharacterEllipsis</c> as the second
-    /// line of defence for the <see cref="TextMaxChars"/> that still do not fit 166 DIP
+    /// line of defence for the <see cref="TextMaxChars"/> that still do not fit 150 DIP
     /// (a long file name, or Cyrillic in a fallback font).
     /// </para>
     /// </summary>

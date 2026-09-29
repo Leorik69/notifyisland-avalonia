@@ -288,6 +288,11 @@ public partial class OverlayWindow : Window
         // (harmlessly) never again elsewhere is safe.
         if (_settings.ClipboardEnabled) _clipboardSource?.Start();
         if (_settings.SystemStatsEnabled) _statsMachine?.Start();
+        // Same reason as above: the row set must exist before the first hover, or
+        // ApplyHoverExpandedState sees zero rows and suppresses the stats surface. It only
+        // appeared to work after touching the settings, because ApplySettingsFromUi happens
+        // to call this too. Opened is not a reliable place for any of this.
+        SyncStatsRows();
         TickClock();
         ApplySize();
         Paint();
@@ -1656,10 +1661,37 @@ public partial class OverlayWindow : Window
         // the two defers the hide to SettleSplitHalf() instead of flashing it off for one
         // frame before the collapse morph starts.
         if (_splitHalfDir == 0 && split == _splitApplied) ClipboardHalf.IsVisible = split;
-        CollapsedRow.HorizontalAlignment = split
-            ? Avalonia.Layout.HorizontalAlignment.Left
-            : Avalonia.Layout.HorizontalAlignment.Center;
-        CollapsedRow.Margin = split ? new Thickness(10, 0, 0, 0) : new Thickness(0);
+        // 1.12.2: the island side gets its own compartment, exactly the island's half of the
+        // long axis. CollapsedRow and SecondsStrip centre themselves inside CollapsedArea, and
+        // that container also holds ClipboardHalf — so it must keep spanning the WHOLE pill
+        // (the half is anchored Right on the long axis and needs the full width to land in
+        // the right compartment). Giving the rows the slack as a trailing margin instead
+        // centres them in the island's own half and stops the seconds strip at the divider,
+        // so the split reads as "one capsule, divided" rather than "the island slid apart".
+        if (split)
+        {
+            var slack = PillLongAxis() - IslandHalfExtent();
+            var slackPositive = Math.Max(0, slack);
+            if (SplitIsVertical)
+            {
+                CollapsedRow.Margin = new Thickness(0, 0, slackPositive, 0);
+                SecondsStrip.Margin = new Thickness(10, 0, 10, 2 + slackPositive);
+            }
+            else
+            {
+                // The slack goes on the TRAILING edge: centring inside a box that starts
+                // where the island half starts puts the row in the island's compartment.
+                CollapsedRow.Margin = new Thickness(0, 0, slackPositive, 0);
+                SecondsStrip.Margin = new Thickness(10, 0, 10 + slackPositive, 2);
+            }
+        }
+        else
+        {
+            CollapsedRow.Margin = new Thickness(0);
+            SecondsStrip.Margin = new Thickness(10, 0, 10, 2);
+        }
+        CollapsedRow.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
+        SecondsStrip.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
         if (split) ApplyClipboardHalfContent(snap.SplitClipboard);
 
         // 1.12.1: panel visibility follows the FSM kind immediately (Paint runs on the same
@@ -2437,9 +2469,16 @@ public partial class OverlayWindow : Window
                 return;
             }
 
-            var pillW = Pill.Width > 0 ? Pill.Width : Width;
-            if (pillW <= 0) pillW = OverlayTokens.CollapsedW;
-            var slots = SecondsStripLogic.SlotCountForWidth(pillW, SecondsStripView.DotWidth + 1.5);
+            // 1.12.2: the strip belongs to the island half, so its dots are counted from the
+            // island's own extent, not from the whole pill. Counting from the grown pill made
+            // the strip wider than its compartment, and since nothing clips it the dots ran
+            // on under the clipboard half and across the divider — a bridge between halves
+            // where the split should be.
+            var stripW = _machine.IsSplitClipboard
+                ? Math.Max(1, IslandHalfExtent())
+                : (Pill.Width > 0 ? Pill.Width : Width);
+            if (stripW <= 0) stripW = OverlayTokens.CollapsedW;
+            var slots = SecondsStripLogic.SlotCountForWidth(stripW, SecondsStripView.DotWidth + 1.5);
             var lit = SecondsStripLogic.LitCount(DateTime.Now, slots);
             // Prefer accent; fall back to primary text
             var brush = new SolidColorBrush(ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex));
