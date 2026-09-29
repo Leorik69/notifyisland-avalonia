@@ -23,7 +23,6 @@ public partial class SettingsWindow : Window
     private readonly AppSettings _live;
     private readonly AppSettings _draft;
     private readonly Action<AppSettings> _onApply;
-    private readonly Action? _onDemoBattery;
     private readonly Action<int>? _onStartTimer;
     private readonly Action? _onStartStopwatch;
     private bool _paletteWired;
@@ -32,7 +31,7 @@ public partial class SettingsWindow : Window
 
     public SettingsWindow() : this(new AppSettings(), _ => { }) { }
 
-    public SettingsWindow(AppSettings live, Action<AppSettings> onApply, Action? onDemoBattery = null,
+    public SettingsWindow(AppSettings live, Action<AppSettings> onApply,
         Action<int>? onStartTimer = null, Action? onStartStopwatch = null,
         string? initialSection = null)
     {
@@ -40,7 +39,6 @@ public partial class SettingsWindow : Window
         _draft = new AppSettings();
         live.CopyTo(_draft);
         _onApply = onApply;
-        _onDemoBattery = onDemoBattery;
         _onStartTimer = onStartTimer;
         _onStartStopwatch = onStartStopwatch;
         InitializeComponent();
@@ -674,16 +672,6 @@ public partial class SettingsWindow : Window
     }
 
     private void OnCancel(object? sender, RoutedEventArgs e) => Close();
-    private void OnDemoBattery(object? sender, RoutedEventArgs e)
-    {
-        // Apply current draft first so thresholds match, then fire demo on live overlay.
-        ReadUi();
-        _draft.CopyTo(_live);
-        _live.Normalize();
-        _live.Save();
-        _onApply(_draft);
-        _onDemoBattery?.Invoke();
-    }
 
     private void OnStartTimer1(object? sender, RoutedEventArgs e) => _onStartTimer?.Invoke(1);
     private void OnStartTimer5(object? sender, RoutedEventArgs e) => _onStartTimer?.Invoke(5);

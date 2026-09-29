@@ -84,6 +84,6 @@ public static class WeatherCodes
         };
     }
 
-    /// <summary>Local demo stub (Moscow-like) when Windows weather is unavailable.</summary>
+    /// <summary>Local fallback stub (Moscow-like) when Windows weather is unavailable.</summary>
     public static OverlayPayload MockMoscow() => ToPayload(18, 0, 0);
 }

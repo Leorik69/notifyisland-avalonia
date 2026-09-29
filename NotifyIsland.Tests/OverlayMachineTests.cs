@@ -231,20 +231,6 @@ public class OverlayMachineTests
     }
 
     [Fact]
-    public void DemoNext_IncludesSetWeather()
-    {
-        var m = new OverlayMachine();
-        OverlayKind? sawWeather = null;
-        for (var i = 0; i < 16; i++)
-        {
-            m.Dispatch(OverlayCommand.DemoNext);
-            if (m.Snapshot().Kind == OverlayKind.Weather)
-                sawWeather = OverlayKind.Weather;
-        }
-        Assert.Equal(OverlayKind.Weather, sawWeather);
-    }
-
-    [Fact]
     public void Sanitize_MediaFields_AndArtworkCap()
     {
         var ok = OverlayMachine.Sanitize(new OverlayPayload
@@ -454,21 +440,6 @@ public class OverlayMachineTests
         var chipW = OverlayMachine.WidthFor(OverlayKind.Idle, weatherEnabled: false, batteryChip: true);
         Assert.Equal(baseW + OverlayTokens.CollapsedBatteryExtraW, chipW);
     }
-
-    [Fact]
-    public void DemoNext_IncludesSetBattery()
-    {
-        var m = new OverlayMachine();
-        OverlayKind? saw = null;
-        for (var i = 0; i < 20; i++)
-        {
-            m.Dispatch(OverlayCommand.DemoNext);
-            if (m.Snapshot().Kind == OverlayKind.Battery)
-                saw = OverlayKind.Battery;
-        }
-        Assert.Equal(OverlayKind.Battery, saw);
-    }
-
 
     [Fact]
     public void ClipboardCycle_SetPreviews_PopulatesPayload()

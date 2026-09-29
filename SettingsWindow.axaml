@@ -338,7 +338,7 @@
                 <TextBlock Classes="sectionTitle" Text="Медиа и питание"/>
             <CheckBox x:Name="ShowNowPlayingBox" Content="Показывать Now Playing"/>
             <TextBlock Classes="mutedNote"
-                       Text="Системный SMTC (Spotify, Edge, …). Выкл — только демо Media (F9)."/>
+                       Text="Системный SMTC (Spotify, Edge, …). Выкл — строка Media остаётся пустой."/>
               </StackPanel>
             </Border>
             <Border Classes="settingsCard">
@@ -354,8 +354,6 @@
                          Foreground="#FFFFFF" VerticalAlignment="Center"/>
               <Slider x:Name="LowBatterySlider" Minimum="5" Maximum="50" Value="20" TickFrequency="1" IsSnapToTickEnabled="True"/>
             </DockPanel>
-            <Button x:Name="DemoBatteryBtn" Content="Демо зарядки (F10)" Width="200" HorizontalAlignment="Left"
-                    Margin="0,8,0,0" Click="OnDemoBattery"/>
               </StackPanel>
             </Border>
             <Border Classes="settingsCard">
@@ -508,7 +506,7 @@
               <ComboBoxItem Tag="Glitch" Content="Glitch — ступенчатый stutter"/>
             </ComboBox>
             <TextBlock Classes="mutedNote"
-                       Text="Стили применяются при входе/выходе Notification. Demo (F9) циклически показывает разные appear/dismiss."/>
+                       Text="Стили применяются при входе/выходе Notification — берутся из этих двух списков."/>
 
             <CheckBox x:Name="AnimPulseEnabledBox" Content="Pulse непрочитанных" Margin="0,12,0,2"/>
 

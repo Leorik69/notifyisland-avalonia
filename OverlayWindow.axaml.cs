@@ -34,9 +34,7 @@ public partial class OverlayWindow : Window
     private SystemMonitorMachine? _statsMachine;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
-    private readonly DispatcherTimer _demo = new() { Interval = TimeSpan.FromSeconds(1.8) };
     private readonly DispatcherTimer _weatherTimer = new() { Interval = TimeSpan.FromMilliseconds(OverlayTokens.WeatherRefreshMs) };
-    private bool _demoOn;
     private CancellationTokenSource? _weatherCts;
 
     private Point _pressOrigin;
@@ -161,23 +159,6 @@ public partial class OverlayWindow : Window
     /// </summary>
     private CapsuleMorphTrack _morphTrack = CapsuleMorphTrack.Plain;
     private OverlayKind _prevKind = OverlayKind.Idle;
-    private int _demoAppearStep;
-    private static readonly NotifyAppearStyle[] DemoAppearCycle =
-    [
-        NotifyAppearStyle.Bounce,
-        NotifyAppearStyle.SlideDown,
-        NotifyAppearStyle.FadeScale,
-        NotifyAppearStyle.Pop,
-        NotifyAppearStyle.Inflate
-    ];
-    private static readonly NotifyDismissStyle[] DemoDismissCycle =
-    [
-        NotifyDismissStyle.Ragged,
-        NotifyDismissStyle.Glitch,
-        NotifyDismissStyle.SlideUp,
-        NotifyDismissStyle.FadeScaleOut,
-        NotifyDismissStyle.Collapse
-    ];
     private readonly Random _morphRng = new();
 
     public AppSettings Settings => _settings;
@@ -315,15 +296,6 @@ public partial class OverlayWindow : Window
                 _winTray?.RefreshIcon(unread);
             }
         };
-        _demo.Tick += (_, _) =>
-        {
-            var before = _machine.Snapshot().Kind;
-            _machine.Dispatch(OverlayCommand.DemoNext);
-            var after = _machine.Snapshot().Kind;
-            if (before != after) OnKindChanged(before, after);
-            ApplySize();
-            Paint();
-        };
         _weatherTimer.Tick += (_, _) => _ = RefreshWeatherAsync();
 
         _fullscreenTimer.Tick += (_, _) => PollFullscreen();
@@ -354,7 +326,6 @@ public partial class OverlayWindow : Window
         TickClock();
         ApplySize();
         Paint();
-        if (Program.DemoMode) StartDemo();
         if (Program.SettingsMode)
             Dispatcher.UIThread.Post(OpenSettings, DispatcherPriority.Background);
     }
@@ -809,7 +780,7 @@ public partial class OverlayWindow : Window
         HandleBlobClick();
     }
 
-    /// <summary>Clicks only (1.8.1). Swipe L/R/U/D cycle/collapse removed — CycleNext/Prev remain for API/tests/demo.</summary>
+    /// <summary>Clicks only (1.8.1). Swipe L/R/U/D cycle/collapse removed — CycleNext/Prev remain for API/tests.</summary>
     private void WirePointerClicks()
     {
         Pill.PointerPressed += OnPillPointerPressed;
@@ -1257,9 +1228,6 @@ public partial class OverlayWindow : Window
     {
         var menu = new ContextMenu();
         menu.Items.Add(Menu("Центр уведомлений", TrayService.OpenActionCenter));
-        menu.Items.Add(Menu("Demo F9", () => { if (_demoOn) StopDemo(); else StartDemo(); }));
-        menu.Items.Add(Menu("Демо зарядки F10", DemoChargePill));
-        menu.Items.Add(Menu("Демо низкий заряд F11", DemoLowBattery));
         if (_settings.TimerEnabled)
         {
             menu.Items.Add(Menu("Таймер 1 мин", () => StartCountdownMinutes(1)));
@@ -1313,7 +1281,7 @@ public partial class OverlayWindow : Window
                 return;
             }
 
-            _settingsWindow = new SettingsWindow(_settings, ApplySettingsFromUi, DemoChargePill,
+            _settingsWindow = new SettingsWindow(_settings, ApplySettingsFromUi,
                 StartCountdownMinutes, StartStopwatchFromSettings, section);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Show();
@@ -1422,16 +1390,6 @@ public partial class OverlayWindow : Window
 
     public void ToggleWeatherFromTray() => ToggleWeather();
 
-    public bool IsDemoRunning => _demoOn;
-
-    public void ToggleDemoFromTray()
-    {
-        if (_demoOn) StopDemo();
-        else StartDemo();
-        _tray?.RefreshLabels();
-        _winTray?.RefreshLabels();
-    }
-
     private void ApplyIslandVisibility()
     {
         // Hide without closing — keep tray/settings alive
@@ -1523,10 +1481,7 @@ public partial class OverlayWindow : Window
 
     private void OnKey(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.F9) { if (_demoOn) StopDemo(); else StartDemo(); e.Handled = true; }
-        else if (e.Key == Key.F10) { DemoChargePill(); e.Handled = true; }
-        else if (e.Key == Key.F11) { DemoLowBattery(); e.Handled = true; }
-        else if (e.Key == Key.F12)
+        if (e.Key == Key.F12)
         {
             if (_settings.TimerEnabled)
             {
@@ -1559,30 +1514,6 @@ public partial class OverlayWindow : Window
             OnKindChanged(before, _machine.Snapshot().Kind);
             ApplySize(); Paint(); e.Handled = true;
         }
-    }
-
-    private void StartDemo()
-    {
-        _demoOn = true;
-        _machine.Dispatch(OverlayCommand.Clear);
-        var before = _machine.Snapshot().Kind;
-        _machine.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Сообщение", Body = "Демо уведомление" });
-        OnKindChanged(before, _machine.Snapshot().Kind);
-        ApplySize(); Paint();
-        _demo.Interval = TimeSpan.FromMilliseconds(OverlayTokens.DefaultNotifyMs + 1200);
-        _demo.Start();
-        void OnFirst(object? s, EventArgs e)
-        {
-            _demo.Tick -= OnFirst;
-            _demo.Interval = TimeSpan.FromSeconds(1.8);
-        }
-        _demo.Tick += OnFirst;
-    }
-
-    private void StopDemo()
-    {
-        _demoOn = false; _demo.Stop();
-        _machine.Dispatch(OverlayCommand.Clear); ApplySize(); Paint();
     }
 
     private void TickClock()
@@ -1861,16 +1792,12 @@ public partial class OverlayWindow : Window
     private NotifyAppearStyle ResolveAppearStyle(bool enteringNotify)
     {
         if (!enteringNotify) return NotifyAppearStyle.Inflate;
-        if (_demoOn)
-            return DemoAppearCycle[_demoAppearStep++ % DemoAppearCycle.Length];
         return _settings.AppearStyle;
     }
 
     private NotifyDismissStyle ResolveDismissStyle(bool leavingNotify)
     {
         if (!leavingNotify) return NotifyDismissStyle.Collapse;
-        if (_demoOn)
-            return DemoDismissCycle[(_demoAppearStep + 2) % DemoDismissCycle.Length];
         return _settings.DismissStyle;
     }
 
@@ -3303,15 +3230,6 @@ public partial class OverlayWindow : Window
         if (before != after) OnKindChanged(before, after);
         ApplySize();
         Paint();
-    }
-
-    public void DemoChargePill() => ShowChargePill(_lastPower?.Percent ?? 67);
-
-    public void DemoLowBattery()
-    {
-        _powerSource?.ResetLowLatch();
-        var pct = Math.Min(_settings.LowBatteryPercent, 15);
-        ShowLowBattery(pct);
     }
 
     // ── Island timer / stopwatch ──────────────────────────────────────────

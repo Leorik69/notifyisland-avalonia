@@ -5,7 +5,6 @@ namespace NotifyIsland;
 
 internal static class Program
 {
-    public static bool DemoMode { get; private set; }
     public static bool SettingsMode { get; private set; }
 
     [STAThread]
@@ -32,8 +31,6 @@ internal static class Program
 
         foreach (var a in args)
         {
-            if (string.Equals(a, "--demo", StringComparison.OrdinalIgnoreCase))
-                DemoMode = true;
             if (string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase))
                 SettingsMode = true;
         }

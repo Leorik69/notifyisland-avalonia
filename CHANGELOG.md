@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Demo mode removed (1.13.0)
+
+### Removed — Demo mode
+Demo scaffolding is gone from every layer of the product. It was a development aid (mock payloads, a 1.8 s timer that rotated through styles and kinds) and was never part of the shipped app.
+- **Точка входа:** аргумент `--demo` и `Program.DemoMode` удалены. Остались `--settings` и обычный запуск.
+- **Островок:** ушли таймер `_demo` (+ его `Tick`), `_demoOn`, `StartDemo` / `StopDemo`, `ToggleDemoFromTray`, `IsDemoRunning`, `DemoChargePill`, `DemoLowBattery`, три пункта контекстного меню («Demo F9», «Демо зарядки F10», «Демо низкий заряд F11») и ветки **F9 / F10 / F11** в обработчике клавиш. **F12** (таймер) и **Esc** (unpin/collapse) остались как были.
+- **Стили анимации:** `DemoAppearCycle` / `DemoDismissCycle` удалены вместе с `_demoAppearStep`. `ResolveAppearStyle` / `ResolveDismissStyle` больше не крутят стили по кругу — они берут значение из настроек пользователя (`AppearStyle` / `DismissStyle`), то есть тот же путь, что и для обычного уведомления.
+- **Core:** из `OverlayCommand` убран `DemoNext`, из `Dispatch` — его case, удалены поле `_demoIndex` и метод `RunDemoStep`. Enum-значение исчезло полностью, а не оставлено «на всякий случай».
+- **Tray:** пункт «Демо вкл/выкл» удалён из обоих треев (`TrayService`, `WinFormsTray`) вместе с полем, обработчиком и строкой в `RefreshLabels`. Порядок меню и разделители не изменились — «Погода» встал на место демо, осиротевших разделителей нет.
+- **Настройки:** удалены кнопка `DemoBatteryBtn` («Демо зарядки (F10)»), обработчик `OnDemoBattery`, поле `_onDemoBattery` и параметр конструктора `SettingsWindow`. Две подсказки переписаны под реальное поведение: SMTC-выключатель больше не обещает «демо Media (F9)», а подпись стилей больше не упоминает Demo (F9).
+- **Тесты:** удалены четыре демо-теста (`DemoNext_IncludesSetWeather`, `DemoNext_IncludesSetBattery` и два добавленных в 1.13). Остальные сценарии, завязавшиеся на мок-строки (`"Night Drive"` и т. п.), остались как обычные тестовые данные — переименования и правки формулировок не потребовалось.
+- **Не тронуто (это продукт, а не демо):** `WeatherCodes.MockMoscow()` и локальный no-network fallback погоды, `BatteryAlertLogic.ChargePayload` / `LowBatteryPayload` (они по-прежнему вызываются из реальных `ShowChargePill` / `ShowLowBattery`), `IslandTimerLogic.ShouldCompleteCountdown`, goo-шар, панель истории, полоса прогресса, слой анимации и reduced motion.
+- **Документация:** README и CONTEXT.md приведены в соответствие; записи в этом файле ниже — историческая правка и не переписывались.
+
 ## Unreleased — Idle breath removed + Clipboard history (1.12.0-preview)
 
 ### Changed — Goo blob (1.12.3)

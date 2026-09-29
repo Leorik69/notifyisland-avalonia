@@ -30,7 +30,6 @@ public enum OverlayCommand
     SetTimer,
     SetError,
     Clear,
-    DemoNext,
     SetWeather,
     CycleNext,
     CyclePrev,
@@ -122,7 +121,6 @@ public sealed class OverlayMachine
     private OverlayKind _returnTo = OverlayKind.Idle;
     private int _notifyMs;
     private readonly OverlayPayload _payload = new();
-    private int _demoIndex;
     private int _notifyDurationMs = OverlayTokens.DefaultNotifyMs;
     private int _unreadCount;
     private bool _weatherEnabled = true;
@@ -413,9 +411,6 @@ public sealed class OverlayMachine
             case OverlayCommand.CycleClipboardPrev:
                 CycleClipboardInternal(-1);
                 break;
-            case OverlayCommand.DemoNext:
-                RunDemoStep();
-                break;
         }
         return Snapshot();
     }
@@ -551,9 +546,10 @@ public sealed class OverlayMachine
                 Apply(new OverlayPayload());
                 break;
             case IslandSlot.Notification:
-                // Demo seed without bumping unread (swipe cycle ≠ Notify).
+                // Placeholder text without bumping unread (swipe cycle ≠ Notify): the slot
+                // only exists so there is something to look at on a real copy.
                 _kind = OverlayKind.Notification;
-                Apply(new OverlayPayload { Title = "Сообщение", Body = "Демо уведомление" });
+                Apply(new OverlayPayload { Title = "Сообщение", Body = "Уведомление" });
                 _notifyMs = 0;
                 break;
             case IslandSlot.Weather:
@@ -653,35 +649,6 @@ public sealed class OverlayMachine
 
         Apply(weather);
         _lastWeather = Clone(weather);
-    }
-
-    private void RunDemoStep()
-    {
-        // Alternate expand ↔ collapse so width morph is obvious in demo.
-        var steps = new OverlayCommand[]
-        {
-            OverlayCommand.Notify, OverlayCommand.Collapse,
-            OverlayCommand.SetWeather, OverlayCommand.Collapse,
-            OverlayCommand.SetMedia, OverlayCommand.Collapse,
-            OverlayCommand.SetProgress, OverlayCommand.Collapse,
-            OverlayCommand.SetBattery, OverlayCommand.Collapse,
-            OverlayCommand.SetTimer, OverlayCommand.Collapse,
-            OverlayCommand.SetError, OverlayCommand.Collapse
-        };
-        var cmd = steps[_demoIndex % steps.Length];
-        _demoIndex++;
-        var sample = cmd switch
-        {
-            OverlayCommand.SetWeather => Clone(_lastWeather),
-            OverlayCommand.Notify => new OverlayPayload { Title = "Сообщение", Body = "Демо уведомление" },
-            OverlayCommand.SetProgress => new OverlayPayload { Title = "Копирование", Progress = 0.42 },
-            OverlayCommand.SetMedia => new OverlayPayload { Title = "Night Drive", Subtitle = "Local Radio", Progress = 0.33, Playing = true },
-            OverlayCommand.SetBattery => BatteryAlertLogic.ChargePayload(67),
-            OverlayCommand.SetTimer => new OverlayPayload { Title = "Фокус", RemainingSeconds = 90, Playing = true },
-            OverlayCommand.SetError => new OverlayPayload { Title = "Сеть", Body = "Нет ответа сервера" },
-            _ => new OverlayPayload()
-        };
-        Dispatch(cmd, sample);
     }
 
     private void Apply(OverlayPayload data) => CopyInto(_payload, data);

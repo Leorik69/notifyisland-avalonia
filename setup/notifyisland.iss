@@ -1,5 +1,5 @@
 #define MyAppName "NotifyIsland"
-#define MyAppVersion "1.12.5"
+#define MyAppVersion "1.13.0"
 #define MyAppPublisher "NotifyIsland"
 #define MyAppURL "https://github.com/Leorik69/notifyisland-avalonia"
 #define MyAppExeName "NotifyIsland.exe"

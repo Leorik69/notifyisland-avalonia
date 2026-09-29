@@ -19,7 +19,6 @@ internal sealed class WinFormsTray : IDisposable
     private readonly NotifyIcon _notify;
     private readonly ToolStripMenuItem _toggleIsland;
     private readonly ToolStripMenuItem _toggleWeather;
-    private readonly ToolStripMenuItem _toggleDemo;
     private DateTime _lastClickUtc = DateTime.MinValue;
     private bool _disposed;
 
@@ -41,9 +40,6 @@ internal sealed class WinFormsTray : IDisposable
         _toggleIsland = new ToolStripMenuItem("Скрыть островок");
         _toggleIsland.Click += (_, _) => Ui(_overlay.ToggleIslandVisible);
 
-        _toggleDemo = new ToolStripMenuItem("Демо вкл");
-        _toggleDemo.Click += (_, _) => Ui(_overlay.ToggleDemoFromTray);
-
         _toggleWeather = new ToolStripMenuItem("Погода вкл");
         _toggleWeather.Click += (_, _) => Ui(_overlay.ToggleWeatherFromTray);
 
@@ -62,13 +58,12 @@ internal sealed class WinFormsTray : IDisposable
 
         // Plan §Task 10 Step 6 (mirrored from TrayService):
         //   Toggle island → sep → Action Center → clipboard submenu → sep
-        //   → demo toggle → weather toggle → timer submenu → sep → Settings → Exit.
+        //   → weather toggle → timer submenu → sep → Settings → Exit.
         menu.Items.Add(_toggleIsland);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(actionCenter);
         menu.Items.Add(clipboardMenu);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(_toggleDemo);
         menu.Items.Add(_toggleWeather);
         menu.Items.Add(timerMenu);
         menu.Items.Add(new ToolStripSeparator());
@@ -89,7 +84,6 @@ internal sealed class WinFormsTray : IDisposable
         var s = _overlay.Settings;
         _toggleIsland.Text = s.IslandVisible ? "Скрыть островок" : "Показать островок";
         _toggleWeather.Text = s.WeatherEnabled ? "Погода выкл" : "Погода вкл";
-        _toggleDemo.Text = _overlay.IsDemoRunning ? "Демо выкл" : "Демо вкл";
     }
 
     public void RefreshIcon(int unread)

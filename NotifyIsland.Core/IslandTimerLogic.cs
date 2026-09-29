@@ -79,9 +79,9 @@ public static class IslandTimerLogic
         && payload.RemainingSeconds <= 0;
 
     /// <summary>
-    /// Runs a completion check against a kind/payload pair. Kept for the demo path, which
-    /// still drives a timer through a kind; the real timer uses
-    /// <see cref="ShouldCompleteCountdown(OverlayPayload)"/>.
+    /// Kind-qualified overload. Since 1.13 the kind is not part of the check at all (see
+    /// above); it is kept for callers that still have a kind in hand, while the timer path
+    /// itself uses <see cref="ShouldCompleteCountdown(OverlayPayload)"/>.
     /// </summary>
     public static bool ShouldCompleteCountdown(OverlayKind kind, OverlayPayload payload) =>
         kind == OverlayKind.Timer && ShouldCompleteCountdown(payload);

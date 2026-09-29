@@ -47,7 +47,7 @@ public sealed class WindowsWeatherSource : IWeatherSource
         if (fromDisk is not null)
             return fromDisk;
 
-        // 4) Local stub — no network. Keeps UI demoable in Sandbox / non-Windows.
+        // 4) Local stub — no network. Keeps the UI usable in Sandbox / non-Windows.
         AppLog.Warn("Windows weather unavailable; using LocalStubWeather");
         var stub = LocalStubWeather();
         PersistCache(stub);
@@ -270,7 +270,7 @@ public sealed class WindowsWeatherSource : IWeatherSource
     /// <summary>Deterministic local stub — no network. Uses lat seed lightly for variety.</summary>
     public OverlayPayload LocalStubWeather()
     {
-        // Stable demo: clear 18° Moscow-like; slight variation from lon hash unused for predictability.
+        // Stable values: clear 18° Moscow-like; slight variation from lon hash unused for predictability.
         _ = (_lat, _lon);
         return WeatherCodes.MockMoscow();
     }

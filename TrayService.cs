@@ -24,7 +24,6 @@ internal sealed class TrayService : IDisposable
     private readonly ClipboardHistory _clipboard;
     private readonly NativeMenuItem _toggleIsland;
     private readonly NativeMenuItem _toggleWeather;
-    private readonly NativeMenuItem _toggleDemo;
     private DateTime _lastClickUtc = DateTime.MinValue;
     private bool _disposed;
 
@@ -40,9 +39,6 @@ internal sealed class TrayService : IDisposable
 
         _toggleIsland = new NativeMenuItem("Показать островок");
         _toggleIsland.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.ToggleIslandVisible);
-
-        _toggleDemo = new NativeMenuItem("Демо вкл");
-        _toggleDemo.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.ToggleDemoFromTray);
 
         _toggleWeather = new NativeMenuItem("Погода вкл");
         _toggleWeather.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.ToggleWeatherFromTray);
@@ -65,14 +61,13 @@ internal sealed class TrayService : IDisposable
 
         // Plan §Task 10 Step 6:
         //   Toggle island → sep → Action Center → clipboard submenu → sep
-        //   → demo toggle → weather toggle → timer submenu → sep → Settings → Exit.
+        //   → weather toggle → timer submenu → sep → Settings → Exit.
         var menu = new NativeMenu();
         menu.Add(_toggleIsland);
         menu.Add(new NativeMenuItemSeparator());
         menu.Add(actionCenter);
         menu.Add(clipboardMenu);
         menu.Add(new NativeMenuItemSeparator());
-        menu.Add(_toggleDemo);
         menu.Add(_toggleWeather);
         menu.Add(timerMenu);
         menu.Add(new NativeMenuItemSeparator());
@@ -100,7 +95,6 @@ internal sealed class TrayService : IDisposable
         var s = _overlay.Settings;
         _toggleIsland.Header = s.IslandVisible ? "Скрыть островок" : "Показать островок";
         _toggleWeather.Header = s.WeatherEnabled ? "Погода выкл" : "Погода вкл";
-        _toggleDemo.Header = _overlay.IsDemoRunning ? "Демо выкл" : "Демо вкл";
     }
 
     public void RefreshIcon(int unread)
