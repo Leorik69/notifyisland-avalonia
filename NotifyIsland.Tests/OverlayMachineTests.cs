@@ -60,18 +60,104 @@ public class OverlayMachineTests
     }
 
     [Fact]
-    public void Notify_CustomDuration_NoLongerDrivesTheKind()
+    public void Notify_CustomDuration_TakesTheRestingCapsuleAndReturnsToIt()
     {
-        // The old test asserted "Notification for 1000 ms, then back to Media". With the
-        // takeover gone, the countdown is irrelevant to the kind — but the payload and the
-        // unread bump are what the user actually perceives, so those are pinned here.
+        // This test used to pin the 1.13 "no takeover" rule from a RESTING kind: a notification
+        // filled the payload and bumped unread, and the kind never moved. That left the
+        // notification row unreachable and the countdown with nothing to count, because Tick
+        // only ever ran _notifyMs for Battery. With the takeover approved, the contract is the
+        // battery pill's contract: take the resting capsule, give it back when the time is up.
+        // What the user perceives is still pinned — payload, unread, and the live media row.
         var m = new OverlayMachine { NotifyDurationMs = 1000 };
         m.Dispatch(OverlayCommand.SetMedia, new OverlayPayload { Title = "A", Subtitle = "B" });
         m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "N" });
-        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
+        Assert.Equal(OverlayKind.Notification, m.Snapshot().Kind);
         Assert.Equal(1, m.Snapshot().UnreadCount);
         Assert.True(m.MediaActive);
         m.Tick(5000);
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
+    }
+
+    [Fact]
+    public void Notify_DoesNotTakeTheCapsuleFromSomethingTheUserOpened()
+    {
+        // The 1.13 guarantee that survives the takeover: a toast arriving while the user is
+        // reading something must not take the screen away from them. It updates the payload and
+        // the unread count, and that is all.
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.Expand, new OverlayPayload { Title = "Развернуто" });
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Тост" });
+        Assert.Equal(OverlayKind.Expanded, m.Snapshot().Kind);
+        Assert.Equal("Тост", m.Snapshot().Payload.Title);
+        Assert.Equal(1, m.Snapshot().UnreadCount);
+
+        // And it must not time the capsule out from under them either.
+        m.Tick(OverlayTokens.DefaultNotifyMs);
+        Assert.Equal(OverlayKind.Expanded, m.Snapshot().Kind);
+    }
+
+    [Fact]
+    public void Notify_DoesNotTakeTheCapsuleFromTheStatsPanel()
+    {
+        var m = new OverlayMachine();
+        m.Dispatch(OverlayCommand.SetSystemStats, new OverlayPayload
+        {
+            SystemStats = new SystemSnapshot { CpuPercent = 12, RamTotalBytes = 1024 },
+        });
+        Assert.Equal(OverlayKind.SystemStats, m.Snapshot().Kind);
+
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Тост" });
+        Assert.Equal(OverlayKind.SystemStats, m.Snapshot().Kind);
+        Assert.Equal(1, m.Snapshot().UnreadCount);
+    }
+
+    [Fact]
+    public void Notify_WhileOneIsShowing_ExtendsTheLifetimeWithoutMovingTheReturn()
+    {
+        var m = new OverlayMachine { NotifyDurationMs = 1000 };
+        m.Dispatch(OverlayCommand.Expand, new OverlayPayload { Title = "Развернуто" });
+        m.Dispatch(OverlayCommand.Collapse);
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Первый" });
+
+        m.Tick(800);
+        Assert.Equal(OverlayKind.Notification, m.Snapshot().Kind);
+
+        // Second toast: the capsule is still up, so the lifetime restarts — and the return
+        // target must stay where it was, not become the notification itself.
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Второй" });
+        Assert.Equal(OverlayKind.Notification, m.Snapshot().Kind);
+        Assert.Equal(2, m.Snapshot().UnreadCount);
+        Assert.Equal("Второй", m.Snapshot().Payload.Title);
+
+        m.Tick(800);
+        Assert.Equal(OverlayKind.Notification, m.Snapshot().Kind);
+        m.Tick(800);
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
+    }
+
+    [Fact]
+    public void Notify_ReturnTargetIsNeverTheNotificationItself()
+    {
+        // _returnTo is sticky across arrivals. Without the self-kind guard a notification whose
+        // return target was another notification would refresh itself forever.
+        var m = new OverlayMachine { NotifyDurationMs = 500 };
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Раз" });
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Два" });
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Три" });
+        m.Tick(10_000);
+        Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
+    }
+
+    [Fact]
+    public void Notify_LeftOnCapsuleReturnsToIdleRatherThanToTheRestingCollapsed()
+    {
+        // Collapsed is a resting state, not a destination: bouncing back into it after a toast
+        // would leave the island in a different shape than the user had it in.
+        var m = new OverlayMachine { NotifyDurationMs = 500 };
+        m.Dispatch(OverlayCommand.Collapse);
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Тост" });
+        Assert.Equal(OverlayKind.Notification, m.Snapshot().Kind);
+        m.Tick(10_000);
         Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
     }
 

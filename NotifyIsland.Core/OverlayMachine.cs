@@ -314,9 +314,27 @@ public sealed class OverlayMachine
                 _notifyMs = 0;
                 break;
             case OverlayCommand.Notify:
-                // 1.13: a notification no longer takes the capsule. It fills the payload the
-                // monitor and the band read, and the kind is left alone, so a toast can
-                // arrive while the stats surface is open without collapsing it.
+                // 1.13 made a notification non-invasive: it only filled the payload and bumped
+                // unread, so a toast could never collapse something the user had opened. That
+                // left the row with nowhere to be seen AND the countdown with nothing to count —
+                // Tick only ever ran _notifyMs for Battery, so the milliseconds this case sets
+                // were never spent. The payload was reachable, the notification was not.
+                //
+                // The rule now, and it is the battery pill's rule verbatim: a notification takes
+                // the capsule from the RESTING kinds and returns to wherever it came from. It
+                // still refuses to take the capsule from something the user deliberately opened
+                // (Expanded, SystemStats, Media, ...), so 1.13's real guarantee survives: a toast
+                // arriving while you are reading the stats panel updates the payload and the
+                // unread count without taking the screen away from you.
+                if (_kind is OverlayKind.Idle or OverlayKind.Collapsed or OverlayKind.Notification)
+                {
+                    // A second notification while one is on screen extends the lifetime instead of
+                    // re-pointing the return: the user is reading the first one, and the capsule
+                    // still has to go back to where it was before either arrived.
+                    if (_kind != OverlayKind.Notification)
+                        _returnTo = _kind == OverlayKind.Collapsed ? OverlayKind.Idle : _kind;
+                    _kind = OverlayKind.Notification;
+                }
                 if (string.IsNullOrWhiteSpace(_payload.Title))
                     _payload.Title = "Уведомление";
                 if (string.IsNullOrWhiteSpace(data.Title))
@@ -468,16 +486,22 @@ public sealed class OverlayMachine
         // 1.12.1: SystemStats no longer auto-collapses on a wall-clock timer.
         // Exit is driven by pointer leave (HoverPinMachine grace) or an explicit Collapse.
         // 1.13: Notification and Battery keep their transient lifetime — they are the only
-        // two kinds left that own the capsule outright. A notification no longer CHANGES
-        // the kind, it only sets the payload, so _kind stays whatever the user was looking
-        // at and the countdown below returns the capsule to that.
-        if (_kind == OverlayKind.Battery)
+        // two kinds left that own the capsule outright. A notification arrives only over the
+        // resting kinds (see the Notify case), so _returnTo is where the capsule goes back to,
+        // and the countdown below is what actually spends the milliseconds Notify set.
+        //
+        // The guard against returning to the kind we are leaving is not decoration: _returnTo is
+        // sticky across arrivals, and without it a notification whose return target is another
+        // notification would refresh itself forever.
+        if (_kind is OverlayKind.Battery or OverlayKind.Notification)
         {
             _notifyMs -= dt;
             if (_notifyMs <= 0)
             {
                 _notifyMs = 0;
-                _kind = _returnTo == OverlayKind.Battery ? OverlayKind.Idle : _returnTo;
+                _kind = _returnTo is OverlayKind.Battery or OverlayKind.Notification
+                    ? OverlayKind.Idle
+                    : _returnTo;
                 if (_kind == OverlayKind.Idle)
                     _returnTo = OverlayKind.Idle;
             }
