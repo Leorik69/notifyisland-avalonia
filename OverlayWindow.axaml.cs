@@ -694,25 +694,44 @@ public partial class OverlayWindow : Window
         var weather = MinimalWeather;
         var battery = MinimalBattery;
         var dot = UnreadDot;
+        // FIX: the rebuild below used to re-add only these six controls, so `Children.Clear()`
+        // silently dropped the four clipboard-cycle controls (CyclePrevButton, CyclePreviewText,
+        // CycleNavHint, CycleNextButton) and PinnedBadge out of the visual tree. They kept their
+        // x:Name fields, so every write to them still "worked" and every test still passed —
+        // but an element with no Parent is never measured or arranged, which is why the cycle
+        // preview reported Bounds.Width = 0 and DesiredSize.Width = 0 with IsVisible = true and
+        // a 41-character Text, while a freshly constructed TextBlock with identical properties
+        // measured 70 DIP. A control that is not in the tree cannot be laid out, and no amount
+        // of property writing brings it back.
+        //
+        // The cycle group is re-added as a block, in its XAML order, on the leading side of the
+        // row: the chevrons bracket the preview they navigate, and the preview belongs where the
+        // clock was — the content the eye reads first. Reordering weather against the clock must
+        // not move the clipboard controls relative to each other.
+        var cycle = new[]
+        {
+            (Avalonia.Controls.Control)CyclePrevButton,
+            CyclePreviewText,
+            CycleNavHint,
+            (Avalonia.Controls.Control)CycleNextButton,
+        };
+        var pinned = PinnedBadge;
+        var tail = new Avalonia.Controls.Control[]
+        {
+            digital, dateText, weather, battery, dot,
+        };
         row.Children.Clear();
+        void AddAll(params Avalonia.Controls.Control[] head)
+        {
+            foreach (var c in head) row.Children.Add(c);
+            foreach (var c in cycle) row.Children.Add(c);
+            foreach (var c in tail) row.Children.Add(c);
+            row.Children.Add(pinned);
+        }
         if (_settings.WeatherSide == WeatherSide.Left)
-        {
-            row.Children.Add(weather);
-            row.Children.Add(clockText);
-            row.Children.Add(digital);
-            row.Children.Add(dateText);
-            row.Children.Add(battery);
-            row.Children.Add(dot);
-        }
+            AddAll(weather, clockText);
         else
-        {
-            row.Children.Add(clockText);
-            row.Children.Add(digital);
-            row.Children.Add(dateText);
-            row.Children.Add(weather);
-            row.Children.Add(battery);
-            row.Children.Add(dot);
-        }
+            AddAll(clockText);
     }
 
     private void ApplyOrientationLayout()
@@ -2105,7 +2124,7 @@ public partial class OverlayWindow : Window
             // pill, and the size write is what puts the pill at the island's own length — so the
             // other order would leave a capsule 110 DIP shorter than the section it is drawing.
             SetSizeImmediate(w, h);
-            SettleClipboardSection();
+            SettleClipboardSection(w, h);
             SettleHistoryPanel();
             return;
         }
@@ -2169,12 +2188,23 @@ public partial class OverlayWindow : Window
     /// </summary>
     private (double Width, double Height) WindowFor(bool withSection, double w, double h)
     {
-        var (baseLong, baseCross) = IslandCapsuleSizeFor(w, h);
+        // FIX: the long axis here is the island's OWN length as the caller computed it (w, h
+        // straight out of IslandLayout.SizeFor), NOT a live pill size. It used to be obtained
+        // from IslandCapsuleSizeFor, which subtracts _sectionPeek because its other callers
+        // pass Pill.Width — the length that already carries the section. Both were true at
+        // once, so the section was subtracted twice and added back once: w 294, peek 110 →
+        // baseLong 184 → capsuleLong 294 → a 294 DIP window for a 404 DIP capsule. The window
+        // clipped the section and the capsule's trailing 110 DIP all over again, on the code
+        // path that was written specifically to stop that.
+        //
+        // So: the island's own length is w/h, and the section is added on top exactly once.
+        var ownLong = SplitIsVertical ? h : w;
+        var ownCross = SplitIsVertical ? w : h;
         var sectionForWindow = Math.Max(
             _sectionPeek,
             _splitApplied || _sectionDir > 0 ? ClipboardSectionTrack.Width : 0);
-        var capsuleLong = baseLong + sectionForWindow;
-        return ClipboardDrawer.WindowFor(SplitIsVertical, capsuleLong, baseCross,
+        var capsuleLong = ownLong + sectionForWindow;
+        return ClipboardDrawer.WindowFor(SplitIsVertical, capsuleLong, ownCross,
             withSection ? _historyRowCount : 0, withSection && _historyOpen);
     }
 
@@ -2369,7 +2399,7 @@ public partial class OverlayWindow : Window
             // so the next attach starts from the island's own length again.
             SetSizeImmediate(_morphToW, _morphToH);
             // Same for the drawer: opacity, offset and the row cleanup land in exactly one place.
-            SettleClipboardSection();
+            SettleClipboardSection(_morphToW, _morphToH);
             SettleHistoryPanel();
         }
     }
@@ -2409,9 +2439,29 @@ public partial class OverlayWindow : Window
     private void ApplyClipboardSection(double t)
     {
         var peek = ClipboardSectionTrack.CapsuleLongAt(t, _sectionBase) - _sectionBase;
-        var vertical = SplitIsVertical;
         var reduced = AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion);
         var opacity = AnimEase.WithReducedMotion(ClipboardSectionTrack.OpacityAt(t), reduced);
+        ApplySectionFrame(peek, opacity);
+    }
+
+    /// <summary>
+    /// Write one complete frame of the clipboard section: the length it occupies, its opacity,
+    /// the seam and content placement, the hold that keeps the island's own content centred in
+    /// the ORIGINAL box, and the capsule length that carries all of it.
+    /// <para>
+    /// FIX: the morph and the resting state used to write this independently, and only the morph
+    /// wrote the geometry. The rest wrote just <c>IsVisible</c>/<c>Opacity</c> and the pill
+    /// length — so on the very first frame after a fresh attach (or after any ApplySize that
+    /// settled), <c>ClipboardSection</c> still had the geometry of the PREVIOUS frame: a
+    /// collapsed size of 0 or the trailing margin of an old peek, plus
+    /// <c>CollapsedRow.Margin = 0</c> instead of the hold. The section was then laid out
+    /// right-aligned inside a capsule that has no room for it, and the island's own content
+    /// re-centred on the longer capsule. One writer, one frame, no second opinion.
+    /// </para>
+    /// </summary>
+    private void ApplySectionFrame(double peek, double opacity)
+    {
+        var vertical = SplitIsVertical;
 
         ClipboardSection.IsVisible = peek > 0.5;
         ClipboardSection.Opacity = opacity;
@@ -2457,7 +2507,13 @@ public partial class OverlayWindow : Window
             ClipboardSectionContent.Margin = new Thickness(14, 0, 0, 0);
         }
 
-        if (Math.Abs(peek - _sectionPeek) < 0.01) return;
+        // FIX: the `if (Math.Abs(peek - _sectionPeek) < 0.01) return;` short-circuit that used
+        // to sit here is gone. It skipped the capsule-length write below whenever the section's
+        // length had not CHANGED — but the pill's length is reset to the island's own by
+        // SetSizeImmediate on every plain ApplySize, and nothing rewrote it when the section
+        // itself had not moved. That is precisely the reported symptom: section out, peek = 110,
+        // capsule 294 instead of 404. Re-writing an identical value every frame is cheap; the
+        // "nothing changed, so skip the write" optimisation was the bug.
         _sectionPeek = peek;
 
         // Keep the island's OWN content where it is. CollapsedRow and SecondsStrip are
@@ -2521,9 +2577,22 @@ public partial class OverlayWindow : Window
     /// ONLY place a clipboard morph is allowed to end, which is what guarantees no residual
     /// length or margin survives into the next attach.
     /// </summary>
-    private void SettleClipboardSection()
+    private void SettleClipboardSection(double ownW, double ownH)
     {
-        if (_sectionDir == 0 && _splitApplied) return;
+        // FIX: this used to be guarded by `if (_sectionDir == 0 && _splitApplied) return;`,
+        // which made the resting capsule length unreachable. Both callers land here immediately
+        // after SetSizeImmediate put the pill at the island's OWN length, and the guard skipped
+        // the one call that puts the section's resting length back — so any ordinary ApplySize
+        // (the 200 ms tick, a kind change, a hover change) left a 294 DIP capsule carrying a
+        // fully-out 110 DIP section: the section was visible, the window was sized for it, and
+        // the capsule simply had no room for it. The resting state has to be re-appliable at
+        // any time, not only on the frame a transition ends.
+        //
+        // The base is taken from the island's OWN length as the caller computed it (w, h) —
+        // deliberately NOT from the live pill. The live pill is exactly the value this method
+        // exists to correct, so reading it back would re-derive base = pill - peek and put the
+        // capsule back at the wrong length instead of the right one.
+        _sectionBase = SplitIsVertical ? ownH : ownW;
         ApplySectionRest(_splitApplied);
         _sectionDir = 0;
     }
@@ -2534,22 +2603,17 @@ public partial class OverlayWindow : Window
         // At rest the section is either fully out or fully gone, by definition. Left at a
         // partial length, a later ApplySize would find a capsule that is not any of the sizes
         // the island actually asks for.
-        _sectionPeek = attached ? ClipboardSectionTrack.Width : 0;
-        ClipboardSection.IsVisible = attached;
-        ClipboardSection.Opacity = attached ? 1 : 0;
-        // The resting capsule carries the section on its long axis. This is written here rather
-        // than left to the morph because the two "no morph will run" callers land here after
-        // SetSizeImmediate has put the pill at the island's OWN length — without this the
-        // section would be laid out right-aligned inside a capsule that has no room for it.
-        if (Pill.Width > 0 || Pill.Height > 0)
-        {
-            if (SplitIsVertical) Pill.Height = _sectionBase + _sectionPeek;
-            else Pill.Width = _sectionBase + _sectionPeek;
-        }
-        // Release the hold the section's margin put on the island's own rows — see
-        // ApplyClipboardSection.
-        CollapsedRow.Margin = new Thickness(0);
-        SecondsStrip.Margin = new Thickness(10, 0, 10, 2);
+        //
+        // FIX: the resting state is now produced by the SAME writer the morph uses, so the two
+        // cannot disagree. It used to re-implement a third of the frame — IsVisible/Opacity plus
+        // the pill length — and then explicitly CLEAR the hold margins
+        // (`CollapsedRow.Margin = 0`) "because the section is no longer growing". That reasoning
+        // was wrong: the hold is not about motion, it is about centring. A resting capsule that
+        // carries a 110 DIP section is 404 DIP long, and its centre is 55 DIP further along the
+        // long axis than the island's 294 DIP box. Clearing the hold at rest slid the clock and
+        // date out from under the section by exactly that 55 DIP — the section was up, the
+        // window was right, and the island's own content had quietly walked.
+        ApplySectionFrame(attached ? ClipboardSectionTrack.Width : 0, attached ? 1 : 0);
         ApplySeamRadii();
     }
 
