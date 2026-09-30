@@ -105,28 +105,27 @@
 
 | Переход | Длительность (Normal) | Easing | Примечание |
 |---|---:|---|---|
-| Width morph (idle ↔ notify/media/…) | **420 мс** | Soft CubicOut / Spring | высота **всегда** `CollapsedH`; Bounce/Pop/Ragged/Glitch могут ≥460–480 base |
+| Width morph (idle ↔ notify/media/…) | **420 мс** | Soft CubicOut / Spring | высота **всегда** `CollapsedH`, **кроме `SystemStats`** (см. строку ниже); Bounce/Pop/Ragged/Glitch могут ≥460–480 base |
 | Appear styles | × morph | см. enum | Inflate, SlideDown (−20→0 Y + fade), FadeScale (0.85→1), Bounce (spring), Pop (punch) |
 | Dismiss styles | × morph | см. enum | Collapse, SlideUp, FadeScaleOut, Ragged (X jitter), Glitch (stutter) |
-| Hover border/background | **160 мс** | `CubicEaseInOut` | лёгкий +0.06 fill alpha |
+| Hover border/background | **160 мс** | `CubicEaseInOut` | лёгкий +0.06 fill alpha |
 | Unread-dot pulse (unread &gt; 0) | **1600 мс**/цикл | sine | opacity 0.40↔1.0; Idle/Collapsed |
 | Notify auto-dismiss | **4000 мс** | — | затем dismiss-style → idle |
-| Demo scene cycle | **1800 мс** | — | циклирует Appear/Dismiss styles |
-| Swipe rubber-band | **180 мс** | CubicOut | |
-| Icon crossfade | **240 мс** | CubicOut | |
+| Icon crossfade | **240 мс** | CubicOut | |
 | Icon DIP | — | — | `FontSize × 1.0` (clock/weather), `FontSize × 0.92` (kind) |
-| ClickPop (chevron/cycle ack) | **210 мс** (= MorphMs/2) | CubicEaseOut | 1.0 → 1.08 → 1.0, never below 1 |
-| First-appear wobble | **210 мс** (= MorphMs/2) | sine | ±1 DIP translate X |
-| Peek expand (Idle → SystemStats) | **250 мс** задержка (`HoverExpandDelayMs`) + MorphMs | Soft | закрывается по уходу курсора + grace 500 мс |
-| SystemStats height morph | **MorphMs = 420 мс** | Soft | 30 → `StatsHeightFor(rowCount)` (108 DIP при 5 строках, 48 DIP при 2) |
-| Split: выезд половины буфера (1.12.2) | **MorphMs = 420 мс** (= существующий width morph) | CubicOut | едет вдоль длинной оси с дальнего конца на `ClipboardHalfW` (200 DIP); отдельного таймера нет — едет на 16-мс морф-таймере |
-| Split: задержка fade половины (1.12.2) | **¼ MorphMs ≈ 105 мс** (`ClipboardHalfFadeDelay` = 0.25 от прогресса) | CubicOut | капсула уже растёт, когда половина начинает проявляться — читается как «догоняет», а не переключается в такт с шириной |
-| Split: пере-увеличение половины (1.12.2) | **MorphMs**, пик в первой трети | существующий `ClickPop`, ресайз 1.0 → **1.06** (`ClipboardHalfPopPeak`) → 1.0 | никогда ниже 1.0; новая easing-кривая не заводится |
-| Split: покачивание в покое (1.12.2) | **2400 мс**/период | sine | ±**0.5 DIP** по **поперечной** оси (`ClipboardHalfBreathePx` / `ClipboardHalfBreatheMs`); едет на существующем тике 200 мс (12 отсчётов на период) |
-| Split: время жизни половины (1.12.2) | **`min(NotifyDurationMs, ClipboardHistory.MaxPillMs)` = 4000 мс** при дефолтах | — | счётчик половины свой (`SplitMsLeft`), не общий `_notifyMs` |
+| ClickPop (chevron/cycle ack) | **210 мс** (= MorphMs/2) | CubicEaseOut | 1.0 → 1.08 → 1.0, never below 1. Морф в полёте выигрывает `_pillScale` — поп не стартует поверх него |
+| First-appear wobble | **210 мс** (= MorphMs/2) | damped sine | ±1 DIP translate X, огибающая `(1−t)²`; играется при выходе из фулскрина (оба варианта) и при возврате из трея |
+| Peek expand (Idle → SystemStats) | **250 мс** задержка (`HoverExpandDelayMs`) + MorphMs | Soft | закрывается по уходу курсора + **grace 5000 мс** (`HoverCollapseGraceMs`) |
+| SystemStats height morph | **MorphMs = 420 мс** | Soft | 30 → `StatsHeightFor(rowCount, marquee)`; единственное исключение из «высота всегда CollapsedH» |
+| Погода Meteocons: вращение | **6000 мс** (`weather-clear`) / **10 000 мс** (`weather-partly`) | линейный угол | `MeteoconsSpinClearMs` / `MeteoconsSpinPartlyMs`; тик 33 мс ≈ 30 fps |
+| Погода Meteocons: покачивание | **3000 мс** (cloud / drizzle / rain / snow / sleet) | `sine.inOut` | ±`MeteoconsBobDip` = **2.5 DIP** по Y |
+| Погода Meteocons: пульс | **1200 мс** (storm) / **2400 мс** (fog) | треугольник | opacity до `MeteoconsPulseStormMin` 0.55 / `MeteoconsPulseFogMin` 0.72 |
+| Двоеточие часов | **1000 мс** (чётное сек — горит) | — | декорация; под reduced motion закреплено горящим |
+| Точки секунд (полоса внизу капсулы) | **1000 мс** на деление | — | индикатор прошедших секунд минуты; **не** гасится под reduced motion — это данные, а не украшение |
+| Полоса прогресса капсулы | — | — | нижние 8 DIP; приоритет clipboard &gt; media &gt; timer (`CapsuleProgressBand.BandState`) |
 
 Запрещено:
-- менять высоту капсулы при notify (не «расти вверх»);
+- менять высоту капсулы при notify (не «расти вверх»); исключение — `SystemStats`, высота которого считается по числу строк;
 - резкий snap без transition на Width (кроме AnimationSpeed=Off);
 - linear easing на morph;
 - сторонние HTTP weather API — см. §10.
@@ -153,17 +152,18 @@ FSM: `OverlayMachine` / `OverlayKind`.
 
 Правила:
 1. Горизонтальный режим: высота всегда **`CollapsedH = 30`**, морф только по ширине.
-   **Исключение (1.12.1):** `OverlayKind.SystemStats` — высота считается от числа строк через `StatsLayout.StatsHeightFor(rowCount)` (108 DIP при дефолтных 5 строках, 48 DIP у пресета «Кратко»), ширина фиксирована `StatsExpandedW = 300` DIP. Пилюля раскрывается по наведению (`HoverExpandDelayMs = 250 мс`) и сворачивается при уходе курсора (grace `HoverCollapseGraceMs = 500 мс`); автосворачивание по таймеру 30 с и клик-открытие удалены. Метрики в свёрнутом виде не показываются. Панель строится динамически в порядке `AppSettings.StatsRows`; пустой набор строк сворачивает поверхность (`StatsLayout.ShouldCollapseStatsSurface`). Подробности — [`docs/superpowers/specs/2026-09-29--notifyisland-system-stats-rework.md`](superpowers/specs/2026-09-29--notifyisland-system-stats-rework.md).
+   **Исключение (1.12.1):** `OverlayKind.SystemStats` — высота считается от числа строк через `StatsLayout.StatsHeightFor(rowCount, marquee)` (108 DIP при дефолтных 5 строках, 48 DIP у пресета «Кратко»; при включённой бегущей строке добавляется `MarqueeTrack.LineH`), ширина фиксирована `StatsExpandedW = 300` DIP. Пилюля раскрывается по наведению (`HoverExpandDelayMs = 250 мс`) и сворачивается при уходе курсора (grace `HoverCollapseGraceMs = 5000 мс`, 1.13.0 — было 500, панель исчезала раньше, чем глаз успевал перевести взгляд). Автосворачивание по таймеру 30 с и клик-открытие удалены. Метрики в свёрнутом виде не показываются. Панель строится динамически в порядке `AppSettings.StatsRows`; пустой набор строк сворачивает поверхность (`StatsLayout.ShouldCollapseStatsSurface`). Пока курсор над **любой** из поверхностей — капсула, шар, панель истории — панель не схлопывается (рефкаунт `_uiHoverCount`). Подробности — [`docs/superpowers/specs/2026-09-29--notifyisland-system-stats-rework.md`](superpowers/specs/2026-09-29--notifyisland-system-stats-rework.md).
 2. Вертикальный режим (Orientation=Vertical или Auto на Left/Right): ширина = `CollapsedH`, морф по **высоте** (длинная ось).
 3. CornerRadius = `min(Width,Height) / 2` (пиксель-капсула).
 4. Notify инкрементит `UnreadCount`; `Clear` сбрасывает; `Collapse` **сохраняет** unread.
 5. Idle/Collapsed: **одинарный клик** → pin/unpin (`ClickPinEnabled`); **двойной клик** → `ms-actioncenter:`; Esc → unpin. (1.10.0; раньше single = Action Center.)
-6. Right-click → быстрое меню (Центр уведомлений / Demo / Погода / **Настроить монитор…** (1.12.1 — открывает окно Settings сразу на разделе «Монитор», даже если окно уже видно) / разделитель / Свернуть / **Настройки…** / Выход). Полные настройки — только в окне Settings (§7).
-7. CycleNext/Prev (API) **не** инкрементит unread (Notification slot = demo seed). UI-свайпов нет.
+6. Right-click → быстрое меню (Центр уведомлений / Таймер (если включён) / Погода / **Настроить монитор…** (1.12.1 — открывает окно Settings сразу на разделе «Монитор», даже если окно уже видно) / разделитель / Свернуть / **Настройки…** / Выход). Полные настройки — только в окне Settings (§7). **1.13.0:** пункт «Демо» и весь demo-режим удалены из продукта; при правом клике **по шарику** вместо этого появляется блок буфера (История буфера / Очистить историю / Закрепить шарик / Не реагировать 30 мин) — тот же `OpenContextMenu(isBallContext: true)`.
+7. CycleNext/Prev (API) **не** инкрементит unread. UI-свайпов нет.
 8. **Split-буфер (1.12.2).** Копирование не забирает пилюлю: `OverlayCommand.SetClipboardSplit` ставит флаг, островок сохраняет свой kind и содержимое (часы, дата, погода, батарея, unread-dot), а буфер живёт в half-pill рядом. Реализовано **флагом на машине, а не новым `OverlayKind`**: половина ортогональна kind'у — у неё свой `OverlayPayload` (`SplitClipboard`), своё время жизни (`SplitMsLeft`) и своя граница.
-9. Что осталось от `OverlayKind.Clipboard`: сам enum и `OverlayCommand.SetClipboard` в Core **сохранены** (их держит `ClipboardHistoryTests` и демо/API-контракт), но приложение их **больше не диспатчит** — `OnClipboardCaptured` шлёт только `SetClipboardSplit`. Нормальный путь буфера — половинка; целый kind остался как запасной путь и как документация прежнего поведения.
+9. Что осталось от `OverlayKind.Clipboard`: сам enum и `OverlayCommand.SetClipboard` в Core **сохранены** (их держат тесты `ClipboardSplitTests` и API-контракт), но приложение их **больше не диспатчит** — `OnClipboardCaptured` шлёт только `SetClipboardSplit`. Нормальный путь буфера — шар; целый kind остался как запасной путь и как документация прежнего поведения.
 10. **Геометрия split (1.12.2).** Горизонтально: островная половина `CollapsedW` = **170 DIP** + буферная `ClipboardHalfW` = **200 DIP** = **370 × 30 DIP**. Высота по-прежнему **всегда `CollapsedH` = 30** — split правило не нарушает, он добавляет только длину. На Left/Right длинная ось вертикальна, поэтому та же арифметика даёт **30 × 370**: ширина — тонкая капсула `CollapsedH`, половина буфера встаёт **вниз** (у дальнего конца длинной оси), а её содержимое (иконка + текст) поворачивается на **−90°** и верстается как обычная строка 200 × 30 внутри повёрнутой коробки. Итоговое правило: буферная половина всегда живёт длинной стороной `ClipboardHalfW` и всегда кросс-стороной `CollapsedH` — она физически не может выйти за капсулу.
 11. `SystemStats` от split не разделяется: фиксированный блок не делится (`IslandLayout.SizeFor` возвращает его размер раньше, чем смотрит на split). Прочие kind'ы — `widthFor(kind) + ClipboardHalfW`; для kind'ов с клампом в `ExpandedMinW/MaxW` половинка добавляется **после** клампа (split Notification = 380 + 200, а не 460).
+12. **1.12.3: half-pill заменён goo-шаром.** Флаг `IsSplitClipboard`, его время жизни и резервирование `ClipboardHalfW` по длинной оси **живы** — это до сих пор держит окно раскрытым. Но сама половинка не рисуется как половина `Border`: буфер едет в **шаре** диаметром `BlobD = 64 DIP`, который живёт отдельным контролом **вне капсулы** и соединяется с ней верёвочной перемычкой (`BlobBridgeMin` 18 DIP, полуоснование 3.0 / 2.5 DIP). Правила 10–11 описывают резервирование места, а не форму: читать «170 + 200 = 370» как «370 × 30 DIP» уже нельзя, видимая форма — капсула плюс шар на верёвке. Спека: [`docs/superpowers/specs/2026-09-29--notifyisland-goo-blob.md`](superpowers/specs/2026-09-29--notifyisland-goo-blob.md).
 
 ---
 
@@ -251,9 +251,9 @@ FSM: `OverlayMachine` / `OverlayKind`.
 
 ### Сейчас есть
 - Idle clock + unread glow + optional minimal weather (+ WeatherSide L/R)
-- **Split-буфер (1.12.2):** копирование делит пилюлю пополам — островная половина (170 DIP) живым остаётся, буферная (200 DIP) показывает иконку формата и превью; см. §3 правила 8–11
+- **Split-буфер (1.12.2 → goo-шар 1.12.3):** копирование не забирает капсулу — она остаётся живой, а буфер уезжает в шар на верёвке; место под него по длинной оси резервируется как раньше; см. §3 правила 8–12
 - Notification morph (H: width / V: height), badge
-- Progress / Media / Timer / Error / **Weather** (FSM + demo)
+- Progress / Media / Timer / Error / **Weather** (только FSM — мок-источников нет)
 - **Clicks only** (no swipe)
 - Weather toggle (tray / ПКМ / Settings), Windows-primary source (§10)
 - Unified outline icon pack + weather crossfade + tray icons
@@ -268,7 +268,7 @@ FSM: `OverlayMachine` / `OverlayKind`.
 ### Убрать / не раздувать (обоснование)
 | Что | Почему | Референс |
 |---|---|---|
-| Автоцикл demo как «продуктовая фича» | только QA; не держать в релизе по умолчанию | Apple: LA только реальные события |
+| Автоцикл demo как «продуктовая фича» | только QA; **1.13.0 — удалён из продукта целиком**, не скрыт | Apple: LA только реальные события |
 | Open-Meteo / любой third-party weather HTTP | пользовательский запрет; Windows-only путь | — |
 | Pull-down мини-окно Xiaomi | другой UX, сложно на Win11 overlay | Xiaomi-only gesture |
 | Detached second island | нет cutout-камеры на ПК | Apple minimal — hardware-specific |
@@ -309,9 +309,9 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 
 ---
 
-## 6. Демо и источники данных
+## 6. Источники данных
 
-**Медиа:** только SMTC (`WindowsMediaSessionSource`). Мок-трека больше нет — демо-режим удалён в 1.13.0.
+**Медиа:** только SMTC (`WindowsMediaSessionSource`). Мок-трека больше нет — демо-режим удалён из продукта в 1.13.0.
 
 **Погода:** `SetWeather` из `WindowsWeatherSource` (или stub `WeatherCodes.MockMoscow()` = ясно 18°, когда источник недоступен).
 
@@ -326,7 +326,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 - Fallback: Avalonia `TrayService` (`TrayIcon`), если WinForms недоступен.
 - Иконки: `Assets/tray.png` / `tray-unread.png` (outline IslandIcons).
 - Левый клик → показать/скрыть островок.
-- Правый клик → меню: «Открыть настройки», «Показать/скрыть островок», «Демо вкл/выкл», «Погода вкл/выкл», «Выход».
+- Правый клик → меню: «Открыть настройки», «Показать/скрыть островок», «Погода вкл/выкл», «Выход». Пункта «Демо» больше нет (удалён в 1.13.0).
 - Двойной клик → центр уведомлений Windows (`ms-actioncenter:`).
 - Unread > 0 → `tray-unread.png` (точка-индикатор) + tooltip с числом.
 - TargetFramework: `net8.0-windows` + `UseWindowsForms` (см. `Directory.Build.props` / `EnableWindowsTargeting`).
