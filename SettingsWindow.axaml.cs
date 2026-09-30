@@ -49,6 +49,7 @@ public partial class SettingsWindow : Window
         LoadUi();
         WireVolumeLabels();
         WirePalettePreview();
+        WireLiveSync();
         Closing += OnClosing;
     }
 
@@ -112,6 +113,104 @@ public partial class SettingsWindow : Window
     {
         if (e.Property.Name is "Color" or "HsvColor")
             UpdatePreview();
+    }
+
+    /// <summary>Wires every user-control change to live-apply without requiring the Apply/OK buttons.
+    /// Changes are written to _live immediately (saved to disk by _onApply → _live.Save).
+    /// Reset to Defaults uses a fresh AppSettings() as the source instead.</summary>
+    private void WireLiveSync()
+    {
+        // For CheckBox / Slider / NumericUpDown / TextBox: use PropertyChanged on the AvaloniaProperty.
+        void Wire<T>(T ctrl, AvaloniaProperty prop) where T : AvaloniaObject
+            => ctrl.PropertyChanged += (_, e) => { if (e.Property == prop) ApplyLive(); };
+
+        // For ComboBox / ListBox: SelectionChanged fires reliably when SelectedItem changes.
+        void WireSel<T>(T ctrl) where T : Avalonia.Controls.Primitives.SelectingItemsControl
+            => ctrl.SelectionChanged += (_, _) => ApplyLive();
+
+        // Island
+        Wire(IslandVisibleBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        WireSel(DateFormatBox);
+        Wire(DigitalClockBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(ShowClockSecondsBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(ShowSecondsStripBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(HoverExpandBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(HoverDelaySlider, Slider.ValueProperty);
+        Wire(ClickPinBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(HideOnFullscreenBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(ClickThroughFullscreenBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+
+        // Appearance
+        Wire(OpacitySlider, Slider.ValueProperty);
+        Wire(FontSizeSlider, Slider.ValueProperty);
+        Wire(IslandWidthSlider, Slider.ValueProperty);
+        WireSel(ZOrderBox);
+        WireSel(FontFamilyBox);
+        Wire(ColorFillPicker, Avalonia.Controls.ColorPicker.ColorProperty);
+        Wire(ColorAccentPicker, Avalonia.Controls.ColorPicker.ColorProperty);
+        Wire(ColorTextPrimaryPicker, Avalonia.Controls.ColorPicker.ColorProperty);
+        Wire(ColorTextSecondaryPicker, Avalonia.Controls.ColorPicker.ColorProperty);
+
+        // Behavior
+        Wire(ShowNowPlayingBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(ShowBatteryAlertsBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(ShowBatteryInCollapsedBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(TimerEnabledBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(TimerStopwatchBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(TimerDefaultSlider, Slider.ValueProperty);
+        Wire(LowBatterySlider, Slider.ValueProperty);
+        Wire(ClipboardEnabledBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        WireSel(ClipboardMaxItemsBox);
+        WireSel(ClipboardClickActionBox);
+
+        // Monitor
+        WireSel(SystemStatsRefreshBox);
+        Wire(SystemStatsHoverPeekBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(SystemStatsAllInterfacesBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        WireSel(StatsRowsPresetBox);
+
+        // Animation
+        WireSel(AnimSpeedBox);
+        WireSel(AppearStyleBox);
+        WireSel(DismissStyleBox);
+        WireSel(AnimMorphInflateBox);
+        WireSel(AnimMorphCollapseBox);
+        WireSel(AnimUnreadPulseBox);
+        WireSel(AnimHoverBox);
+        WireSel(AnimClickPopBox);
+        WireSel(AnimFirstAppearWobbleBox);
+        Wire(AnimPulseEnabledBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(ReducedMotionBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+
+        // Sound
+        Wire(SoundEnabledBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        WireSel(SoundPackBox);
+        Wire(VolumeSlider, Slider.ValueProperty);
+        Wire(VolNotifySlider, Slider.ValueProperty);
+        Wire(VolExpandSlider, Slider.ValueProperty);
+        Wire(VolCollapseSlider, Slider.ValueProperty);
+        Wire(VolErrorSlider, Slider.ValueProperty);
+        Wire(VolHoverSlider, Slider.ValueProperty);
+
+        // Weather
+        Wire(WeatherEnabledBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        WireSel(WeatherSideBox);
+        WireSel(WeatherLocationModeBox);
+        Wire(WeatherLocationNameBox, Avalonia.Controls.TextBox.TextProperty);
+        Wire(LatitudeBox, Avalonia.Controls.NumericUpDown.ValueProperty);
+        Wire(LongitudeBox, Avalonia.Controls.NumericUpDown.ValueProperty);
+
+        // Icons
+        WireSel(IconPackBox);
+
+        // Placement
+        WireSel(EdgeBox);
+        Wire(OffsetXBox, Avalonia.Controls.NumericUpDown.ValueProperty);
+        Wire(OffsetYBox, Avalonia.Controls.NumericUpDown.ValueProperty);
+        WireSel(OrientationBox);
+
+        // Theme
+        WireSel(ThemePresetBox);
     }
 
     private void UpdatePreview()
@@ -236,7 +335,6 @@ public partial class SettingsWindow : Window
         ClipboardEnabledBox.IsChecked = _draft.ClipboardEnabled;
         SelectByTag(ClipboardMaxItemsBox, _draft.ClipboardMaxItems.ToString(CultureInfo.InvariantCulture));
         SelectByTag(ClipboardClickActionBox, _draft.ClipboardClickAction.ToString());
-        SystemStatsEnabledBox.IsChecked = _draft.SystemStatsEnabled;
         SelectByTag(SystemStatsRefreshBox, _draft.SystemStatsRefreshMs.ToString(CultureInfo.InvariantCulture));
         SystemStatsHoverPeekBox.IsChecked = _draft.SystemStatsHoverPeek;
         SystemStatsAllInterfacesBox.IsChecked = _draft.SystemStatsAllInterfaces;
@@ -614,7 +712,6 @@ public partial class SettingsWindow : Window
             _draft.ClipboardMaxItems = cm;
         if (Enum.TryParse<ClipboardClickAction>(SelectedTag(ClipboardClickActionBox), true, out var ca))
             _draft.ClipboardClickAction = ca;
-        _draft.SystemStatsEnabled = SystemStatsEnabledBox.IsChecked == true;
         if (int.TryParse(SelectedTag(SystemStatsRefreshBox), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out var statsMs))
             _draft.SystemStatsRefreshMs = statsMs;
@@ -681,20 +778,33 @@ public partial class SettingsWindow : Window
             ThemePresets.Apply(_draft.ThemePreset, _draft);
     }
 
-    private void OnApply(object? sender, RoutedEventArgs e)
-    {
-        ReadUi();
-        _onApply(_draft);
-    }
+    private void OnApply(object? sender, RoutedEventArgs e) => ApplyLive();
 
-    private void OnOk(object? sender, RoutedEventArgs e)
+    private void OnOk(object? sender, RoutedEventArgs e) => Close();
+
+    private void OnCancel(object? sender, RoutedEventArgs e)
     {
-        ReadUi();
-        _onApply(_draft);
+        AppSettings.Load().CopyTo(_live); // reload from disk — undoes all live changes made during this session
         Close();
     }
 
-    private void OnCancel(object? sender, RoutedEventArgs e) => Close();
+    /// <summary>Applies the current control state to live settings immediately (no OK/Apply button needed).
+    /// Reset to Defaults uses a fresh AppSettings() as the source instead.</summary>
+    private void ApplyLive()
+    {
+        ReadUi();
+        _onApply(_draft);
+    }
+
+    /// <summary>Resets all settings to factory defaults and applies them live immediately.</summary>
+    private void OnResetToDefaults(object? sender, RoutedEventArgs e)
+    {
+        var defaults = new AppSettings();
+        defaults.CopyTo(_draft);
+        defaults.CopyTo(_live);
+        _live.Save();
+        LoadUi();
+    }
 
     private void OnStartTimer1(object? sender, RoutedEventArgs e) => _onStartTimer?.Invoke(1);
     private void OnStartTimer5(object? sender, RoutedEventArgs e) => _onStartTimer?.Invoke(5);
@@ -711,17 +821,14 @@ public partial class SettingsWindow : Window
     private static readonly (string Id, string Icon)[] NavEntries =
     [
         ("island", "layout-dashboard"),
-        ("weather", "cloud-sun"),
-        ("placement", "move"),
-        ("theme", "palette"),
-        ("media", "music"),
-        ("look", "type"),
-        ("anim", "sparkles"),
+        ("appearance", "palette"),
+        ("behavior", "mouse-pointer"),
+        ("monitor", "activity"),
+        ("animation", "sparkles"),
         ("sound", "volume-2"),
+        ("weather", "cloud-sun"),
         ("icons", "shapes"),
-        ("clipboard", "clipboard"),
-        ("system", "activity"),
-        ("about", "info"),
+        ("other", "info"),
     ];
 
     private void WireNav()
