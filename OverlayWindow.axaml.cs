@@ -32,6 +32,7 @@ public partial class OverlayWindow : Window
     private ClipboardHistory _clipboardHistory = new();
     private WindowsClipboardSource? _clipboardSource;
     private SystemMonitorMachine? _statsMachine;
+    private WindowsNotificationSource? _notifSource;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _weatherTimer = new() { Interval = TimeSpan.FromMilliseconds(OverlayTokens.WeatherRefreshMs) };
@@ -375,6 +376,8 @@ public partial class OverlayWindow : Window
         {
             _statsMachine?.Dispose();
             _statsMachine = null;
+            _notifSource?.Dispose();
+            _notifSource = null;
         };
         KeyDown += OnKey;
         _clock.Tick += (_, _) => TickClock();
@@ -430,6 +433,9 @@ public partial class OverlayWindow : Window
         // (harmlessly) never again elsewhere is safe.
         if (_settings.ClipboardEnabled) _clipboardSource?.Start();
         if (_settings.SystemStatsEnabled) _statsMachine?.Start();
+        // The notification listener is the island's actual subject, so it has no setting to
+        // gate on and no window handle to wait for. Started from here, like its neighbours.
+        EnsureNotificationSource();
         // Same reason as above: the row set must exist before the first hover, or
         // ApplyHoverExpandedState sees zero rows and suppresses the stats surface. It only
         // appeared to work after touching the settings, because ApplySettingsFromUi happens
@@ -3784,6 +3790,49 @@ public partial class OverlayWindow : Window
 
     private void OnPowerChanged(PowerStatusSnapshot snap) =>
         Dispatcher.UIThread.Post(() => ApplyPowerSnapshot(snap), DispatcherPriority.Background);
+
+    private void EnsureNotificationSource()
+    {
+        if (_notifSource is not null) return;
+        try
+        {
+            _notifSource = new WindowsNotificationSource(
+                action => Dispatcher.UIThread.Post(action));
+            _notifSource.Accepted += OnToastAccepted;
+            _notifSource.Start();
+        }
+        catch (Exception ex)
+        {
+            // Never fatal: without a listener the island still shows the clock, the clipboard
+            // and everything else. A notification source that cannot start is a missing feature,
+            // not a broken app.
+            AppLog.Warn("EnsureNotificationSource failed", ex);
+            _notifSource = null;
+        }
+    }
+
+    private void OnToastAccepted(IncomingToast toast)
+    {
+        // Already on the UI thread: WindowsNotificationSource posts through _postToUi before
+        // raising Accepted, so there is nothing to marshal and no reason to defer — a toast
+        // that waits for the next dispatcher turn is a toast the user already missed.
+        var payload = NotificationFeed.ToPayload(toast);
+        // One line per accepted toast: the listener has no other visible trace, and when a user
+        // says "the island showed nothing", this is the difference between a guess and an answer.
+        // A toast body is multi-line, and a multi-line message here would be written as several
+        // log lines — which is exactly the format every other log reader here greps against.
+        AppLog.Info($"Toast accepted: {OneLine(payload.Title)} | {OneLine(payload.Subtitle)} | " +
+                    $"{OneLine(payload.Body)}");
+        var before = _machine.Snapshot().Kind;
+        _machine.Dispatch(OverlayCommand.Notify, payload);
+        var after = _machine.Snapshot().Kind;
+        if (before != after) OnKindChanged(before, after);
+        ApplySize();
+        Paint();
+    }
+
+    private static string OneLine(string? text) =>
+        (text ?? string.Empty).Replace("\r", " ").Replace("\n", " ⏎ ").Trim();
 
     private void OnClipboardCaptured(ClipboardEntry entry)
     {
