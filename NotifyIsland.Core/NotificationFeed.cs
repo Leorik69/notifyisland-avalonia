@@ -61,6 +61,34 @@ public sealed class NotificationFeed
     /// <summary>Ids currently remembered. Exposed for tests and diagnostics.</summary>
     public int RememberedCount => _seen.Count;
 
+    /// <summary>Add app keys to the set of "us". Late by design: the caller learns our own
+    /// package identity only after the platform has told it who we are.</summary>
+    public void IgnoreApps(params string[] apps)
+    {
+        if (apps.Length == 0) return;
+        foreach (var app in apps)
+        {
+            if (!string.IsNullOrWhiteSpace(app)) _ownApps.Add(app.Trim());
+        }
+    }
+
+    /// <summary>
+    /// Mark a toast as already known without judging it — the priming path.
+    /// <para>
+    /// The first poll returns everything sitting in the notification centre, which is history
+    /// rather than news. Announcing it would put the user's whole backlog on screen, one capsule
+    /// per toast, seconds after launch. Priming spends those ids so the next arrival is still
+    /// detected as new.
+    /// </para>
+    /// </summary>
+    public void Remember(IncomingToast toast)
+    {
+        var id = (toast.Id ?? "").Trim();
+        if (!_seen.Add(id)) return;
+        _order.Enqueue(id);
+        Trim();
+    }
+
     /// <summary>
     /// Decide what to do with one polled toast. The id is remembered for EVERY verdict, including
     /// the rejected ones: a silent or self-sent toast must not be re-examined on the next poll

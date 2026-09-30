@@ -167,4 +167,66 @@ public class NotificationFeedTests
         var payload = NotificationFeed.ToPayload(Toast("1"));
         Assert.Equal(0, payload.Progress);
     }
+
+    [Fact]
+    public void Remember_MarksSeenWithoutAnnouncing()
+    {
+        // The priming path: the first poll returns the whole backlog, which is history, not news.
+        // Priming spends those ids so the user's existing notifications do not all land on the
+        // capsule seconds after launch.
+        var feed = new NotificationFeed();
+        feed.Remember(Toast("1"));
+        feed.Remember(Toast("2"));
+        Assert.Equal(2, feed.RememberedCount);
+        Assert.Equal(FeedVerdict.Duplicate, feed.Accept(Toast("1")));
+        Assert.Equal(FeedVerdict.Duplicate, feed.Accept(Toast("2")));
+    }
+
+    [Fact]
+    public void Remember_ThenANewToastIsStillAccepted()
+    {
+        var feed = new NotificationFeed();
+        feed.Remember(Toast("old"));
+        Assert.Equal(FeedVerdict.Accepted, feed.Accept(Toast("new")));
+    }
+
+    [Fact]
+    public void Remember_IsIdempotent()
+    {
+        var feed = new NotificationFeed();
+        feed.Remember(Toast("1"));
+        feed.Remember(Toast("1"));
+        feed.Remember(Toast("1"));
+        Assert.Equal(1, feed.RememberedCount);
+    }
+
+    [Fact]
+    public void Remember_RespectsTheCap()
+    {
+        var feed = new NotificationFeed(maxRemembered: 2);
+        feed.Remember(Toast("a"));
+        feed.Remember(Toast("b"));
+        feed.Remember(Toast("c"));
+        Assert.Equal(2, feed.RememberedCount);
+    }
+
+    [Fact]
+    public void IgnoreApps_WorksAfterConstruction()
+    {
+        // The caller learns its own package identity only after the platform has told it, so the
+        // own-app set cannot be passed in the constructor alone.
+        var feed = new NotificationFeed();
+        Assert.Equal(FeedVerdict.Accepted, feed.Accept(Toast("1", app: "NotifyIsland")));
+        feed.IgnoreApps("NotifyIsland");
+        Assert.Equal(FeedVerdict.OwnApp, feed.Accept(Toast("2", app: "NotifyIsland")));
+    }
+
+    [Fact]
+    public void IgnoreApps_IgnoresBlanks()
+    {
+        var feed = new NotificationFeed();
+        feed.IgnoreApps("", "   ");
+        // A blank key must not become a filter that drops every nameless toast.
+        Assert.Equal(FeedVerdict.Accepted, feed.Accept(Toast("1", app: "")));
+    }
 }
