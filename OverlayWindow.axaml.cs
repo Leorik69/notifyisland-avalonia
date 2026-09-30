@@ -126,6 +126,11 @@ public partial class OverlayWindow : Window
     /// hover IS a Background change, and going through Control would need a cast at every call
     /// site. Avalonia.Controls.Border spelled out: this file also sees System.Windows.Forms.</summary>
     private readonly List<Avalonia.Controls.Border> _historyRowControls = new();
+    /// <summary>1.18: row hover / press fills, derived from the user's ColorAccent.</summary>
+    private IBrush? _historyHoverBrush;
+    private IBrush? _historyPressBrush;
+    /// <summary>Row currently held down, so its fill survives a hover-leave mid-press.</summary>
+    private int _historyPress = -1;
     /// <summary>Row count the drawer is currently laid out for — the window's size input.</summary>
     private int _historyRowCount;
     /// <summary>Drawer's slide offset in DIP, written by the morph tick.</summary>
@@ -636,6 +641,11 @@ public partial class OverlayWindow : Window
     {
         _idleFillA = Math.Clamp(_settings.Opacity, 0.35, 1.0);
         Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, _idleFillA));
+        // 1.18: the drawer is the SAME surface, not a second card next to the capsule. Its
+        // fill is written from the same parsed ColorCapsuleFill and the same alpha as the
+        // pill, so a user palette change reaches both at once and the seam can never show a
+        // tone difference between the two shapes.
+        HistoryPanel.Background = new SolidColorBrush(WithAlpha(_pillFill, _idleFillA));
     }
 
     /// <summary>Apply user palette (capsule / accent / text) live from settings.</summary>
@@ -1207,8 +1217,16 @@ public partial class OverlayWindow : Window
         HistoryRows.Children.Clear();
         _historyRowControls.Clear();
         _historyHover = -1;
+        _historyPress = -1;
 
         var brush = new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex));
+        // 1.18: row reactions ride the user's ColorAccent instead of a hardcoded white lift —
+        // a neutral grey fill says "this is a row", an accent tint says "this is the action",
+        // which is what the spec asks for. Both sit far below the accent's own opacity, so the
+        // drawer never turns into an accent-coloured card.
+        var accent = ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex);
+        _historyHoverBrush = new SolidColorBrush(WithAlpha(accent, 0.16));
+        _historyPressBrush = new SolidColorBrush(WithAlpha(accent, 0.30));
         for (var i = 0; i < rows.Count; i++)
         {
             var row = rows[i];
@@ -1222,11 +1240,16 @@ public partial class OverlayWindow : Window
                 Color.Parse(ClipboardHalfPreview.IconTintHexFor(row.Entry.Kind)));
             var icon = new Viewbox
             {
-                Width = 12,
-                Height = 12,
+                // 1.18: 16 DIP inside a 24 DIP row — still a small anchor rather than a
+                // thumbnail, but large enough to read a document/image/stack glyph at a
+                // glance. IconPackService is asked for the same size, so the pack's own
+                // stroke weight scales with the box instead of being stretched by the
+                // Viewbox.
+                Width = 16,
+                Height = 16,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 IsHitTestVisible = false,
-                Child = IconPackService.Create(_settings.IconPack, row.IconKey, 12, iconBrush),
+                Child = IconPackService.Create(_settings.IconPack, row.IconKey, 16, iconBrush),
             };
             var title = new TextBlock
             {
@@ -1236,19 +1259,25 @@ public partial class OverlayWindow : Window
                 Text = row.Title + ClipboardHalfPreview.RunSuffix(row.RunCount),
                 FontFamily = IslandFonts.Resolve(_settings.FontFamily),
                 FontSize = 11,
-                Foreground = Avalonia.Media.Brushes.White,
+                // 1.18: the user's ColorTextPrimary, not a hardcoded white — the drawer's
+                // rows are the most text-heavy surface in the island and were the one place
+                // that ignored the palette.
+                Foreground = new SolidColorBrush(ParseColor(_settings.ColorTextPrimary, OverlayTokens.TextHex)),
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 // One line, always: a wrapped row would make the panel taller than the window
                 // that was sized for exactly N rows, and the last row would fall off the edge.
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                MaxWidth = OverlayTokens.HistoryPanelW - 2 * OverlayTokens.HistoryPanelPadX - 12 - 4 - 46,
+                // icon 16 + spacing 4 on the left, spacing 4 + the age column on the right.
+                MaxWidth = OverlayTokens.HistoryPanelW - 2 * OverlayTokens.HistoryPanelPadX - 16 - 4 - 4 - 46,
             };
             var age = new TextBlock
             {
                 Text = row.AgeText,
                 FontFamily = IslandFonts.Resolve(_settings.FontFamily),
                 FontSize = 10,
-                Foreground = new SolidColorBrush(Color.Parse("#888890")),
+                // 1.18: the muted metadata colour is the same parsed secondary the rest of
+                // the island uses, so a custom palette reaches the drawer too.
+                Foreground = new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex)),
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
                 IsHitTestVisible = false,
@@ -1269,8 +1298,14 @@ public partial class OverlayWindow : Window
             };
             host.PointerEntered += (_, _) => SetHistoryHover(index);
             host.PointerExited += (_, _) => SetHistoryHover(-1);
+            // 1.18: press is a short, flat reaction — the fill deepens for as long as the
+            // button is down and nothing scales, so the row never looks like a pop-up card.
+            // _historyPress is tracked separately from _historyHover because the pointer can
+            // leave the row while it is still held.
             host.PointerPressed += (_, e) =>
             {
+                _historyPress = index;
+                PaintHistoryRow(index, pressed: true);
                 // Handled: a press on a row must not also be the "clicked the empty part of the
                 // panel" signal that closes it, and must not reach the ball underneath.
                 var props = e.GetCurrentPoint(host).Properties;
@@ -1279,12 +1314,19 @@ public partial class OverlayWindow : Window
                     // 1.13: row-level pin toggle. The most-recent row (index 0) is unpinnable
                     // by spec; the menu shows that as a disabled entry. Core owns the rule, so
                     // we ask it directly.
+                    _historyPress = -1;
+                    PaintHistoryRow(index, pressed: false);
                     OpenRowContextMenu(row, index, host);
                     e.Handled = true;
                     return;
                 }
                 e.Handled = true;
                 ApplyHistoryRow(row);
+            };
+            host.PointerReleased += (_, _) =>
+            {
+                _historyPress = -1;
+                PaintHistoryRow(index, pressed: false);
             };
 
             HistoryRows.Children.Add(host);
@@ -1343,11 +1385,26 @@ public partial class OverlayWindow : Window
     private void SetHistoryHover(int index)
     {
         if (_historyHover == index) return;
-        if (_historyHover >= 0 && _historyHover < _historyRowControls.Count)
-            _historyRowControls[_historyHover].Background = Avalonia.Media.Brushes.Transparent;
+        var previous = _historyHover;
         _historyHover = index;
-        if (index >= 0 && index < _historyRowControls.Count)
-            _historyRowControls[index].Background = new SolidColorBrush(Color.Parse("#1AFFFFFF"));
+        // Repaint both the row that lost hover and the one that gained it. Repainting the
+        // old row separately (rather than clearing it) is what makes a press survive the
+        // pointer leaving the row while the button is still down.
+        PaintHistoryRow(previous, pressed: previous == _historyPress);
+        PaintHistoryRow(index, pressed: index == _historyPress);
+    }
+
+    /// <summary>
+    /// 1.18: one row's fill, from the two states it can be in. Press wins over hover; a row
+    /// in neither state is fully transparent so the drawer's own fill shows through.
+    /// </summary>
+    private void PaintHistoryRow(int index, bool pressed)
+    {
+        if (index < 0 || index >= _historyRowControls.Count) return;
+        var row = _historyRowControls[index];
+        if (pressed && _historyPressBrush is not null) row.Background = _historyPressBrush;
+        else if (index == _historyHover && _historyHoverBrush is not null) row.Background = _historyHoverBrush;
+        else row.Background = Avalonia.Media.Brushes.Transparent;
     }
 
     /// <summary>
@@ -1483,6 +1540,7 @@ public partial class OverlayWindow : Window
         HistoryRows.Children.Clear();
         _historyRowControls.Clear();
         _historyHover = -1;
+        _historyPress = -1;
         _historyRowCount = 0;
     }
 
@@ -2349,6 +2407,17 @@ public partial class OverlayWindow : Window
             ClipboardSection.Margin = new Thickness(0);
             ClipboardSection.Width = double.NaN;
             ClipboardSection.Height = Math.Max(0, peek);
+            // 1.18: vertical capsule → the section grows up from the bottom edge, so the seam
+            // is the BOTTOM edge and its hairline lies horizontally. Getting this backwards
+            // would draw a vertical rule across a horizontal join.
+            ClipboardSectionSeam.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
+            ClipboardSectionSeam.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom;
+            ClipboardSectionSeam.Width = double.NaN;
+            ClipboardSectionSeam.Height = 1;
+            ClipboardSectionSeam.Margin = new Thickness(0, 0, 0, 7);
+            ClipboardSectionContent.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
+            ClipboardSectionContent.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
+            ClipboardSectionContent.Margin = new Thickness(0);
         }
         else
         {
@@ -2357,6 +2426,17 @@ public partial class OverlayWindow : Window
             ClipboardSection.Margin = new Thickness(0, 0, ClipboardSectionTrack.CapInsetFor(OverlayTokens.CollapsedH), 0);
             ClipboardSection.Width = Math.Max(0, peek);
             ClipboardSection.Height = double.NaN;
+            // 1.18: horizontal capsule → the section sits at the trailing end and the seam is
+            // its LEFT edge. The hairline is inset 10 DIP from the join and the content starts
+            // 18 DIP in, so the clock/date on the capsule's leading side are never covered.
+            ClipboardSectionSeam.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left;
+            ClipboardSectionSeam.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch;
+            ClipboardSectionSeam.Width = 1;
+            ClipboardSectionSeam.Height = double.NaN;
+            ClipboardSectionSeam.Margin = new Thickness(10, 0, 0, 0);
+            ClipboardSectionContent.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left;
+            ClipboardSectionContent.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
+            ClipboardSectionContent.Margin = new Thickness(14, 0, 0, 0);
         }
 
         if (Math.Abs(peek - _sectionPeek) < 0.01) return;

@@ -347,20 +347,38 @@
               Background="Transparent"
               Cursor="Hand"
               ToolTip.Tip="История буфера">
-        <StackPanel Orientation="Horizontal"
-                    Spacing="3"
-                    HorizontalAlignment="Left"
-                    VerticalAlignment="Center">
-          <Viewbox x:Name="ClipboardSectionIcon" Width="12" Height="12" VerticalAlignment="Center" />
-          <TextBlock x:Name="ClipboardSectionText"
-                     VerticalAlignment="Center"
-                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                     FontSize="11"
-                     FontWeight="Medium"
-                     Foreground="#C8C8CC"
-                     TextTrimming="CharacterEllipsis"
-                     Text="буфер" />
-        </StackPanel>
+        <!-- 1.18: the seam. A 1 DIP hairline on the edge that meets the capsule, so the join
+             reads as one deliberately divided object instead of two shapes that happen to
+             touch. Its side is NOT fixed here: the section is anchored to the RIGHT when the
+             capsule is horizontal and to the BOTTOM when it is vertical, so ApplyClipboard
+             SectionMorph writes the alignment, the thickness and the inset for the current
+             orientation. The capsule's own leading content is never covered — the hairline
+             lives in the section, inset from the join. -->
+        <Grid>
+          <Border x:Name="ClipboardSectionSeam"
+                  Width="1"
+                  Background="#1FFFFFFF"
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Stretch"
+                  Margin="10,0,0,0"
+                  IsHitTestVisible="False" />
+          <StackPanel x:Name="ClipboardSectionContent"
+                      Orientation="Horizontal"
+                      Spacing="6"
+                      HorizontalAlignment="Left"
+                      VerticalAlignment="Center"
+                      Margin="14,0,0,0">
+            <Viewbox x:Name="ClipboardSectionIcon" Width="13" Height="13" VerticalAlignment="Center" />
+            <TextBlock x:Name="ClipboardSectionText"
+                       VerticalAlignment="Center"
+                       FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                       FontSize="11"
+                       FontWeight="Medium"
+                       Foreground="#A1A1A6"
+                       TextTrimming="CharacterEllipsis"
+                       Text="буфер" />
+          </StackPanel>
+        </Grid>
       </Border>
     </Grid>
   </Border>
@@ -376,8 +394,8 @@
     <Border x:Name="HistoryPanel"
             Width="260"
             CornerRadius="12"
-            Background="#F2080808"
-            BorderBrush="#28FFFFFF"
+            Background="#080808"
+            BorderBrush="#16FFFFFF"
             BorderThickness="1"
             Padding="10,8"
             IsVisible="False"
