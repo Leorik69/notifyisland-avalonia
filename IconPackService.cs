@@ -16,6 +16,18 @@ public static class IconPackService
 {
     private static readonly string[] OutlinePacks = ["IslandIcons", "Tabler", "Lucide"];
 
+    /// <summary>
+    /// Parsed <see cref="SvgSource"/> cache, keyed by pack + key + tint hex + size.
+    ///
+    /// Paint() runs on the 200 ms tick and calls <see cref="Create"/> for the battery and weather
+    /// icons, so without a cache that is 5 file reads plus 5 SVG parses every second for icons
+    /// that change a handful of times an hour. The SvgSource is safe to share: it is a parsed,
+    /// read-only resource, and <see cref="MakeImage"/> wraps it in a fresh Image each time because
+    /// a control can only ever have one parent. Same pattern as
+    /// <see cref="SecondsStripView.EnsureDotSource"/>.
+    /// </summary>
+    private static readonly Dictionary<string, SvgSource> SvgSourceCache = new(StringComparer.Ordinal);
+
     public static IReadOnlyList<string> PackIds
     {
         get
@@ -71,12 +83,17 @@ public static class IconPackService
             if (path is null || !File.Exists(path)) return null;
 
             var hex = BrushToHex(brush);
-            var xml = File.ReadAllText(path);
-            xml = xml.Replace("currentColor", hex, StringComparison.OrdinalIgnoreCase);
-            xml = xml.Replace("stroke-width=\"2\"", "stroke-width=\"1.75\"", StringComparison.OrdinalIgnoreCase);
+            var cacheKey = IconCacheKey.For(pack, key, hex, size);
+            if (!SvgSourceCache.TryGetValue(cacheKey, out var loaded))
+            {
+                var xml = File.ReadAllText(path);
+                xml = xml.Replace("currentColor", hex, StringComparison.OrdinalIgnoreCase);
+                xml = xml.Replace("stroke-width=\"2\"", "stroke-width=\"1.75\"", StringComparison.OrdinalIgnoreCase);
 
-            var loaded = SvgSource.LoadFromSvg(xml);
-            if (loaded is null) return null;
+                loaded = SvgSource.LoadFromSvg(xml);
+                if (loaded is null) return null;
+                SvgSourceCache[cacheKey] = loaded;
+            }
 
             return MakeImage(loaded, size);
         }
@@ -94,18 +111,28 @@ public static class IconPackService
             var path = ResolveSvgPath(pack, key);
             if (path is null || !File.Exists(path)) return null;
 
-            var xml = File.ReadAllText(path);
-            // Monochrome uses black/white fills in the npm package; tint black to theme brush.
-            if (pack.Equals(MeteoconsMap.Monochrome, StringComparison.OrdinalIgnoreCase))
+            // The hex only participates in the cache key for the monochrome pack: for the other
+            // three packs the colour is a paint-time tint that does not alter the parsed source,
+            // so keying on it would grow the cache for nothing. Monochrome bakes black into the
+            // XML, so it must be part of the key. IconCacheKey owns that decision.
+            var hex = BrushToHex(brush);
+            var isMono = pack.Equals(MeteoconsMap.Monochrome, StringComparison.OrdinalIgnoreCase);
+            var cacheKey = IconCacheKey.For(pack, key, hex, size);
+            if (!SvgSourceCache.TryGetValue(cacheKey, out var loaded))
             {
-                var hex = BrushToHex(brush);
-                xml = xml.Replace("currentColor", hex, StringComparison.OrdinalIgnoreCase);
-                xml = xml.Replace("\"black\"", $"\"{hex}\"", StringComparison.OrdinalIgnoreCase);
-                xml = xml.Replace("'black'", $"'{hex}'", StringComparison.OrdinalIgnoreCase);
-            }
+                var xml = File.ReadAllText(path);
+                // Monochrome uses black/white fills in the npm package; tint black to theme brush.
+                if (isMono)
+                {
+                    xml = xml.Replace("currentColor", hex, StringComparison.OrdinalIgnoreCase);
+                    xml = xml.Replace("\"black\"", $"\"{hex}\"", StringComparison.OrdinalIgnoreCase);
+                    xml = xml.Replace("'black'", $"'{hex}'", StringComparison.OrdinalIgnoreCase);
+                }
 
-            var loaded = SvgSource.LoadFromSvg(xml);
-            if (loaded is null) return null;
+                loaded = SvgSource.LoadFromSvg(xml);
+                if (loaded is null) return null;
+                SvgSourceCache[cacheKey] = loaded;
+            }
 
             return MakeImage(loaded, size);
         }
@@ -115,6 +142,13 @@ public static class IconPackService
             return null;
         }
     }
+
+    /// <summary>
+    /// Drop the parsed-source cache. Test-only seam: the cache is a pure memo of files on disk,
+    /// so clearing it cannot change behaviour — it just lets a test assert cold-vs-warm behaviour
+    /// without depending on another test having run first.
+    /// </summary>
+    internal static void ResetSvgCacheForTests() => SvgSourceCache.Clear();
 
     private static Avalonia.Controls.Image MakeImage(SvgSource loaded, double size) =>
         new()
