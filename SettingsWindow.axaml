@@ -550,7 +550,23 @@
               <ComboBoxItem Tag="Fast" Content="Быстрее"/>
               <ComboBoxItem Tag="Off" Content="Выкл"/>
             </ComboBox>
-              </StackPanel>
+            <TextBlock Classes="fieldLabel" Text="ClickPop (отклик на клик)"/>
+            <ComboBox x:Name="AnimClickPopBox" Width="260">
+              <ComboBoxItem Tag="Slow" Content="Медленнее"/>
+              <ComboBoxItem Tag="Normal" Content="Обычная"/>
+              <ComboBoxItem Tag="Fast" Content="Быстрее"/>
+              <ComboBoxItem Tag="Off" Content="Выкл"/>
+            </ComboBox>
+            <TextBlock Classes="fieldLabel" Text="Поколебание при появлении"/>
+            <ComboBox x:Name="AnimFirstAppearWobbleBox" Width="260">
+              <ComboBoxItem Tag="Slow" Content="Медленнее"/>
+              <ComboBoxItem Tag="Normal" Content="Обычная"/>
+              <ComboBoxItem Tag="Fast" Content="Быстрее"/>
+              <ComboBoxItem Tag="Off" Content="Выкл"/>
+            </ComboBox>
+            <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="11" Margin="0,8,0,0"
+                       Text="«Выкл» в любой строке означает «без движения», а не «мгновенно»: сниженная анимация (переключатель выше) убирает мерцание и бесконечные циклы целиком. Полоса секунд при этом остаётся — она показывает данные, а не украшение."/>
+          </StackPanel>
             </Border>
           </StackPanel>
         </ScrollViewer>

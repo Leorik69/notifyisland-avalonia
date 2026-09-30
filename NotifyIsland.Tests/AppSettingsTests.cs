@@ -238,6 +238,9 @@ public class AppSettingsTests
             FontSize = 16,
             FontFamily = "JetBrainsMono",
             AnimHover = AnimationSpeed.Slow,
+            AnimClickPop = AnimationSpeed.Fast,
+            AnimFirstAppearWobble = AnimationSpeed.Off,
+            ReducedMotion = true,
             AnimPulseEnabled = false,
             AppearStyle = NotifyAppearStyle.SlideDown,
             DismissStyle = NotifyDismissStyle.SlideUp,
@@ -275,6 +278,9 @@ public class AppSettingsTests
         Assert.Equal(16, b.FontSize);
         Assert.Equal("JetBrainsMono", b.FontFamily);
         Assert.Equal(AnimationSpeed.Slow, b.AnimHover);
+        Assert.Equal(AnimationSpeed.Fast, b.AnimClickPop);
+        Assert.Equal(AnimationSpeed.Off, b.AnimFirstAppearWobble);
+        Assert.True(b.ReducedMotion);
         Assert.False(b.AnimPulseEnabled);
         Assert.Equal(NotifyAppearStyle.SlideDown, b.AppearStyle);
         Assert.Equal(NotifyDismissStyle.SlideUp, b.DismissStyle);

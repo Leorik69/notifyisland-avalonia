@@ -228,6 +228,13 @@ public sealed class AppSettings
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AnimationSpeed AnimHover { get; set; } = AnimationSpeed.Normal;
 
+    /// <summary>
+    /// Speed of the old swipe rubber-band. **Dead since 1.13.0** — the <c>DoubleTransition</c> it
+    /// fed was removed from <c>_pillTranslate</c> because it fought the per-frame morph writes, and
+    /// the gesture it served was deleted back in 1.8.1. Kept in the schema on purpose: a user may
+    /// have the key in settings.json, and dropping it would silently discard their file's value.
+    /// Nothing reads it.
+    /// </summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AnimationSpeed AnimSwipeRubber { get; set; } = AnimationSpeed.Normal;
 

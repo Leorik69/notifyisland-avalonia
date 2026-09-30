@@ -249,6 +249,8 @@ public partial class SettingsWindow : Window
         SelectByTag(AnimMorphCollapseBox, _draft.AnimMorphCollapse.ToString());
         SelectByTag(AnimUnreadPulseBox, _draft.AnimUnreadPulse.ToString());
         SelectByTag(AnimHoverBox, _draft.AnimHover.ToString());
+        SelectByTag(AnimClickPopBox, _draft.AnimClickPop.ToString());
+        SelectByTag(AnimFirstAppearWobbleBox, _draft.AnimFirstAppearWobble.ToString());
         AnimPulseEnabledBox.IsChecked = _draft.AnimPulseEnabled;
         ReducedMotionBox.IsChecked = _draft.ReducedMotion;
         SelectByTag(IconPackBox, _draft.IconPack);
@@ -521,6 +523,8 @@ public partial class SettingsWindow : Window
         SelectByTag(AnimSpeedBox, s.AnimationSpeed.ToString());
         SelectByTag(AnimMorphInflateBox, s.AnimMorphInflate.ToString());
         SelectByTag(AnimMorphCollapseBox, s.AnimMorphCollapse.ToString());
+        SelectByTag(AnimClickPopBox, s.AnimClickPop.ToString());
+        SelectByTag(AnimFirstAppearWobbleBox, s.AnimFirstAppearWobble.ToString());
         SelectByTag(AppearStyleBox, s.AppearStyle.ToString());
         SelectByTag(DismissStyleBox, s.DismissStyle.ToString());
         SelectByTag(DateFormatBox, s.DateFormat.ToString());
@@ -620,6 +624,10 @@ public partial class SettingsWindow : Window
             _draft.AnimUnreadPulse = up;
         if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimHoverBox), true, out var hv))
             _draft.AnimHover = hv;
+        if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimClickPopBox), true, out var cp))
+            _draft.AnimClickPop = cp;
+        if (Enum.TryParse<AnimationSpeed>(SelectedTag(AnimFirstAppearWobbleBox), true, out var fw))
+            _draft.AnimFirstAppearWobble = fw;
         _draft.AnimPulseEnabled = AnimPulseEnabledBox.IsChecked == true;
         _draft.ReducedMotion = ReducedMotionBox.IsChecked == true;
 
