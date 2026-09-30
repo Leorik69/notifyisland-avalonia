@@ -55,9 +55,18 @@ public partial class StatsRowView : Avalonia.Controls.UserControl
         set
         {
             CaptionBlock.IsVisible = value;
-            if (value) return;   // a caption row never shows the pair furniture
-            LabelBlock.IsVisible = true;
-            ValueBlock.IsVisible = true;
+            // 1.16: the caption row owns a 1 DIP rule above it (see RowDivider in the XAML).
+            // The rule follows the date row, so a custom row order that puts the date first
+            // puts the rule first too — the separator separates the date from the metrics,
+            // it is not a fixed header under the first row.
+            RowDivider.IsVisible = value;
+            // 1.16: a caption row must not ALSO show the pair furniture. SyncStatsRows assigns
+            // Value = "—" to every row before it knows the row's shape, so without this the
+            // date row rendered a centred caption and a stray "—" pinned to the right edge —
+            // the exact "values must not touch the edge" defect the monitor layout is about.
+            LabelBlock.IsVisible = !value;
+            ValueBlock.IsVisible = !value;
+            StatusDetail.IsVisible = !value && !string.IsNullOrWhiteSpace(StatusDetail.Text);
         }
     }
 

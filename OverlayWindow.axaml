@@ -251,7 +251,7 @@
                   VerticalAlignment="Center">
         <StackPanel x:Name="SystemStatsPanel"
                     Spacing="4"
-                    HorizontalAlignment="Center"
+                    HorizontalAlignment="Stretch"
                     VerticalAlignment="Center"
                     IsVisible="False"
                     Margin="22,6,22,6" />
