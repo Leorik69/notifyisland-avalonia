@@ -695,7 +695,12 @@ public partial class OverlayWindow : Window
             // Reduced motion removes the effect, it does not shorten it: the arrival is still
             // announced by the size change and the content, which is the information the flash
             // was only emphasising.
-            _accentFlashStartedAtMs = null;
+            //
+            // Nothing is cleared here on purpose. If animations are switched off MID-flash, a
+            // flash is already in flight: it owns a captured brush and a lifted hover transition,
+            // and the tick is the only thing that puts them back. Cancelling the marker here
+            // without restoring them would strand the accent colour on the pill and leave hover
+            // dead until the next restart — dropping the new request is the whole effect.
             return;
         }
 
@@ -711,8 +716,13 @@ public partial class OverlayWindow : Window
 
         _accentFlashColor = ParseColor(hex, OverlayTokens.AccentHex);
         _accentFlashMs = Reaction.AccentMs(speed);
-        _accentFlashStartedAtMs = _frameClockMs;
+        // Start the clock BEFORE reading time, and read the stopwatch itself rather than the
+        // per-frame cache. _frameClockMs is only refreshed inside OnFrameTick, while the capsule
+        // morph runs on its own timer — so on an island that has been quiet for a second (the
+        // common case: no pulse, no pop) the cached stamp is a second old, the first tick of the
+        // flash already reads p = 1, and the flash is never drawn at all.
         EnsureFrameTick();
+        _accentFlashStartedAtMs = _frameClock.ElapsedMilliseconds;
     }
 
     /// <summary>One frame of the accent flash; false when it has finished or none is in flight.</summary>
@@ -766,14 +776,19 @@ public partial class OverlayWindow : Window
 
         if (reduced || !AnimationTiming.IsEnabled(speed)) return;
 
+        // Same reasoning as the accent flash: the base stamp comes from the running stopwatch,
+        // not from the per-frame cache, or a reveal started on a quiet island is already over on
+        // its first tick. The clock is started first so the reading is real.
+        EnsureFrameTick();
         _reveal = new RevealRun(
             items,
             Reaction.RevealMs(level, speed),
             Reaction.StaggerShare(level),
-            () => _frameClockMs);
+            () => _frameClock.ElapsedMilliseconds);
         _reveal.Start();
-        _reveal.Tick();
-        EnsureFrameTick();
+        // Paint the first frame synchronously: without it the freshly dimmed elements would show
+        // their resting opacity for one 33 ms frame before the run takes them.
+        if (!_reveal.Tick()) _reveal = null;
     }
 
     /// <summary>
@@ -3242,14 +3257,24 @@ public partial class OverlayWindow : Window
         _lastArrivalKind = kind;
         if (!isNew) return;
 
-        // 1.19 (spec Этап 5, §1, §10). A notification, a failure and a low-battery alert are
-        // strong: they are the things the user must not miss. The charge pill is only MEDIUM —
-        // plugging in the charger is good news, but it is not an event worth a flash, and the
-        // spec asks for a "soft accent near the battery" there, not a strong reaction.
-        var level = kind switch
+        // 1.19 (spec Этап 5, §1, §10). Intensity is a property of WHAT ARRIVED, not of how it
+        // was delivered, so the default is read from the kind: only a notification, a failure and
+        // the low-battery alert are strong — the things the user must not miss, and the only
+        // ones that earn a flash. The charge pill is MEDIUM: plugging in the charger is good news,
+        // but it is not an event worth a flash, and the spec asks for a "soft accent near the
+        // battery" there, not a strong reaction.
+        //
+        // Everything else is QUIET. An earlier version defaulted to Strong for every unlisted
+        // kind, which meant that opening the stats panel, a click expanding the capsule, the
+        // weather and the clipboard all flashed the accent edge — the exact twitch the tier
+        // system exists to prevent, and the commit's own "a CPU reading must not make the
+        // surface twitch" said the opposite. New kinds therefore default to the quiet end: a
+        // missing entry degrades to silence, not to noise.
+        var level = _arrivalLevelOverride ?? kind switch
         {
+            OverlayKind.Notification or OverlayKind.Error => ReactionLevel.Strong,
             OverlayKind.Battery => ReactionLevel.Medium,
-            _ => _arrivalLevelOverride ?? ReactionLevel.Strong,
+            _ => ReactionLevel.Quiet,
         };
         _arrivalLevelOverride = null;
 
@@ -4778,7 +4803,13 @@ internal sealed class RevealRun
         for (var i = 0; i < _items.Length; i++)
         {
             _items[i].Target.Opacity = _items[i].RestOpacity;
-            if (_moves[i] is { } m) { m.Y = 0; }
+            if (_moves[i] is not { } m) continue;
+            m.Y = 0;
+            // Hand the transform back. The ctor skips elements that already own one, so a
+            // TranslateTransform left behind here would make the NEXT run's "only animate
+            // position where nothing else owns the transform" guard false: the first reaction
+            // would rise and every one after it would only crossfade.
+            _items[i].Target.RenderTransform = null;
         }
     }
 
