@@ -275,6 +275,21 @@ public static class OverlayTokens
     /// reads as a repaint.</summary>
     public const int    HistoryPanelMs        = 300;
 
+    // -- Notification row (1.15) ---------------------------------------------------
+    /// <summary>
+    /// Long-axis width the notification row may spend on its texts, and the slice of that width
+    /// the hover action takes before the title/body budgets are computed.
+    /// <para>
+    /// 58 DIP is the measured width of the compact «Очистить» action (9.5 SemiBold label + 5 DIP
+    /// padding each side). It is a token rather than a literal at the call site because the same
+    /// number has to be subtracted from the text budget BEFORE layout, otherwise a hovered
+    /// notification reflows its own text a frame late.
+    /// </para>
+    /// </summary>
+    public const double NotifActionW = 58.0;
+    /// <summary>Height of that action. Matches the unread badge so the two can swap in place.</summary>
+    public const double NotifActionH = 20.0;
+
     // -- Tray menu (1.12.0) -------------------------------------------------
     /// <summary>Maximum entries surfaced in the tray clipboard submenu.</summary>
     public const int    TrayClipboardSubmenuItems = 5;

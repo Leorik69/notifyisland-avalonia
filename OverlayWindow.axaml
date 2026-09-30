@@ -216,20 +216,70 @@
         <!-- 1.13: the media and timer control clusters were removed from the capsule. Both
              live in their own monitor rows (StatsRowView draws ⏮ ▶ ⏭ and ⏸ +1 ✕ next to
              Плеер / Таймер), because a control cluster on the capsule is what made those two
-             take the capsule over in the first place. -->
-        <TextBlock x:Name="OverlayTitle"
-                   VerticalAlignment="Center"
-                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                   FontSize="12"
-                   FontWeight="SemiBold"
-                   Foreground="#FFFFFF"
-                   TextTrimming="CharacterEllipsis"
-                   Text="Обзор" />
-        <TextBlock x:Name="OverlaySubtitle"
-                   IsVisible="False"
-                   Height="0"
-                   FontSize="1"
-                   Text="" />
+             take the capsule over in the first place.
+
+             Stage 8. This row used to be a single TextBlock that pasted the title and the body
+             together as "title · body" in one weight and one ink, so a notification had no
+             hierarchy at all — the second half of the text was as loud as the first. It is now
+             two texts in ONE line: the title keeps the primary ink and weight, the body drops to
+             the secondary ink at a smaller size. One line, because the island morphs on the long
+             axis only and every kind is 30 DIP tall (OverlayMachine.HeightFor) — a stacked
+             three-line layout would need a height change the machine does not have, and the
+             notification must not become a second card on top of the capsule.
+
+             The two widths are written from code (NotificationLayout) instead of being left to
+             the layout: a horizontal StackPanel measures its children with infinite width, so
+             TextTrimming never engages and a long title would push the badge out of the pill.
+             MaxWidth is what makes the ellipsis real here. -->
+        <Grid x:Name="OverlayTextRow" ColumnDefinitions="*,Auto" ClipToBounds="True">
+          <StackPanel x:Name="OverlayTextColumn"
+                      Orientation="Horizontal"
+                      VerticalAlignment="Center"
+                      ClipToBounds="True">
+            <TextBlock x:Name="OverlayTitle"
+                       VerticalAlignment="Center"
+                       FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Foreground="#FFFFFF"
+                       TextTrimming="CharacterEllipsis"
+                       Text="Обзор" />
+            <TextBlock x:Name="OverlaySubtitle"
+                       VerticalAlignment="Center"
+                       Margin="6,0,0,0"
+                       FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                       FontSize="11"
+                       Foreground="#C8C8CC"
+                       TextTrimming="CharacterEllipsis"
+                       IsVisible="False"
+                       Text="" />
+          </StackPanel>
+
+          <!-- Stage 8: the one action that already exists in the machine (OverlayCommand.Clear).
+               It sits on the trailing edge INSIDE the pill, so revealing it cannot reflow the
+               text — the spec asks for actions that appear without shoving the message sideways,
+               and a second line is not available at 30 DIP. Compact, flat, no bright outline;
+               the label carries the theme's error colour because clearing is destructive. -->
+          <Border x:Name="NotifActionClear"
+                  Grid.Column="1"
+                  Margin="8,0,0,0"
+                  MinWidth="18" Height="18"
+                  CornerRadius="5"
+                  Background="#1AFFFFFF"
+                  Padding="5,0"
+                  VerticalAlignment="Center"
+                  IsVisible="False"
+                  IsHitTestVisible="False">
+            <TextBlock x:Name="NotifActionClearText"
+                       FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                       FontSize="9.5"
+                       FontWeight="SemiBold"
+                       Foreground="#E8A0A0"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Text="Очистить" />
+          </Border>
+        </Grid>
       </DockPanel>
 
       <!-- System Stats expanded view (1.12.1): own slot in the root Grid so the

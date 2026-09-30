@@ -535,6 +535,7 @@ public partial class OverlayWindow : Window
             _pointerOverUi = true;
             PillEnterVisuals();
             OnPillHoverEnter();
+            UpdateNotificationChrome();
         }
     }
 
@@ -546,6 +547,7 @@ public partial class OverlayWindow : Window
             _pointerOverUi = false;
             PillLeaveVisuals();
             OnPillHoverLeave();
+            UpdateNotificationChrome();
         }
     }
 
@@ -566,6 +568,18 @@ public partial class OverlayWindow : Window
             Pill.BorderBrush = _borderIdle;
             ApplyOpacity();
         }
+    }
+
+    /// <summary>
+    /// Stage 8: the notification's hover action lives in the row's layout, not in a separate
+    /// window, so showing or hiding it is a paint concern — including the text width budget,
+    /// which is computed together with the action's presence. Everything else ignores the call.
+    /// </summary>
+    private void UpdateNotificationChrome()
+    {
+        var kind = _machine.Snapshot().Kind;
+        if (kind is not (OverlayKind.Notification or OverlayKind.Expanded or OverlayKind.Error)) return;
+        Paint();
     }
 
     /// <summary>
@@ -1214,6 +1228,34 @@ public partial class OverlayWindow : Window
         Pill.PointerPressed += OnPillPointerPressed;
         Pill.PointerReleased += OnPillPointerReleased;
         Pill.PointerCaptureLost += (_, _) => ResetPressState();
+
+        // Stage 8 (§6): the notification's one action. It is a CHILD of the pill, so the press
+        // must be marked handled here or the island's own click path also fires and the capsule
+        // pins itself at the same time as it clears — exactly the ordering the clipboard section
+        // already had to solve for the drawer.
+        NotifActionClear.PointerPressed += (_, e) =>
+        {
+            e.Handled = true;
+            ClearNotifications();
+        };
+    }
+
+    /// <summary>
+    /// Stage 8: clear the visible notifications. Dispatches the EXISTING
+    /// <see cref="OverlayCommand.Clear"/>, which is what zeroes the unread count, returns the
+    /// machine to the kind it was in before the notification and drops the payload — no queue,
+    /// no unread rule and no FSM transition is invented here.
+    /// </summary>
+    private void ClearNotifications()
+    {
+        if (_machine.Snapshot().Kind is not (OverlayKind.Notification or OverlayKind.Expanded or OverlayKind.Error))
+            return;
+        var before = _machine.Snapshot().Kind;
+        _machine.Dispatch(OverlayCommand.Clear);
+        var after = _machine.Snapshot().Kind;
+        if (before != after) OnKindChanged(before, after);
+        ApplySize();
+        Paint();
     }
 
     private static bool HasAnyStorageItem(Avalonia.Input.IDataTransfer? data)
@@ -3184,30 +3226,45 @@ public partial class OverlayWindow : Window
                 _lastPower.IsCharging || _lastPower.OnAc ? $"Зарядка · {pct}%" : $"Батарея · {pct}%");
         }
 
-        var title = string.IsNullOrWhiteSpace(p.Title) ? Fallback(kind) : p.Title;
-        var sub = string.IsNullOrWhiteSpace(p.Subtitle) ? p.Body : p.Subtitle;
+        // Stage 8: title and body are two texts with two inks, not one "title · body" string.
+        // Split() keeps the payload's own Subtitle fallback in one tested place; the kind-specific
+        // wording below (weather expansion, battery percentage) then overrides it exactly as
+        // before, so no existing text changed meaning — only how it is laid out.
+        var (titleText, bodyText) = NotificationLayout.Split(p, Fallback(kind));
         if (kind == OverlayKind.Weather)
         {
-            title = string.IsNullOrWhiteSpace(p.Body)
+            titleText = string.IsNullOrWhiteSpace(p.Body)
                 ? WeatherCodes.FormatExpanded(p.TemperatureC ?? snap.LastWeather.TemperatureC ?? 18,
                     p.WeatherCode ?? snap.LastWeather.WeatherCode ?? 0, p.PrecipProb ?? snap.LastWeather.PrecipProb)
-                : p.Body;
-            if (_settings.WeatherLocationMode == WeatherLocationMode.Manual
-                && !string.IsNullOrWhiteSpace(_settings.WeatherLocationName))
-            {
-                sub = _settings.WeatherLocationName.Trim();
-            }
-            else
-                sub = "";
+                : NotificationLayout.Collapse(p.Body);
+            bodyText = _settings.WeatherLocationMode == WeatherLocationMode.Manual
+                && !string.IsNullOrWhiteSpace(_settings.WeatherLocationName)
+                ? _settings.WeatherLocationName.Trim()
+                : "";
         }
-        else if (kind == OverlayKind.Battery && string.IsNullOrWhiteSpace(sub))
-            sub = $"{(int)Math.Round(p.Progress * 100)}%";
+        else if (kind == OverlayKind.Battery && bodyText.Length == 0)
+        {
+            bodyText = $"{(int)Math.Round(p.Progress * 100)}%";
+        }
         // 1.13: the Timer and Progress branches are gone — neither is a capsule kind any
         // more, so neither ever reaches this point. Their text is formatted by the monitor
         // rows (ApplyTimerRow / ApplyMediaRow) and their fraction by CapsuleProgressBand.
 
-        OverlayTitle.Text = string.IsNullOrWhiteSpace(sub) ? title : $"{title} · {sub}";
-        OverlaySubtitle.Text = "";
+        var notifLike = kind is OverlayKind.Notification or OverlayKind.Expanded or OverlayKind.Error;
+        // Stage 8: the action is an existing command (OverlayCommand.Clear), shown only while the
+        // pointer is on the capsule and there is actually something to clear. Its width is taken
+        // out of the text budget BEFORE measuring, so revealing it cannot reflow the message.
+        var notifActions = notifLike && _pointerOverUi && snap.UnreadCount > 0;
+        var (titleW, bodyW) = NotificationLayout.SplitWidths(
+            Math.Max(0, Pill.Bounds.Width - 2 * OverlayPanel.Margin.Left - 26 /* icon + gap */ - 8),
+            notifActions,
+            bodyText.Length > 0);
+
+        OverlayTitle.Text = titleText;
+        OverlayTitle.MaxWidth = titleW;
+        OverlaySubtitle.Text = bodyText;
+        OverlaySubtitle.MaxWidth = bodyW;
+        OverlaySubtitle.IsVisible = bodyText.Length > 0;
 
         // 1.13: the capsule's bottom 8 DIP are one shared band. Whoever owns it draws, and
         // the other one yields — seconds digits and a progress bar are two readings of the
@@ -3217,8 +3274,18 @@ public partial class OverlayWindow : Window
         var textPrimary = ParseColor(_settings.ColorTextPrimary, OverlayTokens.TextHex);
         var accent = ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex);
         OverlayTitle.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? Color.Parse(OverlayTokens.ErrorHex) : textPrimary);
+        // Stage 8: the body is the same information the title used to carry in the title's own
+        // weight. Dropping it to the secondary ink is what creates the hierarchy inside a 30 DIP
+        // row: the eye reads the name first and the detail second, without a second line and
+        // without a second card.
+        OverlaySubtitle.Foreground = new SolidColorBrush(_inkSecondary);
         AppIcon.Background = new SolidColorBrush(kind == OverlayKind.Error ? Color.Parse(OverlayTokens.ErrorHex) : accent);
         UnreadBadge.Background = new SolidColorBrush(accent);
+        // The action is destructive, so it wears the existing error colour — but on the LABEL,
+        // not as a filled red chip, which at this size would read as the primary control.
+        NotifActionClearText.Foreground = new SolidColorBrush(Color.Parse(OverlayTokens.ErrorHex));
+        NotifActionClear.IsVisible = notifActions;
+        NotifActionClear.IsHitTestVisible = notifActions;
 
         if (kind == OverlayKind.Weather)
             SetKindIconWeather(p.WeatherCode ?? snap.LastWeather.WeatherCode ?? 0);
@@ -3231,8 +3298,12 @@ public partial class OverlayWindow : Window
         ApplyMediaArtwork(null);
 
         var unread = snap.UnreadCount;
+        // Stage 8: the badge and the action share the trailing edge and swap in place. A hovered
+        // notification shows the action, because it is the only way to clear from the capsule
+        // itself; the count is still on screen a moment later, and the count is also kept in the
+        // collapsed dot, so nothing is ever "lost" by the swap.
         var showBadge = overlayOn && unread > 0 && kind is OverlayKind.Notification or OverlayKind.Expanded;
-        UnreadBadge.IsVisible = showBadge;
+        UnreadBadge.IsVisible = showBadge && !notifActions;
         BadgeText.Text = unread > 99 ? "99+" : unread.ToString(CultureInfo.InvariantCulture);
 
         var showDot = !overlayOn && unread > 0;
@@ -3336,16 +3407,31 @@ public partial class OverlayWindow : Window
         // system exists to prevent, and the commit's own "a CPU reading must not make the
         // surface twitch" said the opposite. New kinds therefore default to the quiet end: a
         // missing entry degrades to silence, not to noise.
+        //
+        // Stage 8 (§5) splits the two events Этап 5 had joined. An ORDINARY notification is now
+        // MEDIUM — soft appearance, no accent flash, one unread emphasis — while Error keeps
+        // Strong, its local error colour and the flash. This is the tier the spec asks for: the
+        // common case must not cost the same attention as a failure, otherwise every toast looks
+        // like an alarm and the strong tier stops meaning anything.
         var level = _arrivalLevelOverride ?? kind switch
         {
-            OverlayKind.Notification or OverlayKind.Error => ReactionLevel.Strong,
+            OverlayKind.Error => ReactionLevel.Strong,
+            OverlayKind.Notification => ReactionLevel.Medium,
             OverlayKind.Battery => ReactionLevel.Medium,
             _ => ReactionLevel.Quiet,
         };
         _arrivalLevelOverride = null;
 
-        PlayReveal(level, (AppIcon, 0), (OverlayTitle, 1), (OverlaySubtitle, 2));
-        if (level == ReactionLevel.Strong) PlayAccentFlash(OverlayTokens.AccentHex);
+        // Stage 8 (§4, step 6): the unread indicator joins the reveal as the LAST element. It
+        // used to be outside the sequence entirely, so the count popped in fully opaque while
+        // the text was still arriving; arriving last is what makes it read as the final beat of
+        // one gesture instead of a fourth, unrelated event.
+        PlayReveal(level, (AppIcon, 0), (OverlayTitle, 1), (OverlaySubtitle, 2), (UnreadBadge, 3));
+        // The flash is the strong tier's one flash. It stays the accent for a low-battery alert
+        // (a warning about the machine, not a failure) and takes the error colour only for an
+        // actual Error, so "red" keeps meaning one thing.
+        if (level == ReactionLevel.Strong)
+            PlayAccentFlash(kind == OverlayKind.Error ? OverlayTokens.ErrorHex : OverlayTokens.AccentHex);
     }
 
     /// <summary>
