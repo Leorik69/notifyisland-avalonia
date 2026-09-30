@@ -134,6 +134,19 @@ public sealed class OverlayMachine
     private bool _isSplitClipboard;
     private int _splitMs;
 
+    /// <summary>
+    /// Freeze the split's idle lifetime. Set by the overlay while the user is holding the
+    /// clipboard ball (pressed or dragging). The ball is the one piece of the capsule the user
+    /// grabs by hand, so its timeout has to yield to the hand on it.
+    /// </summary>
+    public bool SplitHold { get; set; }
+
+    /// <summary>
+    /// The budget restored to full on every held tick, so releasing the ball leaves it alive
+    /// rather than expiring it on the next frame. Defaults to the normal split lifetime.
+    /// </summary>
+    public int SplitHoldMs { get; set; } = ClipboardHistory.MaxPillMs;
+
     // 1.13: media / timer / progress stopped taking the capsule over. They live here as
     // status-row data and as a progress-band arbitration input, both independent of _kind.
     // This is the whole point of the change: the capsule keeps the clock and only the band
@@ -460,13 +473,30 @@ public sealed class OverlayMachine
         // that counter is owned by the Notification/Battery/Clipboard kinds and is reset by
         // every Notify, so a notification arriving mid-split would either kill the half early
         // or be killed by it. Same 6000 ms budget (ClipboardHistory.MaxPillMs), separate counter.
+        // 1.13.1: the split's 6 s budget stops while the user is holding the ball.
+        //
+        // The countdown used to run unconditionally, so a ball picked up and held still fell off
+        // the capsule out from under the pointer — the drag itself was unaffected, but the thing
+        // being dragged vanished mid-gesture. A hold is the user saying "I am interacting with
+        // this", and the lifetime is an idle timeout, not a lease: an interaction should not
+        // consume it.
         if (_isSplitClipboard)
         {
-            _splitMs -= dt;
-            if (_splitMs <= 0)
+            if (SplitHold)
             {
-                _splitMs = 0;
-                ClearSplit();
+                // Held: keep the budget topped up rather than merely pausing, so releasing the
+                // ball does not immediately expire it either. Without this, pausing alone would
+                // make the ball disappear the instant the pointer came off.
+                _splitMs = Math.Max(_splitMs, SplitHoldMs);
+            }
+            else
+            {
+                _splitMs -= dt;
+                if (_splitMs <= 0)
+                {
+                    _splitMs = 0;
+                    ClearSplit();
+                }
             }
         }
         if (_timerActive && _timer.Playing)
@@ -623,6 +653,9 @@ public sealed class OverlayMachine
     {
         _isSplitClipboard = false;
         _splitMs = 0;
+        // Never leave the hold latched: a cleared split that still freezes its next lifetime
+        // would make the ball immortal on the following copy.
+        SplitHold = false;
         _splitClipboard.ClipboardItemKind = ClipboardItemKind.None;
         _splitClipboard.ClipboardPaths = null;
         _splitClipboard.ClipboardCapturedAt = DateTimeOffset.MinValue;

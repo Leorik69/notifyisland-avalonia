@@ -818,7 +818,7 @@ public partial class OverlayWindow : Window
         Blob.PointerPressed += OnBlobPointerPressed;
         Blob.PointerMoved += OnBlobPointerMoved;
         Blob.PointerReleased += OnBlobPointerReleased;
-        Blob.PointerCaptureLost += (_, _) => _blobDragging = false;
+        Blob.PointerCaptureLost += (_, _) => ReleaseBlobHold();
     }
 
     private void OnBlobPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -837,10 +837,22 @@ public partial class OverlayWindow : Window
         _blobDragStartAlong = _blobDragAlong;
         _blobDragStartCross = _blobDragCross;
         _blobDragging = true;
+        // 1.13.1: holding the ball freezes its 6 s idle lifetime. The countdown used to run
+        // regardless, so a ball picked up and held still fell off the capsule mid-gesture — the
+        // drag kept working but the thing being dragged disappeared under the pointer.
+        _machine.SplitHold = true;
         // Same capture as the capsule: the drag must survive the pointer leaving the ball,
         // which it always does as soon as it moves by more than the ball's own radius.
         e.Pointer.Capture(Blob);
         e.Handled = true;
+    }
+
+    private void ReleaseBlobHold()
+    {
+        _blobDragging = false;
+        // The machine tops the budget back up on every held tick, so by now the ball has a full
+        // lifetime again and releasing the pointer lets it settle away on its own time.
+        _machine.SplitHold = false;
     }
 
     private void OnBlobPointerMoved(object? sender, PointerEventArgs e)
@@ -861,7 +873,7 @@ public partial class OverlayWindow : Window
     private void OnBlobPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         if (!_blobDragging) return;
-        _blobDragging = false;
+        ReleaseBlobHold();
         e.Pointer.Capture(null);
 
         var pos = e.GetPosition(this);
