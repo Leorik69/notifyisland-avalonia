@@ -241,49 +241,63 @@
            Rows are built at runtime from the settings list (any subset, any order) —
            see StatsRowView and SyncStatsRows. Spacing/Margin are the numbers
            StatsLayout.StatsHeightFor was derived from; do not change them. -->
-      <StackPanel x:Name="SystemStatsPanel"
-                  Spacing="4"
-                  HorizontalAlignment="Center"
-                  VerticalAlignment="Center"
-                  IsVisible="False"
-                  Margin="12,6,12,6" />
+      <!-- 1.13.1: the stats block and the running caption now STACK instead of overlapping.
+           They used to be siblings anchored independently (panel = Center, caption = Bottom) in
+           the same CollapsedArea grid, so the panel centred itself without knowing a caption
+           existed and the caption drew straight through the last metric row. The screenshot
+           showed the result: «Ночью — Honey Trap» printed on top of «Память 21,8 / 34 ГБ».
 
-      <!-- 1.13 running caption: the name of whatever the capsule is currently talking about
-           (clipboard item, track, timer), in small type, scrolling only if it does not fit.
+           StatsHeightFor already budgets MarqueeTrack.LineH for the caption, so the height was
+           right and only the arrangement was wrong. One vertical stack, centred as a unit, makes
+           the budget and the layout agree. -->
+      <StackPanel x:Name="StatsStack"
+                  HorizontalAlignment="Stretch"
+                  VerticalAlignment="Center">
+        <StackPanel x:Name="SystemStatsPanel"
+                    Spacing="4"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    IsVisible="False"
+                    Margin="12,6,12,6" />
 
-           It replaces the clipboard preview that used to live in the clock row: that one was
-           drawn in the collapsed row and the stats panel then grew straight through it, which
-           is why it read as a clipped smear on the last line. Here it has its own slot with
-           its own budget (MarqueeTrack.LineH) and a ClipToBounds host, so overflow scrolls
-           instead of being cut.
+        <!-- 1.13 running caption: the name of whatever the capsule is currently talking about
+             (clipboard item, track, timer), in small type, scrolling only if it does not fit.
 
-           Anchored to Bottom, i.e. between the last metric row and the progress band, so it
-           reads as the label of the bar rather than as another metric. RenderTransformOrigin
-           is pinned to the LEFT edge: a marquee must move the text, not scale the box. -->
-      <Border x:Name="MarqueeHost"
-              Height="14"
-              IsVisible="False"
-              IsHitTestVisible="False"
-              ClipToBounds="True"
-              HorizontalAlignment="Stretch"
-              VerticalAlignment="Bottom"
-              Margin="12,0,12,10">
-        <TextBlock x:Name="MarqueeText"
-                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                   FontSize="10"
-                   FontWeight="Medium"
-                   Foreground="#8A8A92"
-                   VerticalAlignment="Center"
-                   RenderTransformOrigin="0%,50%"
-                   TextTrimming="None">
-          <TextBlock.RenderTransform>
-            <!-- No x:Name here: the shift transform is wired from code (see _marqueeShift field).
-                 The Avalonia 11.3 source generator does not register fields for x:Name on
-                 transform children of a RenderTransform property. -->
-            <TranslateTransform />
-          </TextBlock.RenderTransform>
-        </TextBlock>
-      </Border>
+             It replaces the clipboard preview that used to live in the clock row: that one was
+             drawn in the collapsed row and the stats panel then grew straight through it, which
+             is why it read as a clipped smear on the last line. Here it has its own slot with
+             its own budget (MarqueeTrack.LineH) and a ClipToBounds host, so overflow scrolls
+             instead of being cut.
+
+             Shown ONLY inside the monitor (see ApplyMarquee): a 30 DIP Idle capsule has no room
+             for a 14 DIP line, and letting it show there drew it across the clock.
+             RenderTransformOrigin is pinned to the LEFT edge: a marquee must move the text, not
+             scale the box. -->
+        <Border x:Name="MarqueeHost"
+                Height="14"
+                IsVisible="False"
+                IsHitTestVisible="False"
+                ClipToBounds="True"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Bottom"
+                Margin="12,0,12,10">
+          <TextBlock x:Name="MarqueeText"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="10"
+                     FontWeight="Medium"
+                     Foreground="#8A8A92"
+                     VerticalAlignment="Center"
+                     RenderTransformOrigin="0%,50%"
+                     TextTrimming="None">
+            <TextBlock.RenderTransform>
+              <!-- No x:Name here: the shift transform is wired from code (see _marqueeShift field).
+                   The Avalonia 11.3 source generator does not register fields for x:Name on
+                   transform children of a RenderTransform property. -->
+              <TranslateTransform />
+            </TextBlock.RenderTransform>
+          </TextBlock>
+        </Border>
+      </StackPanel>
 
       <!-- FontAudio digital-dot seconds strip (Idle/Collapsed); complementary to HH:mm[:ss].
 

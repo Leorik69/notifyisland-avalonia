@@ -2941,7 +2941,15 @@ public partial class OverlayWindow : Window
             // the screen is free, and it keeps the visible content (capsule, bridge, ball, panel)
             // on screen. Clamping the window to the working area outright would move the island
             // on every ball attach, which is the thing this code exists to prevent.
-            var slackPx = (int)Math.Round(OverlayTokens.BlobDragMaxPx * scale);
+            // 1.13.1 (second pass): the history panel is real, readable content — not invisible
+            // drag room — and with the panel open the user reported the text window still running
+            // off the edge. The 100 DIP slack was the reason: it was free for the ball, but the
+            // panel rides in the same oversized window. So when the panel is open the window is
+            // clamped flat to the working area with no allowance. Losing a little of the ball's
+            // off-screen drag range while the panel is up is the right trade.
+            var slackPx = _historyOpen
+                ? 0
+                : (int)Math.Round(OverlayTokens.BlobDragMaxPx * scale);
             x = Math.Clamp(x, wa.X - slackPx, Math.Max(wa.X - slackPx, wa.X + wa.Width + slackPx - winPw));
             y = Math.Clamp(y, wa.Y - slackPx, Math.Max(wa.Y - slackPx, wa.Y + wa.Height + slackPx - winPh));
         }
@@ -3022,6 +3030,9 @@ public partial class OverlayWindow : Window
         SystemStatsPanel.IsVisible = statsVisible;
         if (statsVisible && _lastStats is { } known)
             ApplyStatsValues(known);
+        // The running caption lives inside the monitor, so its visibility follows the panel's —
+        // decided here because this is the only place the panel's own visibility is set.
+        SyncMarqueeVisibility();
 
         var showMinimalWx = !overlayOn && snap.WeatherEnabled;
         MinimalWeather.IsVisible = showMinimalWx;
@@ -3793,17 +3804,40 @@ public partial class OverlayWindow : Window
     private void ApplyMarquee()
     {
         var text = ResolveMarqueeText();
-        var has = !string.IsNullOrWhiteSpace(text);
-        if (MarqueeHost.IsVisible != has)
-            MarqueeHost.IsVisible = has;
-        if (!has)
+        if (!string.IsNullOrWhiteSpace(text) && MarqueeText.Text != text)
+            MarqueeText.Text = text;
+        else if (string.IsNullOrWhiteSpace(text))
         {
             MarqueeText.Text = "";
             _marqueeShift.X = 0;
-            return;
         }
-        if (MarqueeText.Text != text)
-            MarqueeText.Text = text;
+        SyncMarqueeVisibility();
+    }
+
+    /// <summary>
+    /// Show the running caption only while the monitor is actually on screen (1.13.1).
+    /// <para>
+    /// It used to be gated on "there is text" alone. The Idle capsule is 30 DIP against a 14 DIP
+    /// line with a 10 DIP bottom margin, so the caption drew straight across the clock — and
+    /// inside the monitor it overlapped the last metric row. The panel height budget
+    /// (<c>StatsMarquee</c>) already assumes the caption is PART of the monitor, so showing it
+    /// outside contradicted the very budget that reserved room for it.
+    /// </para>
+    /// <para>
+    /// Split out of <see cref="ApplyMarquee"/> because the panel's visibility is owned by
+    /// <c>Paint</c>, which runs AFTER the media/timer row updates on the same tick. Deciding this
+    /// inside the row update alone would read a one-frame-stale value and show the caption for a
+    /// panel that just closed.
+    /// </para>
+    /// </summary>
+    private void SyncMarqueeVisibility()
+    {
+        var shouldShow = SystemStatsPanel.IsVisible && MarqueeHasText();
+        if (MarqueeHost.IsVisible != shouldShow)
+        {
+            MarqueeHost.IsVisible = shouldShow;
+            if (!shouldShow) _marqueeShift.X = 0;
+        }
     }
 
     /// <summary>Step the marquee by one frame; called from the shared 200 ms tick.</summary>
