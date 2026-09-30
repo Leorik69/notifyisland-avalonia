@@ -1964,8 +1964,11 @@ public partial class OverlayWindow : Window
         var digitalOk = false;
         if (digitalOn)
         {
-            // Subtle colon blink once per second (lit on even seconds).
-            var colonLit = (now.Second % 2) == 0;
+            // Subtle colon blink once per second (lit on even seconds). Reduced motion pins it
+            // lit — the blink is decoration, so removing it costs no information and takes a
+            // persistent 1 Hz flicker out of the middle of the field of view. See FlickerGate.
+            var colonLit = FlickerGate.ColonLit(
+                AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion), now);
             digitalOk = DigitalClockView.Apply(DigitalClockRow, formatted, _clockDigitSize, _clockBrush, colonLit);
         }
         ClockText.IsVisible = !digitalOn || !digitalOk;
