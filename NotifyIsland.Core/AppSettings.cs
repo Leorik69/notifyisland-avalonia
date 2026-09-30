@@ -412,7 +412,11 @@ public sealed class AppSettings
         target.ShowSecondsStrip = ShowSecondsStrip;
         target.HoverExpandEnabled = HoverExpandEnabled;
         target.HoverExpandDelayMs = Math.Clamp(HoverExpandDelayMs, 0, 2000);
-        target.HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 3000);
+        // 1.13.1: the ceiling was 3000 ms, which silently cut the 5000 ms default down to 3 s on
+        // every load. The token and the machine both allowed 10 s, so the layer between them was
+        // the only thing deciding the grace the user actually got — and it decided 3 s. The
+        // ceiling now matches HoverPinMachine.Configure.
+        target.HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 10000);
         target.ClickPinEnabled = ClickPinEnabled;
         target.HideOnFullscreen = HideOnFullscreen;
         target.ClickThroughOnFullscreen = ClickThroughOnFullscreen;
@@ -503,7 +507,9 @@ public sealed class AppSettings
             LowBatteryPercent <= 0 ? BatteryAlertLogic.DefaultLowPercent : LowBatteryPercent);
         TimerDefaultMinutes = IslandTimerLogic.ClampPresetMinutes(TimerDefaultMinutes);
         HoverExpandDelayMs = Math.Clamp(HoverExpandDelayMs, 0, 2000);
-        HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 3000);
+        // Same ceiling as CopyTo and HoverPinMachine.Configure — see the note there: a 3000 cap
+        // here is what actually truncated the 5 s default the user was promised.
+        HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 10000);
         SystemStatsRefreshMs = Math.Clamp(SystemStatsRefreshMs,
             OverlayTokens.StatsRefreshMinMs, OverlayTokens.StatsRefreshMaxMs);
 

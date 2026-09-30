@@ -112,7 +112,7 @@ public class AppSettingsTests
             ShowSecondsStrip = false,
             HoverExpandEnabled = false,
             HoverExpandDelayMs = 100,
-            HoverCollapseGraceMs = 300,
+            HoverCollapseGraceMs = 5000,
             ClickPinEnabled = false,
             HideOnFullscreen = false,
             ClickThroughOnFullscreen = true,
@@ -175,7 +175,10 @@ public class AppSettingsTests
         Assert.False(back.ShowSecondsStrip);
         Assert.False(back.HoverExpandEnabled);
         Assert.Equal(100, back.HoverExpandDelayMs);
-        Assert.Equal(300, back.HoverCollapseGraceMs);
+        // 1.13.1: this was 300 and the round-trip clamped 5000 down to it. The layer between
+        // the token (5000) and the machine (10000) was silently deciding the real value, and it
+        // decided 3 s — so the promised 5 s never reached the user.
+        Assert.Equal(5000, back.HoverCollapseGraceMs);
         Assert.False(back.ClickPinEnabled);
         Assert.False(back.HideOnFullscreen);
         Assert.True(back.ClickThroughOnFullscreen);
@@ -515,5 +518,66 @@ public class AppSettingsTests
         Assert.Equal(17, back.ClipboardBlobPinnedOffsetX);
         Assert.Equal(-8, back.ClipboardBlobPinnedOffsetY);
         Assert.True(back.IsBlobPinned);
+    }
+
+    // -- Hover grace must survive a settings round trip (1.13.1) -------------
+
+    /// <summary>
+    /// The 5 s hover grace was never actually reaching the user.
+    /// <para>
+    /// <c>OverlayTokens.HoverCollapseGraceMs</c> was raised to 5000 and <c>HoverPinMachine</c>
+    /// clamps to 10000, but <c>AppSettings</c> clamped the same value to <b>3000</b> in both
+    /// <c>Normalize</c> and <c>CopyTo</c>. The settings layer sat between the token and the machine
+    /// and silently truncated the default to 3 s on every single load — which is exactly the
+    /// "it still hides too early" symptom.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void HoverGrace_DefaultIsNotTruncatedByTheSettingsClamp()
+    {
+        var s = new AppSettings();
+        s.Normalize();
+
+        Assert.Equal(OverlayTokens.HoverCollapseGraceMs, s.HoverCollapseGraceMs);
+        Assert.Equal(5000, s.HoverCollapseGraceMs);
+    }
+
+    [Fact]
+    public void HoverGrace_SurvivesACopyToRoundTrip()
+    {
+        var src = new AppSettings { HoverCollapseGraceMs = 5000 };
+        var dst = new AppSettings();
+        src.CopyTo(dst);
+
+        Assert.Equal(5000, dst.HoverCollapseGraceMs);
+    }
+
+    [Fact]
+    public void HoverGrace_StillClampsAbsurdValues()
+    {
+        // Raising the ceiling must not remove the guard: a settings.json edited by hand could
+        // otherwise set a grace of an hour and the panel would never come back on its own.
+        var s = new AppSettings { HoverCollapseGraceMs = 999_999 };
+        s.Normalize();
+        Assert.Equal(10_000, s.HoverCollapseGraceMs);
+
+        var t = new AppSettings { HoverCollapseGraceMs = -50 };
+        t.Normalize();
+        Assert.Equal(0, t.HoverCollapseGraceMs);
+    }
+
+    [Fact]
+    public void HoverGrace_CeilingAgreesWithTheMachine()
+    {
+        // One number, two owners. If these drift apart again the settings layer wins silently,
+        // so the agreement is worth pinning.
+        var machineCeiling = 10_000;
+        var s = new AppSettings { HoverCollapseGraceMs = 60_000 };
+        s.Normalize();
+        Assert.Equal(machineCeiling, s.HoverCollapseGraceMs);
+
+        var m = new HoverPinMachine();
+        m.Configure(true, true, 250, 60_000);
+        Assert.Equal(s.HoverCollapseGraceMs, m.CollapseGraceMs);
     }
 }
