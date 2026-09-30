@@ -1971,8 +1971,16 @@ public partial class OverlayWindow : Window
         var cycleCount = snap.Payload.ClipboardCycleCount;
         if (cycleCount > 1)
         {
-            CyclePreviewText.Text = snap.Payload.ClipboardCyclePreview;
-            CyclePreviewText.IsVisible = true;
+            // 1.14: the clipboard preview is shown ONCE, in the section — that is the whole point
+            // of the section ("справа появляется секция с иконкой формата и превью содержимого",
+            // spec §Концепт). This row used to show the same text as well, and it cost the layout
+            // twice over: the duplicated preview did not fit the island's own box once the section
+            // had taken its 110 DIP, so it overflowed the centre-aligned row on BOTH sides and
+            // the section's own text was drawn underneath the island's date and weather. The spec
+            // also says the clock STAYS on the left, and this branch was hiding it to make room
+            // for the duplicate. So: the row keeps the navigation (chevrons + the 1/2 counter)
+            // and the clock, and the section keeps the text.
+            CyclePreviewText.IsVisible = false;
             CycleNavHint.Text = $"{snap.Payload.ClipboardCycleIndex + 1}/{cycleCount}";
             CycleNavHint.IsVisible = true;
             // Chevrons stay always visible — the dim feedback only matters in clipboard-cycle mode.
@@ -1984,9 +1992,6 @@ public partial class OverlayWindow : Window
             CyclePrevButton.Click += OnClipboardCyclePrevClick;
             CycleNextButton.Click -= OnCycleNextClick;
             CycleNextButton.Click += OnClipboardCycleNextClick;
-            // Replace the clock visual with the preview when cycle is active.
-            ClockText.IsVisible = false;
-            DigitalClockRow.IsVisible = false;
         }
         else
         {
@@ -2383,6 +2388,21 @@ public partial class OverlayWindow : Window
         var wh = Math.Max(8, _winFromH + (_winToH - _winFromH) * widthT);
         Width = ww;
         Height = wh;
+        // The interpolated cw/ch are the island's OWN length, exactly as ApplySize asked for it.
+        // A SETTLED clipboard section is a permanent 110 DIP addition to that length, and it is
+        // re-written by the section only while _sectionDir != 0 — which is precisely the case
+        // this is not. So an unrelated morph (a hover expand, a longer weather string, a kind
+        // change) animated a capsule from base+110 down to base and snapped it back at t >= 1:
+        // the section's own compartment visibly vanished for the length of the animation and
+        // then reappeared. Adding the settled length here keeps the section a compartment of
+        // the capsule at every frame, not just at rest.
+        // During a section transition this is deliberately not applied — ApplyClipboardSection
+        // is already writing _sectionBase + peek per frame, and the two would double-count.
+        if (_sectionDir == 0 && _splitApplied)
+        {
+            if (SplitIsVertical) ch += ClipboardSectionTrack.Width;
+            else cw += ClipboardSectionTrack.Width;
+        }
         Pill.Width = cw;
         Pill.Height = ch;
         Pill.CornerRadius = new CornerRadius(Math.Min(cw, ch) / 2);
@@ -2522,11 +2542,22 @@ public partial class OverlayWindow : Window
         // out from under it, which is exactly the "the island moves" the spec rules out. A
         // trailing margin of the section length takes that room back on the growing side, so the
         // content keeps centring in the ORIGINAL 170 DIP box.
-        var hold = new Thickness(vertical ? 0 : 0, 0, vertical ? 0 : peek, vertical ? peek : 0);
+        //
+        // FIX: the hold has to cover the section's own trailing inset, not just its length. The
+        // section is right-aligned with a CapInsetFor(CollapsedH) margin on the trailing end, so
+        // it actually begins at pill - inset - peek. A hold of plain peek therefore let the
+        // island's date and weather run the last `inset` DIP under the section's leading edge —
+        // the seam hairline and the section's text were drawn straight over them. The row's
+        // right edge now stops where the section's left edge actually is.
+        var inset = vertical
+            ? 0
+            : ClipboardSectionTrack.CapInsetFor(OverlayTokens.CollapsedH);
+        var holdLength = peek + inset;
+        var hold = new Thickness(0, 0, vertical ? 0 : holdLength, vertical ? holdLength : 0);
         CollapsedRow.Margin = hold;
         SecondsStrip.Margin = vertical
-            ? new Thickness(10, 0, 10, peek + 2)
-            : new Thickness(10, 0, 10 + peek, 2);
+            ? new Thickness(10, 0, 10, holdLength + 2)
+            : new Thickness(10, 0, 10 + holdLength, 2);
         // Grow the capsule on its long axis FROM the morph's own base, not from the previous
         // frame: OnMorphTick has already written this frame's interpolated capsule length, and
         // for an attach that base is the settled 170. Accumulating onto the live value would
@@ -2595,6 +2626,19 @@ public partial class OverlayWindow : Window
         _sectionBase = SplitIsVertical ? ownH : ownW;
         ApplySectionRest(_splitApplied);
         _sectionDir = 0;
+        // The window is sized from the same pair, and WindowFor reads _sectionPeek — which the
+        // frame above has just changed. Re-deriving it here means a retract does not leave the
+        // window 110 DIP wider than its contents until the next tick corrects it. The window
+        // goes FIRST because PlaceIsland positions the window itself.
+        var (ww, wh) = WindowFor(_splitApplied, ownW, ownH);
+        Width = ww;
+        Height = wh;
+        // Both callers have just resized the pill through SetSizeImmediate, which placed the
+        // island from a capsule that did not yet carry the section. The placement is derived
+        // from pill - _sectionPeek (see IslandCapsuleSizeFor), so re-seat it against the settled
+        // capsule — otherwise the island sits up to 110 DIP off until some later tick happens to
+        // call PlaceIsland, which is what makes a settled section look like it nudged the island.
+        PlaceIsland();
     }
 
     /// <summary>Write one well-defined resting frame of the clipboard section.</summary>
