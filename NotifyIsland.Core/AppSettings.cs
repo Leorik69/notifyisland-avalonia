@@ -115,8 +115,20 @@ public sealed class AppSettings
     /// <summary>Hover delay before peek (ms). Default 250.</summary>
     public int HoverExpandDelayMs { get; set; } = OverlayTokens.HoverExpandDelayMs;
 
-    /// <summary>Pointer-leave grace before collapsing peek (ms). Default 500.</summary>
+    /// <summary>
+    /// Pointer-leave grace before collapsing the hover peek (ms). Default
+    /// <see cref="OverlayTokens.HoverCollapseGraceMs"/> (5000 as of 1.13.0; it was 500 before).
+    /// </summary>
     public int HoverCollapseGraceMs { get; set; } = OverlayTokens.HoverCollapseGraceMs;
+
+    /// <summary>
+    /// The grace the product shipped with before 1.13.0. A settings.json written by an older
+    /// install carries this value, and it is indistinguishable from one the user typed: the
+    /// property has always been persisted. So the stored 500 is almost certainly nobody's
+    /// choice — it is just the old default that survived every save. It is therefore migrated up
+    /// to the new default instead of stranding the user on a 0.5 s panel.
+    /// </summary>
+    public const int LegacyHoverCollapseGraceMs = 500;
 
     /// <summary>Single click toggles pinned expanded Idle. Default ON.</summary>
     public bool ClickPinEnabled { get; set; } = true;
@@ -510,6 +522,12 @@ public sealed class AppSettings
         // Same ceiling as CopyTo and HoverPinMachine.Configure — see the note there: a 3000 cap
         // here is what actually truncated the 5 s default the user was promised.
         HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 10000);
+        // 1.13.1: migrate the old shipped default. Without this, a settings.json from an earlier
+        // install keeps a literal 500 forever and the new 5 s default is dead on arrival — the
+        // clamp change alone could never help, because 500 was already inside the range.
+        if (HoverCollapseGraceMs == LegacyHoverCollapseGraceMs
+            && OverlayTokens.HoverCollapseGraceMs != LegacyHoverCollapseGraceMs)
+            HoverCollapseGraceMs = OverlayTokens.HoverCollapseGraceMs;
         SystemStatsRefreshMs = Math.Clamp(SystemStatsRefreshMs,
             OverlayTokens.StatsRefreshMinMs, OverlayTokens.StatsRefreshMaxMs);
 

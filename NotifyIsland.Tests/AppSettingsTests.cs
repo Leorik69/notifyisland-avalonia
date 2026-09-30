@@ -580,4 +580,51 @@ public class AppSettingsTests
         m.Configure(true, true, 250, 60_000);
         Assert.Equal(s.HoverCollapseGraceMs, m.CollapseGraceMs);
     }
+
+    /// <summary>
+    /// The 500 in a real settings.json was the OLD SHIPPED DEFAULT, persisted by every save.
+    /// Fixing the clamp could never help: 500 was already inside the new range, so it sat there
+    /// and the 5 s default was dead on arrival for every existing install. Only a migration can
+    /// move it.
+    /// </summary>
+    [Fact]
+    public void HoverGrace_LegacyStoredDefault_MigratesUp()
+    {
+        var s = new AppSettings { HoverCollapseGraceMs = AppSettings.LegacyHoverCollapseGraceMs };
+        s.Normalize();
+        Assert.Equal(OverlayTokens.HoverCollapseGraceMs, s.HoverCollapseGraceMs);
+        Assert.Equal(5000, s.HoverCollapseGraceMs);
+    }
+
+    [Theory]
+    [InlineData(300)]
+    [InlineData(1000)]
+    [InlineData(2500)]
+    [InlineData(7500)]
+    [InlineData(10000)]
+    public void HoverGrace_AnyOtherValueIsLeftAlone(int stored)
+    {
+        // The migration must not stomp on a value the user did choose. Only the old shipped
+        // default is special-cased.
+        var s = new AppSettings { HoverCollapseGraceMs = stored };
+        s.Normalize();
+        Assert.Equal(stored, s.HoverCollapseGraceMs);
+    }
+
+    [Fact]
+    public void HoverGrace_ZeroStaysZero()
+    {
+        // Zero is a legitimate deliberate choice — "hide the instant I leave" — and must survive.
+        var s = new AppSettings { HoverCollapseGraceMs = 0 };
+        s.Normalize();
+        Assert.Equal(0, s.HoverCollapseGraceMs);
+    }
+
+    [Fact]
+    public void HoverGrace_AFreshInstallAlreadyGetsTheNewDefault()
+    {
+        var s = new AppSettings();
+        s.Normalize();
+        Assert.Equal(5000, s.HoverCollapseGraceMs);
+    }
 }
