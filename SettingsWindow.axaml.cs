@@ -42,6 +42,8 @@ public partial class SettingsWindow : Window
         _onStartTimer = onStartTimer;
         _onStartStopwatch = onStartStopwatch;
         InitializeComponent();
+        _animPreviewTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
+        _animPreviewTimer.Tick += OnAnimPreviewTick;
         _initialSection = initialSection;
         WireNav();
         SettingsSearchBox.TextChanged += OnSettingsSearchChanged;
@@ -113,6 +115,128 @@ public partial class SettingsWindow : Window
     {
         if (e.Property.Name is "Color" or "HsvColor")
             UpdatePreview();
+    }
+
+    private void OnIconPackChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        RefreshIconsPreview();
+    }
+
+    /// <summary>
+    /// Превью выбранного пакета иконок: два смысловых блока (интерфейсные глифы и погодные)
+    /// в адаптивной сетке WrapPanel.
+    /// <para>
+    /// Раньше панель была пустым <c>Panel</c>, а позиция каждой иконки считалась вручную:
+    /// <c>startX += size + gap + estimatedLabelWidth</c>. Это неверно по трём причинам сразу —
+    /// ширина подписи оценивалась на глаз (длинное «Уведомление» наезжало на соседнюю
+    /// иконку), ряд не переносился и на узком окне уезжал за границу карточки, а
+    /// «прозрачный» Panel вообще ничего не ограничивал. WrapPanel переносит сам, метки
+    /// получают свою естественную ширину, и всё остаётся внутри карточки при любой ширине.
+    /// </para>
+    /// <para>
+    /// Fallback не дублируется здесь: <see cref="IconPackService.Create"/> сам отдаёт
+    /// IslandIcons для ключа, которого в пакете нет (в том числе для Meteocons и
+    /// не-погодных ключей), поэтому список всегда полный и честный.
+    /// </para>
+    /// </summary>
+    private void RefreshIconsPreview()
+    {
+        try
+        {
+            var panel = IconsPreviewPanel;
+            if (panel is null) return;
+            panel.Children.Clear();
+
+            var pack = IconPackService.NormalizePack(SelectedTag(IconPackBox));
+            var stroke = new SolidColorBrush(ColorTextSecondaryPicker.Color);
+            var muted = new SolidColorBrush(Color.Parse("#8A8A92"));
+
+            var groups = new (string Title, string Hint, (string Key, string Label)[] Keys)[]
+            {
+                ("Интерфейс", "часы, питание, уведомления, медиа, таймер, ошибка", new[]
+                {
+                    ("clock", "Часы"),
+                    ("battery", "Батарея"),
+                    ("notify", "Уведомление"),
+                    ("media", "Медиа"),
+                    ("timer", "Таймер"),
+                    ("error", "Ошибка"),
+                }),
+                ("Погода", "у Meteocons — свои глифы, у остальных пакетов — fallback", new[]
+                {
+                    ("weather-clear", "Ясно"),
+                    ("weather-rain", "Дождь"),
+                }),
+            };
+
+            var missing = 0;
+            foreach (var (title, hint, keys) in groups)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = title,
+                    FontSize = 10.5,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = new SolidColorBrush(Color.Parse("#C8C8CC")),
+                    Margin = new Thickness(0, panel.Children.Count > 0 ? 12 : 0, 0, 0),
+                });
+                panel.Children.Add(new TextBlock
+                {
+                    Text = hint,
+                    FontSize = 10,
+                    Foreground = muted,
+                    Margin = new Thickness(0, 2, 0, 8),
+                });
+
+                var row = new WrapPanel();
+                foreach (var (key, label) in keys)
+                {
+                    var icon = IconPackService.Create(pack, key, 22, stroke);
+                    if (icon is null) { missing++; continue; }
+                    icon.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
+                    row.Children.Add(IconCell(icon, label, muted));
+                }
+                panel.Children.Add(row);
+            }
+
+            if (missing > 0)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = $"{missing} глиф(ов) не удалось загрузить — показан встроенный IslandIcons.",
+                    FontSize = 10,
+                    Foreground = muted,
+                    Margin = new Thickness(0, 8, 0, 0),
+                });
+            }
+        }
+        catch
+        {
+            // design-time / partial init
+        }
+    }
+
+    /// <summary>One preview cell: the glyph on top, its own name under it, both at natural width.</summary>
+    private static Border IconCell(Avalonia.Controls.Control icon, string label, IBrush muted)
+    {
+        var cell = new StackPanel
+        {
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            MinWidth = 76,
+        };
+        cell.Children.Add(icon);
+        cell.Children.Add(new TextBlock
+        {
+            Text = label,
+            Classes = { "iconCellLabel" },
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        var host = new Border { Classes = { "iconCell" } };
+        host.Child = cell;
+        return host;
     }
 
     /// <summary>Wires every user-control change to live-apply without requiring the Apply/OK buttons.
@@ -211,26 +335,170 @@ public partial class SettingsWindow : Window
 
         // Theme
         WireSel(ThemePresetBox);
+
+        // Мастер-переключатели: от них зависит читаемость зависимых полей, поэтому они
+        // обновляют приглушение, а не только применяют значение.
+        void WireDeps(AvaloniaObject ctrl, AvaloniaProperty prop) =>
+            ctrl.PropertyChanged += (_, e) => { if (e.Property == prop) UpdateDependencyStates(); };
+        WireDeps(WeatherEnabledBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        WireDeps(TimerEnabledBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        WireDeps(SoundEnabledBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        WireDeps(ReducedMotionBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        AnimSpeedBox.SelectionChanged += (_, _) => { UpdateDependencyStates(); RefreshAnimPreviewHint(); };
+        AppearStyleBox.SelectionChanged += (_, _) => RefreshAnimPreviewHint();
+        DismissStyleBox.SelectionChanged += (_, _) => RefreshAnimPreviewHint();
     }
 
+    /// <summary>
+    /// Перерисовывает превью капсулы и всё, что в окне зависит от палитры.
+    /// <para>
+    /// Превью — это уменьшенная копия настоящей свёрнутой капсулы, а не абстрактный образец
+    /// цвета: та же высота 30 DIP, тот же радиус (полкруга), тот же хайрлайн #16FFFFFF, тот
+    /// же шрифт, та же цифра часов, та же вторичная дата и та же точка непрочитанного. Если
+    /// превью расходится с островком, пользователь правит настройку вслепую.
+    /// </para>
+    /// <para>
+    /// Порядок элементов повторяет ApplyWeatherSide: WeatherSide=Left ставит погоду перед
+    /// часами, Right — после. Цифровые часы переиспользуют тот же DigitalClockView, что и
+    /// островок, поэтому глифы в превью настоящие, а не имитация.
+    /// </para>
+    /// </summary>
     private void UpdatePreview()
     {
         try
         {
-            PreviewPill.Background = new SolidColorBrush(ColorFillPicker.Color);
-            PreviewDot.Fill = new SolidColorBrush(ColorAccentPicker.Color);
-            PreviewPrimary.Foreground = new SolidColorBrush(ColorTextPrimaryPicker.Color);
-            PreviewSecondary.Foreground = new SolidColorBrush(ColorTextSecondaryPicker.Color);
-            var fs = FontSizeSlider.Value;
-            PreviewPrimary.FontSize = fs;
-            PreviewSecondary.FontSize = fs;
-            PreviewPrimary.FontFamily = IslandFonts.Resolve(SelectedTag(FontFamilyBox));
-            PreviewSecondary.FontFamily = PreviewPrimary.FontFamily;
+            var fill = ColorFillPicker.Color;
+            var accent = ColorAccentPicker.Color;
+            var primary = ColorTextPrimaryPicker.Color;
+            var secondary = ColorTextSecondaryPicker.Color;
+            var alpha = Math.Clamp(OpacitySlider.Value / 100.0, 0.35, 1.0);
+
+            PreviewPill.Background = new SolidColorBrush(WithAlpha(fill, alpha));
+            PreviewDot.Background = new SolidColorBrush(accent);
+            PreviewPrimary.Foreground = new SolidColorBrush(primary);
+            PreviewSecondary.Foreground = new SolidColorBrush(secondary);
+            PreviewWeather.Foreground = new SolidColorBrush(secondary);
+
+            var font = IslandFonts.Resolve(SelectedTag(FontFamilyBox));
+            var fs = Math.Clamp(FontSizeSlider.Value, 10, 18);
+            PreviewPrimary.FontFamily = font;
+            PreviewPrimary.FontSize = fs + 1;                 // часы на капсуле крупнее базового
+            PreviewSecondary.FontFamily = font;
+            PreviewSecondary.FontSize = Math.Max(10, fs - 2);
+            PreviewWeather.FontFamily = font;
+            PreviewWeather.FontSize = Math.Max(10, fs - 2);
+
+            // Дата — по выбранному формату, ровно как её рисует DateFormatHelper.
+            var dateTag = SelectedTag(DateFormatBox);
+            PreviewSecondary.Text = DatePreviewFor(dateTag);
+            PreviewSecondary.IsVisible = !string.IsNullOrEmpty(PreviewSecondary.Text);
+
+            // Погода слева или справа от часов.
+            var weatherOn = WeatherEnabledBox.IsChecked == true;
+            PreviewWeather.IsVisible = weatherOn;
+            var weatherLeft = string.Equals(SelectedTag(WeatherSideBox), "Left", StringComparison.OrdinalIgnoreCase);
+            LayoutPreviewRow(weatherOn, weatherLeft);
+
+            // Цифровые часы: тот же построитель глифов, что и на островке.
+            var digitalOn = DigitalClockBox.IsChecked == true;
+            var digitalOk = digitalOn && DigitalClockView.Apply(
+                PreviewDigitalRow, "14:32", Math.Clamp(fs + 3, 12, 22), new SolidColorBrush(primary), true);
+            PreviewDigitalRow.IsVisible = digitalOk;
+            PreviewPrimary.IsVisible = !digitalOk;
+
+            // Ширина — та же формула, что у островка, поэтому ползунок длины виден здесь.
+            var weatherForWidth = weatherOn;
+            PreviewPill.Width = Math.Max(
+                120,
+                Math.Round(IslandWidth.CollapsedLongAxis(IslandWidthSlider.Value, weatherForWidth)));
+
+            ApplyThemeToChrome(accent);
+            UpdateSwatchSelection();
+            BuildStatsPreview();
         }
         catch
         {
             // design-time / partial init
         }
+    }
+
+    /// <summary>
+    /// Переносит акцент палитры на элементы окна, у которых нет прямого доступа к настройке:
+    /// заливку бегунков, подложку активного раздела и главную кнопку.
+    /// <para>
+    /// Раньше всё это было зашито константами (#243447, синий Fluent-бегунок), поэтому
+    /// Settings выдавали себя за чужое приложение: островок менял акцент на зелёный, а
+    /// боковая навигация и ползунки оставались синими.
+    /// </para>
+    /// </summary>
+    private void ApplyThemeToChrome(Color accent)
+    {
+        // Активный раздел — мягкая заливка акцентом, а не рамка: рамка сделала бы весь
+        // список «подсвеченным» и съела бы разницу с hover. Кисть живёт в ресурсах окна,
+        // поэтому её цвет — это ровно ColorAccent, и навигация едет вместе с палитрой.
+        if (Resources["NavActiveBrush"] is SolidColorBrush navBrush)
+            navBrush.Color = WithAlpha(accent, 0.20);
+
+        // Кнопка «Закрыть» — единственная с заливкой во всём окне, поэтому её акцент
+        // обязан совпадать с акцентом островка.
+        CloseBtn.Background = new SolidColorBrush(accent);
+        CloseBtn.Foreground = new SolidColorBrush(ReadabilityOn(accent));
+    }
+
+    /// <summary>
+    /// Контрастный цвет текста для заливки: тёмный на светлом акценте, светлый на тёмном.
+    /// Без этого светло-голубой акцент давал бы на кнопке белый текст — читаемый, но бледный.
+    /// </summary>
+    private static Color ReadabilityOn(Color c) =>
+        (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) > 150 ? Color.Parse("#0A0A0C") : Colors.White;
+
+    private static Color WithAlpha(Color c, double a) =>
+        Color.FromArgb((byte)Math.Clamp(a * 255, 0, 255), c.R, c.G, c.B);
+
+    /// <summary>Помечает тот свотч, который соответствует текущему цвету — выбор виден без подписи.</summary>
+    private void UpdateSwatchSelection()
+    {
+        MarkActive(SwatchFillRow, ColorToHex(ColorFillPicker.Color));
+        MarkActive(SwatchAccentRow, ColorToHex(ColorAccentPicker.Color));
+        MarkActive(SwatchPrimaryRow, ColorToHex(ColorTextPrimaryPicker.Color));
+        MarkActive(SwatchSecondaryRow, ColorToHex(ColorTextSecondaryPicker.Color));
+    }
+
+    private static void MarkActive(Avalonia.Controls.Panel row, string hex)
+    {
+        foreach (var border in row.Children.OfType<Border>())
+        {
+            var on = border.Tag?.ToString()?.EndsWith("|" + hex, StringComparison.OrdinalIgnoreCase) == true;
+            border.Classes.Set("on", on);
+        }
+    }
+
+    /// <summary>Демонстрационная дата для превью: формат берётся из настройки, значение — фиксированное.</summary>
+    private static string DatePreviewFor(string? tag) => tag switch
+    {
+        null or "Off" => "",
+        "DayMonth" => "24 сен",
+        "WeekdayShort" => "ср",
+        "WeekdayDay" => "ср 24",
+        "Numeric" => "24.09",
+        "FullShort" => "ср, 24 сен",
+        _ => "24 сен",
+    };
+
+    /// <summary>
+    /// Пересобирает порядок элементов строки превью. Погода едет в сторону, выбранную в
+    /// настройках; точка непрочитанного всегда последняя, как на островке.
+    /// </summary>
+    private void LayoutPreviewRow(bool weatherOn, bool weatherLeft)
+    {
+        var row = PreviewRow;
+        row.Children.Clear();
+        if (weatherOn && weatherLeft) row.Children.Add(PreviewWeather);
+        row.Children.Add(PreviewDigitalRow);
+        row.Children.Add(PreviewPrimary);
+        row.Children.Add(PreviewSecondary);
+        if (weatherOn && !weatherLeft) row.Children.Add(PreviewWeather);
+        row.Children.Add(PreviewDot);
     }
 
     private void OnSwatchPressed(object? sender, PointerPressedEventArgs e)
@@ -284,6 +552,7 @@ public partial class SettingsWindow : Window
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
+        _animPreviewTimer.Stop();
         PersistGeometry();
         _live.Save();
     }
@@ -366,6 +635,7 @@ public partial class SettingsWindow : Window
         AnimPulseEnabledBox.IsChecked = _draft.AnimPulseEnabled;
         ReducedMotionBox.IsChecked = _draft.ReducedMotion;
         SelectByTag(IconPackBox, _draft.IconPack);
+        RefreshIconsPreview();
         SelectByTag(FontFamilyBox, _draft.FontFamily);
         SelectByTag(DateFormatBox, _draft.DateFormat.ToString());
         DigitalClockBox.IsChecked = _draft.DigitalClockEnabled;
@@ -390,6 +660,9 @@ public partial class SettingsWindow : Window
         SetPicker(ColorTextSecondaryPicker, _draft.ColorTextSecondary, "#C8C8CC");
         FontFamilyBox.SelectionChanged += (_, _) => UpdatePreview();
         UpdatePreview();
+        UpdateDependencyStates();
+        RefreshAnimPreviewHint();
+        ResetAnimPreview();
         }
         finally { _loadingUi = false; }
     }
@@ -528,6 +801,17 @@ public partial class SettingsWindow : Window
             (delta < 0 ? pair.Up : pair.Down).Focus();
     }
 
+    /// <summary>
+    /// Превью панели монитора: те же <see cref="StatsRowView"/>, что рисует островок, в том
+    /// же порядке и с теми же демо-значениями.
+    /// <para>
+    /// Раньше все строки показывали «—». Это отвечало на вопрос «какие строки включены», но
+    /// не отвечало на вопрос «как это будет выглядеть»: без значения не видно ни ширины
+    /// панели, ни того, вписывается ли длинный заголовок трека в строку, ни где встанет
+    /// разделитель перед датой. Значения демонстрационные и НЕ подключены к SystemMonitor —
+    /// превью остаётся статичным представлением, как и просит спецификация.
+    /// </para>
+    /// </summary>
     private void BuildStatsPreview()
     {
         StatsPreviewPanel.Children.Clear();
@@ -545,6 +829,8 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        var value = new SolidColorBrush(ColorTextPrimaryPicker.Color);
+        var font = IslandFonts.Resolve(SelectedTag(FontFamilyBox));
         foreach (var row in rows)
         {
             var view = new StatsRowView
@@ -553,13 +839,65 @@ public partial class SettingsWindow : Window
                 Label = StatsLayout.LabelFor(row),
                 Value = "—",
                 Caption = "—",
+                // FontFamily наследуется вниз по дереву, поэтому строка целиком берёт шрифт
+                // островка одной строкой — размеры оставлены те же, что у настоящей панели.
+                FontFamily = font,
             };
+            if (StatsLayout.IsCaptionRow(row))
+            {
+                view.Caption = DatePreviewCaption();
+            }
+            else if (StatsLayout.HasActions(row))
+            {
+                view.SetStatus(DemoStatusRow(row));
+            }
+            else
+            {
+                view.Value = DemoMetricFor(row);
+                view.ValueBrush = value;
+            }
             StatsPreviewPanel.Children.Add(view);
         }
-        // Show the pill getting taller/shorter with the row count. The 12 DIP subtracted is the
-        // real panel's Margin; the mock has none, so it uses the full inner content box instead.
+        // Показываем капсулу растущей и уменьшающейся вместе с числом строк. 12 DIP — реальный
+        // Margin панели; у макета его нет, поэтому он использует весь внутренний бокс.
         StatsPreviewPanel.Height = Math.Max(0, StatsLayout.StatsHeightFor(rows.Count) - 12);
     }
+
+    private static string DatePreviewCaption() => "среда, 30 сентября";
+
+    private static string DemoMetricFor(StatsRow row) => row switch
+    {
+        StatsRow.Cpu => "13 %",
+        StatsRow.Memory => "26,3 / 34 ГБ",
+        StatsRow.Battery => "100 %",
+        StatsRow.Network => "↓ 0,0  ↑ 0,1",
+        _ => "—",
+    };
+
+    private static StatusRowModel DemoStatusRow(StatsRow row) => row switch
+    {
+        StatsRow.Media => new StatusRowModel
+        {
+            Kind = StatusRowKind.Media,
+            Label = "Плеер",
+            Value = "Гипербола",
+            Detail = "Монстрumente",
+            Progress = 0.42,
+            Playing = true,
+            Active = true,
+        },
+        StatsRow.Timer => new StatusRowModel
+        {
+            Kind = StatusRowKind.Timer,
+            Label = "Таймер",
+            Value = "04:32",
+            Detail = "Осталось",
+            Progress = 0.91,
+            Playing = true,
+            Active = true,
+        },
+        _ => new StatusRowModel(),
+    };
 
     private void SelectCityPreset(string? name)
     {
@@ -632,6 +970,7 @@ public partial class SettingsWindow : Window
         FontSizeSlider.Value = Math.Clamp(s.FontSize, 10, 18);
         FontSizeLabel.Text = $"{(int)FontSizeSlider.Value}";
         SelectByTag(IconPackBox, s.IconPack);
+        RefreshIconsPreview();
         SelectByTag(AnimSpeedBox, s.AnimationSpeed.ToString());
         SelectByTag(AnimMorphInflateBox, s.AnimMorphInflate.ToString());
         SelectByTag(AnimMorphCollapseBox, s.AnimMorphCollapse.ToString());
@@ -818,11 +1157,220 @@ public partial class SettingsWindow : Window
             _onStartTimer?.Invoke(IslandTimerLogic.ClampPresetMinutes((int)TimerDefaultSlider.Value));
     }
 
+    // -- Зависимые поля (спека Этап 6, §10) -------------------------------------------
+    // Правила зависимости НЕ меняются и не добавляются: здесь только то, что уже следует
+    // из настроек, но раньше было видно только по факту — выключенная погода оставляла
+    // «Слева/Справа» и локацию живыми, выключенный таймер — пресеты, выключенный звук —
+    // все ползунки. Пользователь кликал по тому, что заведомо ничего не меняет.
+
+    private void UpdateDependencyStates()
+    {
+        var weather = WeatherEnabledBox.IsChecked == true;
+        WeatherSideBox.IsEnabled = weather;
+        WeatherLocationModeBox.IsEnabled = weather;
+        ManualLocationPanel.IsEnabled = weather;
+
+        var timer = TimerEnabledBox.IsChecked == true;
+        TimerStopwatchBox.IsEnabled = timer;
+        TimerDefaultSlider.IsEnabled = timer;
+        TimerDefaultLabel.IsEnabled = timer;
+        TimerPresetRow.IsEnabled = timer;
+
+        var sound = SoundEnabledBox.IsChecked == true;
+        SoundPackBox.IsEnabled = sound;
+        VolumeSlider.IsEnabled = sound;
+        VolumeLabel.IsEnabled = sound;
+        VolumeEventsGrid.IsEnabled = sound;
+
+        // Декоративные скорости по действиям не имеют смысла, когда всё движение уже
+        // выключено мастером или сниженной анимацией. Значения сохраняются — галочка
+        // только приглушает, чтобы было видно, что настройка не потеряна.
+        var masterOff = SelectedTag(AnimSpeedBox) == nameof(AnimationSpeed.Off)
+            || ReducedMotionBox.IsChecked == true;
+        foreach (var box in PerActionSpeedBoxes())
+        {
+            box.IsEnabled = !masterOff;
+            box.Opacity = masterOff ? 0.45 : 1.0;
+        }
+        AnimPulseEnabledBox.IsEnabled = !masterOff;
+        AnimPulseEnabledBox.Opacity = masterOff ? 0.45 : 1.0;
+    }
+
+    private IEnumerable<ComboBox> PerActionSpeedBoxes() => new[]
+    {
+        AnimMorphInflateBox, AnimMorphCollapseBox, AnimUnreadPulseBox,
+        AnimHoverBox, AnimClickPopBox, AnimFirstAppearWobbleBox,
+    };
+
+    // -- Превью анимаций (спека Этап 6, §9) ------------------------------------------
+    // Один прогон по кнопке: выбранное появление, пауза, выбранный уход. Никакого
+    // бесконечного цикла и никакой второй анимационной системы — только уже существующие
+    // длительности (AnimationTiming/OverlayTokens) и кривые AnimEase, те самые, что крутят
+    // островок. Сниженная анимация не «ускоряет» прогон, а убирает движение: элемент
+    // появляется и исчезает на месте.
+
+    private readonly DispatcherTimer _animPreviewTimer;
+    private long _animPreviewStartMs;
+    private int _animPreviewPhase;   // 0 — нет, 1 — появление, 2 — пауза, 3 — уход
+    private ScaleTransform? _animPreviewScale;
+    private TranslateTransform? _animPreviewMove;
+
+    private void OnAnimPreviewClick(object? sender, RoutedEventArgs e)
+    {
+        _animPreviewTimer.Stop();
+        _animPreviewStartMs = Environment.TickCount64;
+        _animPreviewPhase = 1;
+        _animPreviewTimer.Start();
+    }
+
+    private void OnAnimPreviewTick(object? sender, EventArgs e)
+    {
+        var speed = AnimationSpeedSelection();
+        var reduced = ReducedMotionBox.IsChecked == true || !AnimationTiming.IsEnabled(speed);
+        var appear = reduced ? 0 : OverlayTokens.MorphMs / 2;
+        var dismiss = reduced ? 0 : OverlayTokens.MorphMs / 2;
+        var hold = 320;
+        var elapsed = Environment.TickCount64 - _animPreviewStartMs;
+
+        if (elapsed <= appear)
+        {
+            var p = appear <= 0 ? 1.0 : elapsed / (double)appear;
+            ApplyAnimPreviewFrame(SelectedTag(AppearStyleBox), p, leaving: false);
+            return;
+        }
+        if (_animPreviewPhase == 1)
+        {
+            _animPreviewPhase = 2;
+            _animPreviewStartMs = Environment.TickCount64;
+            ApplyAnimPreviewFrame(SelectedTag(AppearStyleBox), 1.0, leaving: false);
+            return;
+        }
+        var sinceHold = Environment.TickCount64 - _animPreviewStartMs;
+        if (sinceHold <= hold)
+        {
+            ApplyAnimPreviewFrame(SelectedTag(DismissStyleBox), 0.0, leaving: true);
+            return;
+        }
+        if (_animPreviewPhase == 2)
+        {
+            _animPreviewPhase = 3;
+            _animPreviewStartMs = Environment.TickCount64;
+            return;
+        }
+        var pd = dismiss <= 0 ? 1.0 : (sinceHold - hold) / (double)dismiss;
+        if (pd >= 1.0)
+        {
+            _animPreviewTimer.Stop();
+            _animPreviewPhase = 0;
+            ResetAnimPreview();
+            return;
+        }
+        ApplyAnimPreviewFrame(SelectedTag(DismissStyleBox), pd, leaving: true);
+    }
+
+    /// <summary>Кадр превью: тот же смысл, что у стилей островка, но на маленькой капсуле.</summary>
+    private void ApplyAnimPreviewFrame(string? style, double p, bool leaving)
+    {
+        var eased = AnimEase.Ease("power2.out", p);
+        var width = 150 + 90 * eased;
+
+        var opacity = leaving ? 1.0 - p : eased;
+        var scale = 1.0;
+        var dy = 0.0;
+        var dx = 0.0;
+
+        switch (style)
+        {
+            case "Inflate":
+                opacity = 1.0;
+                break;
+            case "SlideDown":
+                dy = (leaving ? -1 : 1) * (1.0 - eased) * 14.0;
+                break;
+            case "FadeScale":
+                scale = 0.94 + 0.06 * eased;
+                break;
+            case "Bounce":
+                scale = AnimEase.Ease("spring.out", p);
+                opacity = Math.Min(1.0, p * 2.0);
+                break;
+            case "Pop":
+                scale = AnimEase.Ease("clickPop", p);
+                opacity = Math.Min(1.0, p * 2.0);
+                break;
+            case "Collapse":
+                opacity = 1.0;
+                break;
+            case "SlideUp":
+                dy = -(1.0 - eased) * 14.0;
+                break;
+            case "FadeScaleOut":
+                scale = 1.0 - 0.06 * eased;
+                break;
+            case "Ragged":
+                dx = Math.Sin(p * Math.PI * 6) * (1.0 - p) * 3.5;
+                break;
+            case "Glitch":
+                opacity = p < 0.34 ? 1.0 : p < 0.67 ? 0.55 : 0.15;
+                break;
+        }
+
+        AnimPreviewCapsule.Opacity = Math.Clamp(opacity, 0, 1);
+        AnimPreviewCapsule.RenderTransform = _animPreviewTransform(scale, dx, dy);
+        if (leaving) AnimPreviewCapsule.Width = 150 + 90 * (1.0 - eased);
+        else AnimPreviewCapsule.Width = 150 + 90 * eased;
+    }
+
+    private void ResetAnimPreview()
+    {
+        AnimPreviewCapsule.Opacity = 0;
+        AnimPreviewCapsule.Width = 150;
+        AnimPreviewCapsule.RenderTransform = null;
+    }
+
+    private void RefreshAnimPreviewHint()
+    {
+        var appear = SelectedTag(AppearStyleBox) ?? "—";
+        var dismiss = SelectedTag(DismissStyleBox) ?? "—";
+        var speed = SelectedTag(AnimSpeedBox) ?? "—";
+        var reduced = ReducedMotionBox.IsChecked == true;
+        AnimPreviewHint.Text = reduced
+            ? "Сниженная анимация: проверка покажет мгновенное появление и уход без движения."
+            : $"Появление: {appear} · Уход: {dismiss} · Скорость: {speed}";
+    }
+
+    private AnimationSpeed AnimationSpeedSelection() =>
+        Enum.TryParse<AnimationSpeed>(SelectedTag(AnimSpeedBox), true, out var s)
+            ? s : AnimationSpeed.Normal;
+
+    private Transform? _animPreviewTransform(double scale, double dx, double dy)
+    {
+        var group = new TransformGroup();
+        if (Math.Abs(scale - 1.0) > 0.0001)
+        {
+            _animPreviewScale ??= new ScaleTransform();
+            _animPreviewScale.ScaleX = _animPreviewScale.ScaleY = scale;
+            group.Children.Add(_animPreviewScale);
+        }
+        if (Math.Abs(dx) > 0.0001 || Math.Abs(dy) > 0.0001)
+        {
+            _animPreviewMove ??= new TranslateTransform();
+            _animPreviewMove.X = dx;
+            _animPreviewMove.Y = dy;
+            group.Children.Add(_animPreviewMove);
+        }
+        return group.Children.Count == 0 ? null : group;
+    }
+
     private static readonly (string Id, string Icon)[] NavEntries =
     [
         ("island", "layout-dashboard"),
         ("appearance", "palette"),
-        ("behavior", "mouse-pointer"),
+        // 1.20: было «mouse-pointer» — такого файла нет в вендоренном Lucide (в наборе 28
+        // глифов), и пункт рисовался вообще без иконки, со сдвинутой подписью. «music» есть
+        // и означает то же самое, что раздел: медиа, питание, таймер, буфер. Новый глиф не
+        // придумываем — берём только из того же согласованного набора.
+        ("behavior", "music"),
         ("monitor", "activity"),
         ("animation", "sparkles"),
         ("sound", "volume-2"),
@@ -873,6 +1421,14 @@ public partial class SettingsWindow : Window
             if (this.FindControl<ScrollViewer>($"Panel_{id}") is { } panel)
                 panel.IsVisible = string.Equals(id, tag, StringComparison.Ordinal);
         }
+
+        // Показанная страница должна перемериться при показе. Скрытая панель не меряется,
+        // и её ScrollViewer какое-то время несёт extent от прошлого раза; на самой длинной
+        // странице «Анимации» прокрутка успевает упереться в этот протухший размер и не
+        // доехать до кнопки «Проверить». Явная инвалидация после переключения закрывает
+        // окно в один проход layout и стоит ничем.
+        if (this.FindControl<ScrollViewer>($"Panel_{tag}") is { } shown)
+            shown.InvalidateMeasure();
     }
 
     private void TintSelectedNavIcon()
