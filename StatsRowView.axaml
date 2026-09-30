@@ -4,16 +4,28 @@
              ClipToBounds="False">
   <!-- One row of the System Stats surface. Three visual shapes (spec: the 1.13
        single-capsule spec under docs/superpowers/specs, September 2026):
-         pair    — label left (FontSize 11, #8A8A92), value right (FontSize 12, #C8C8CC)
-         caption — one centred line (FontSize 10, #8A8A92), used by the Date row
-         status  — pair plus a 2 DIP bar and a button cluster, used by Media / Timer since
-                   1.13 moved them out of the capsule and into this panel
-       The heights here feed StatsLayout.StatsHeightFor, so do not change the font sizes.
-       The status row stays inside the same 16 DIP budget: its bar is 2 DIP tucked under the
-       text, and the buttons are 16 DIP glyphs on the same line — a taller row would change
-       the panel height formula and every test that pins it. -->
-  <Grid ColumnDefinitions="*,Auto"
-        RowDefinitions="Auto,Auto">
+         pair    — label left (FontSize 11, #8A8A92), value right (FontSize 12, primary)
+         caption — one centred line (FontSize 10, #7C7C84), used by the Date row
+         status  — Media / Timer: meta left, value in the middle, actions right
+
+       COLUMN SHAPE (1.17). "Auto,*,Auto" for every shape, on purpose:
+         - metric pair: the label is Auto (its natural width, flush left) and the value is
+           the star column, right-aligned — visually identical to the old "*,Auto", which
+           measured label 240 DIP + value at the row's right edge.
+         - status row: the value is the thing that can be arbitrarily long (a track title,
+           a long localised number), so IT must be the star column and ellipsize. With the
+           old "*,Auto" a long title squeezed the label and the actions out of existence.
+           Value and ActionsHost also no longer share a cell: they used to both sit in
+           column 1, one right-aligned and one centred, and a long title ran straight
+           through the buttons.
+       HEIGHT. One Auto row, so every row measures the same ~16 DIP that
+       StatsLayout.StatsHeightFor budgets per row. The status bar is an OVERLAY pinned to
+       the bottom of row 0 rather than a second grid row: as row 1 it added 2 + 2 DIP and
+       pushed a Media/Timer row 4 DIP past its budget, which is what made the last row
+       clip once both status rows were on. Do not move it back into a row of its own. -->
+  <Grid x:Name="RowGrid"
+        ColumnDefinitions="Auto,*,Auto"
+        RowDefinitions="Auto">
     <!-- 1.16: the row separator, drawn only above the date caption.
          1 DIP, low contrast, and — the part that matters — it costs NO extra height: the
          caption's own top Margin (0,2,0,0) already reserved 2 DIP, so the 1 DIP rule fits
@@ -22,60 +34,50 @@
          and AdaptiveStatsLayoutTests' content budget true. Do NOT give it a margin of its
          own: any padding here pushes the panel past its budget and clips the last row. -->
     <Border x:Name="RowDivider"
-            Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+            Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
             Height="1"
             VerticalAlignment="Top"
             Background="#14FFFFFF"
             IsVisible="False"
             IsHitTestVisible="False" />
-    <TextBlock x:Name="LabelBlock"
-               Grid.Row="0" Grid.Column="0"
-               FontSize="11"
-               Foreground="#8A8A92"
-               VerticalAlignment="Center" />
+
+    <!-- Meta cell: the row's own caption (Плеер / Таймер) plus the artist or the
+         timer state beside it. One horizontal line so a two-line status row cannot eat
+         the panel's height budget. -->
+    <StackPanel x:Name="MetaStack"
+                Grid.Row="0" Grid.Column="0"
+                Orientation="Horizontal"
+                Spacing="6"
+                VerticalAlignment="Center">
+      <TextBlock x:Name="LabelBlock"
+                 FontSize="11"
+                 Foreground="#8A8A92"
+                 VerticalAlignment="Center" />
+      <TextBlock x:Name="StatusDetail"
+                 FontSize="10"
+                 Foreground="#6E6E76"
+                 TextTrimming="CharacterEllipsis"
+                 MaxWidth="140"
+                 VerticalAlignment="Center"
+                 IsVisible="False" />
+    </StackPanel>
+
     <TextBlock x:Name="ValueBlock"
                Grid.Row="0" Grid.Column="1"
+               Margin="8,0,8,0"
                FontSize="12"
                FontWeight="SemiBold"
                Foreground="#FFFFFF"
                FontFeatures="tnum"
+               TextTrimming="CharacterEllipsis"
                TextAlignment="Right"
                VerticalAlignment="Center"
                Text="—" />
-    <TextBlock x:Name="CaptionBlock"
-               Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-               FontSize="10"
-               Foreground="#7C7C84"
-               TextAlignment="Center"
-               VerticalAlignment="Center"
-               Margin="0,2,0,0"
-               IsVisible="False" />
 
-    <!-- 1.13 status-row furniture. Both are off for every other row kind. -->
-    <ProgressBar x:Name="StatusBar"
-                 Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                 Height="2"
-                 Minimum="0" Maximum="1"
-                 Foreground="#3D9CF0"
-                 Background="Transparent"
-                 VerticalAlignment="Top"
-                 Margin="0,2,0,0"
-                 IsVisible="False"
-                 IsHitTestVisible="False" />
-    <TextBlock x:Name="StatusDetail"
-               Grid.Row="0" Grid.Column="1"
-               FontSize="10"
-               Foreground="#6E6E76"
-               TextAlignment="Right"
-               VerticalAlignment="Center"
-               Margin="0,0,8,0"
-               IsVisible="False" />
-
-    <!-- Buttons live in their own overlay cell so the value keeps the full width when they
-         are hidden: a Button with a glyph and no border is ~20 DIP wide, and three of them
-         would otherwise permanently steal width from every status row's value. -->
+    <!-- Actions keep their own cell so the value never runs under them, and they stay on
+         the row's 16 DIP line: three small glyphs, not three button-shaped cards. -->
     <StackPanel x:Name="ActionsHost"
-                Grid.Row="0" Grid.Column="1"
+                Grid.Row="0" Grid.Column="2"
                 Orientation="Horizontal"
                 Spacing="2"
                 VerticalAlignment="Center"
@@ -84,6 +86,29 @@
       <Button x:Name="ActionB" Classes="rowAction" Click="OnActionBClick" />
       <Button x:Name="ActionC" Classes="rowAction" Click="OnActionCClick" />
     </StackPanel>
+
+    <TextBlock x:Name="CaptionBlock"
+               Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+               FontSize="10"
+               Foreground="#7C7C84"
+               TextAlignment="Center"
+               VerticalAlignment="Center"
+               Margin="0,2,0,0"
+               IsVisible="False" />
+
+    <!-- 1.17: the status bar is an overlay on the bottom edge of the row, like the
+         capsule's own band, so it adds no height. It is shown only for a source that does
+         NOT own the capsule band (see ShowRowProgress): the band's owner is already drawn
+         there, and two bars for one activity read as a rendering bug. -->
+    <ProgressBar x:Name="StatusBar"
+                 Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                 Height="2"
+                 Minimum="0" Maximum="1"
+                 Foreground="#3D9CF0"
+                 Background="Transparent"
+                 VerticalAlignment="Bottom"
+                 IsVisible="False"
+                 IsHitTestVisible="False" />
   </Grid>
   <UserControl.Styles>
     <Style Selector="Button.rowAction">

@@ -3467,6 +3467,9 @@ public partial class OverlayWindow : Window
             Active = active,
             Playing = m.Playing
         });
+        // 1.17: media only draws its own bar when it does NOT hold the capsule band.
+        // When it does hold it, the bar at the capsule's bottom edge already says it.
+        view.ShowRowProgress = CapsuleProgressBand.OwnerOf(_machine.BandState()) != ProgressBandOwner.Media;
         // Media changes the marquee source, so the panel's height grows and shrinks with it.
         SyncMarqueeState();
     }
@@ -3712,6 +3715,10 @@ public partial class OverlayWindow : Window
             Active = active,
             Playing = t.Playing
         });
+        // 1.17: same arbitration as the media row — one activity, one bar. The timer keeps
+        // its digits either way; the bar is the part that was duplicated.
+        if (_timerRowView is { } tv)
+            tv.ShowRowProgress = CapsuleProgressBand.OwnerOf(_machine.BandState()) != ProgressBandOwner.Timer;
         SyncMarqueeState();
     }
 

@@ -78,6 +78,23 @@ public partial class StatsRowView : Avalonia.Controls.UserControl
     }
 
     /// <summary>
+    /// Whether this row may draw its own progress bar (1.17).
+    /// <para>
+    /// The capsule already arbitrates its single bottom strip between clipboard, media and
+    /// timer (<c>CapsuleProgressBand</c>), and the source that WINS that strip is drawn
+    /// there. Drawing its bar here as well would put two indicators on one activity. So
+    /// the window sets this false for the band's owner and leaves it true for the losers —
+    /// which is exactly what the band arbiter promises: "a loser does not disappear, it
+    /// stays in the System Monitor row that has its own label and value".
+    /// </para>
+    /// <para>
+    /// A null fraction never shows a bar at all, whatever this says: an empty 2 DIP line
+    /// under a row reads as a layout bug, not as a lack of information.
+    /// </para>
+    /// </summary>
+    public bool ShowRowProgress { get; set; } = true;
+
+    /// <summary>
     /// Fill a status row (Media / Timer) from a plain model, and switch the row into its
     /// status shape. Every other kind of row leaves this untouched, so a metric row can
     /// never accidentally grow a bar or a button.
@@ -97,7 +114,9 @@ public partial class StatsRowView : Avalonia.Controls.UserControl
         // A null Progress means "this source has no meaningful fraction" (a stopwatch, an
         // unknown track length). The bar is then hidden rather than drawn empty: an empty
         // 2 DIP line under a row reads as a layout bug, not as a lack of information.
-        var hasBar = model.Progress is { } frac;
+        // ShowRowProgress additionally hides it for the source that owns the capsule band,
+        // so one activity never draws two bars.
+        var hasBar = model.Progress is { } frac && ShowRowProgress;
         StatusBar.IsVisible = hasBar;
         if (model.Progress is { } f)
             StatusBar.Value = Math.Clamp(f, 0, 1);
@@ -110,11 +129,6 @@ public partial class StatsRowView : Avalonia.Controls.UserControl
         };
         var showActions = model.Active && buttons.Length > 0;
         ActionsHost.IsVisible = showActions;
-        // The value yields its column to the buttons only while they are shown, so a
-        // parked/empty status row is not left with a hole where the controls were.
-        ValueBlock.Margin = showActions ? new Avalonia.Thickness(0, 0, 0, 0) : default;
-        if (!showActions)
-            StatusDetail.Margin = new Avalonia.Thickness(0, 0, 0, 0);
 
         SetButton(ActionA, buttons.Length > 0 ? buttons[0] : "");
         SetButton(ActionB, buttons.Length > 1 ? buttons[1] : "");

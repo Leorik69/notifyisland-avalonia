@@ -315,12 +315,16 @@
 
       <!-- 1.13 capsule progress band: 2 DIP bar in the strip the seconds just yielded.
            Value/visibility come from CapsuleProgressBand (owner = clipboard > media > timer).
-           Accent is set per owner in Paint so the bar reads as belonging to its source. -->
+           Accent is set per owner in Paint so the bar reads as belonging to its source.
+           1.17: a faint track under the fill, so the band reads as one continuous strip
+           with an empty remainder rather than as a bright line floating over the capsule.
+           Still exactly 2 DIP (CapsuleProgressBand.BarH) and still inside the capsule —
+           the band is a secondary explanation of a number, never the number itself. -->
       <ProgressBar x:Name="OverlayProgress"
                    Height="2"
                    Minimum="0" Maximum="100"
                    Foreground="#3D9CF0"
-                   Background="Transparent"
+                   Background="#0DFFFFFF"
                    VerticalAlignment="Bottom"
                    Margin="22,0,22,2"
                    IsVisible="False" />
