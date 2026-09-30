@@ -105,6 +105,23 @@ internal sealed class WinFormsTray : IDisposable
         RefreshLabels();
     }
 
+    /// <summary>
+    /// Override the tray tooltip without changing the icon. Used by the privacy-pause
+    /// status («NotifyIsland — пауза 30 мин»). WinForms NotifyIcon.Text has a 127-char cap;
+    /// we truncate just in case a future caller hands in something longer.
+    /// </summary>
+    public void SetTooltip(string text)
+    {
+        try
+        {
+            _notify.Text = text.Length <= 127 ? text : text[..127];
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("WinFormsTray.SetTooltip failed", ex);
+        }
+    }
+
     private void OnMouseClick(object? sender, MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Left) return;

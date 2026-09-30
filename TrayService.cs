@@ -129,6 +129,16 @@ internal sealed class TrayService : IDisposable
         RefreshLabels();
     }
 
+    /// <summary>
+    /// Override the tray tooltip without touching the icon. Privacy-pause toggle calls this so
+    /// the tray surfaces «NotifyIsland — пауза 30 мин» for the duration of the pause.
+    /// </summary>
+    public void SetTooltip(string text)
+    {
+        try { _tray.ToolTipText = text; }
+        catch (Exception ex) { AppLog.Warn("TrayService.SetTooltip failed", ex); }
+    }
+
     private void OnTrayClicked(object? sender, EventArgs e)
     {
         var now = DateTime.UtcNow;

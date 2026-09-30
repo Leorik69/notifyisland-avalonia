@@ -244,6 +244,13 @@ public sealed class OverlayMachine
     /// </summary>
     public int StatsRowCount { get; set; }
 
+    /// <summary>
+    /// True while the 1.13 running caption line is showing, so the panel's height budget
+    /// includes it. The Av layer sets this from whether the line currently has text; the
+    /// height must grow and shrink with it or the line gets clipped.
+    /// </summary>
+    public bool StatsMarquee { get; set; }
+
     public OverlayPayload LastWeather => Clone(_lastWeather);
 
     /// <summary>True while a clipboard half is attached next to the normal island content (1.12.2).</summary>
@@ -255,7 +262,7 @@ public sealed class OverlayMachine
         Payload = Clone(_payload),
         Width = WidthFor(_kind, _weatherEnabled, statsMetricCount: StatsMetricCount,
                          splitClipboard: _isSplitClipboard),
-        Height = HeightFor(_kind, StatsRowCount),
+        Height = HeightFor(_kind, StatsRowCount, StatsMarquee),
         NotifyMsLeft = Math.Max(0, _notifyMs),
         UnreadCount = _unreadCount,
         WeatherEnabled = _weatherEnabled,
@@ -825,8 +832,8 @@ public sealed class OverlayMachine
     /// exception: its height follows the resolved row count (<paramref name="statsRowCount"/>,
     /// 0 or less = the default 5-row Full panel, i.e. OverlayTokens.StatsExpandedH).
     /// </summary>
-    public static double HeightFor(OverlayKind kind, int statsRowCount = 0) =>
+    public static double HeightFor(OverlayKind kind, int statsRowCount = 0, bool statsMarquee = false) =>
         kind == OverlayKind.SystemStats
-            ? StatsLayout.StatsHeightFor(statsRowCount)
+            ? StatsLayout.StatsHeightFor(statsRowCount, statsMarquee)
             : OverlayTokens.CollapsedH;
 }

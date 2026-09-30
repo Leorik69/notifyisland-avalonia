@@ -248,6 +248,43 @@
                   IsVisible="False"
                   Margin="12,6,12,6" />
 
+      <!-- 1.13 running caption: the name of whatever the capsule is currently talking about
+           (clipboard item, track, timer), in small type, scrolling only if it does not fit.
+
+           It replaces the clipboard preview that used to live in the clock row: that one was
+           drawn in the collapsed row and the stats panel then grew straight through it, which
+           is why it read as a clipped smear on the last line. Here it has its own slot with
+           its own budget (MarqueeTrack.LineH) and a ClipToBounds host, so overflow scrolls
+           instead of being cut.
+
+           Anchored to Bottom, i.e. between the last metric row and the progress band, so it
+           reads as the label of the bar rather than as another metric. RenderTransformOrigin
+           is pinned to the LEFT edge: a marquee must move the text, not scale the box. -->
+      <Border x:Name="MarqueeHost"
+              Height="14"
+              IsVisible="False"
+              IsHitTestVisible="False"
+              ClipToBounds="True"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Bottom"
+              Margin="12,0,12,10">
+        <TextBlock x:Name="MarqueeText"
+                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                   FontSize="10"
+                   FontWeight="Medium"
+                   Foreground="#8A8A92"
+                   VerticalAlignment="Center"
+                   RenderTransformOrigin="0%,50%"
+                   TextTrimming="None">
+          <TextBlock.RenderTransform>
+            <!-- No x:Name here: the shift transform is wired from code (see _marqueeShift field).
+                 The Avalonia 11.3 source generator does not register fields for x:Name on
+                 transform children of a RenderTransform property. -->
+            <TranslateTransform />
+          </TextBlock.RenderTransform>
+        </TextBlock>
+      </Border>
+
       <!-- FontAudio digital-dot seconds strip (Idle/Collapsed); complementary to HH:mm[:ss].
 
            1.13: the bottom 8 DIP of the capsule are a SHARED band. ProgressBar (below) and
@@ -316,7 +353,12 @@
          ScaleTransform carries the ClickPop of the detach. Hit-testable because the user has
          to grab and click it — that is the ONE piece of the enlarged window that is. The row
          inside stays on one line with CharacterEllipsis trimming: a ball is round, so text has
-         to be short by construction rather than reflowed. -->
+         to be short by construction rather than reflowed.
+
+         1.13 Drag-drop: AllowDrop=true so file drops land here; the handler filters out anything
+         that is not an IStorageItem and pushes the rest through WindowsClipboardWriter.
+         DoubleTapped re-copies the most recent entry. Right-click opens the clipboard context
+         menu. -->
     <Border x:Name="Blob"
             Width="64" Height="64"
             CornerRadius="32"
@@ -344,6 +386,31 @@
                    TextTrimming="CharacterEllipsis"
                    Text="буфер" />
       </StackPanel>
+    </Border>
+
+    <!-- 1.13 ball count badge (spec §«Бейджик со счётом»). Sibling of Blob so it can sit at the
+         top-right corner of the ball without being clipped by Blob's ClipToBounds. Margin is
+         updated in code to track Blob's actual position, the same way Blob.Margin is. Hidden
+         when the history holds ≤ 1 items, mirroring the spec. Same accent + contrast as the
+         UnreadBadge, so the two read as siblings of one design system. -->
+    <Border x:Name="BallCountBadge"
+            MinWidth="16" Height="16"
+            CornerRadius="8"
+            Background="#3D9CF0"
+            Padding="4,0"
+            VerticalAlignment="Top"
+            HorizontalAlignment="Left"
+            IsVisible="False"
+            IsHitTestVisible="False"
+            RenderTransformOrigin="50%,50%">
+      <TextBlock x:Name="BallCountText"
+                 FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                 FontSize="9"
+                 FontWeight="SemiBold"
+                 Foreground="#FFFFFF"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"
+                 Text="2" />
     </Border>
 
     <!-- 1.12.3 clipboard history panel (spec §«Панель истории»): the list a click on the ball

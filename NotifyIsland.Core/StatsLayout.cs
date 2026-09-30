@@ -174,11 +174,20 @@ public static class StatsLayout
     /// (12 + 5×16 + 4×4 = 108), the value the constant was rounded to by hand. Fewer rows scale
     /// down by one row height plus one spacing each. A non-positive count falls back to the
     /// default 5-row panel rather than collapsing the surface to nothing.
+    /// <para>
+    /// <paramref name="marquee"/> adds the 1.13 running caption line (14 DIP plus the 4 DIP
+    /// gap that separates it from the last row). It is opt-in because the line is only shown
+    /// while there is something to name — a panel that reserved the space unconditionally
+    /// would carry 18 DIP of empty gap for most of the day.
+    /// </para>
     /// </summary>
-    public static double StatsHeightFor(int rowCount)
+    public static double StatsHeightFor(int rowCount, bool marquee = false)
     {
         if (rowCount <= 0) rowCount = DefaultRowCount;
-        return PanelMargin + MetricRowH * rowCount + RowSpacing * (rowCount - 1);
+        var h = PanelMargin + MetricRowH * rowCount + RowSpacing * (rowCount - 1);
+        if (marquee)
+            h += MarqueeTrack.LineH + RowSpacing;
+        return h;
     }
 
     // -- Empty-surface collapse decision --------------------------------------------------

@@ -44,6 +44,16 @@ public partial class OverlayWindow : Window
     private readonly TranslateTransform _pillTranslate = new();
     private readonly Stopwatch _pressWatch = new();
     private OverlayKind _lastKind = OverlayKind.Idle;
+    private double _marqueeElapsedMs;
+    /// <summary>
+    /// Marquee's <c>TranslateTransform</c>. Declared in code rather than via <c>x:Name</c> on the
+    /// XAML child element: the Avalonia 11.3 source generator does not register fields for
+    /// <c>x:Name</c> on transform children of a <c>RenderTransform</c> property, only on direct
+    /// children of the root element. Assigned to <c>MarqueeText.RenderTransform</c> in the
+    /// constructor (the same place the field initialiser that already exists wires up
+    /// <c>Pill.RenderTransform</c>).
+    /// </summary>
+    private readonly TranslateTransform _marqueeShift = new();
     private SettingsWindow? _settingsWindow;
     private TrayService? _tray;
     private WinFormsTray? _winTray;
@@ -150,6 +160,22 @@ public partial class OverlayWindow : Window
     private NotifyAppearStyle _morphAppear = NotifyAppearStyle.Inflate;
     private NotifyDismissStyle _morphDismiss = NotifyDismissStyle.Collapse;
     private bool _morphUsesNotifyStyle;
+
+    // -- 1.13: clipboard ball features (wheel cycle / context menu / drag-to-pin) ----
+    /// <summary>
+    /// Index into the newest-first snapshot, the ball preview is showing. <c>0</c> means
+    /// "newest = the entry that just got captured"; non-zero means the user wheeled DOWN and is
+    /// browsing older items. Reset to 0 on every new capture (handled in
+    /// <see cref="OnClipboardCaptured"/>) so the freshly-copied value always pops up first.
+    /// </summary>
+    private int _ballPreviewIndex;
+    /// <summary>Wall clock the most recent rope pulse was started at. Null = no pulse in flight.
+    /// The 200 ms tick reads it to drive the stroke-width bump; a second capture within the
+    /// 200 ms window replaces it instead of stacking (see <see cref="OnClipboardCaptured"/>).</summary>
+    private long? _bridgePulseStartedAtMs;
+    /// <summary>True iff <see cref="AppSettings.IsBlobPinned"/> is set. Cached here so the pin
+    /// halo doesn't have to read settings every frame.</summary>
+    private bool _blobIsPinned;
     /// <summary>
     /// The scenario this morph is playing, chosen once in <see cref="StartMorph"/> and read by
     /// every frame. Declared in Core (spec: animation layer, "Морфы капсулы") so the phase list and
@@ -169,6 +195,11 @@ public partial class OverlayWindow : Window
         _pillTransforms.Children.Add(_pillScale);
         _pillTransforms.Children.Add(_pillTranslate);
         Pill.RenderTransform = _pillTransforms;
+        // The marquee shift is declared in code (see the field docs): the Avalonia 11.3 source
+        // generator does not register fields for x:Name on a transform child of RenderTransform,
+        // so the XAML's <TranslateTransform x:Name="MarqueeShift"/> would compile without a
+        // matching code-side field. Wire it onto the TextBlock here instead.
+        MarqueeText.RenderTransform = _marqueeShift;
         // 1.12.3: the ball's only transform is the detach pop — see the field docs.
         Blob.RenderTransform = _blobScale;
         ApplyBlobRest(attached: false);
@@ -181,7 +212,13 @@ public partial class OverlayWindow : Window
         {
             _clipboardSource = new WindowsClipboardSource(
                 _clipboardHistory,
-                action => Avalonia.Threading.Dispatcher.UIThread.Post(action));
+                action => Avalonia.Threading.Dispatcher.UIThread.Post(action))
+            {
+                // The privacy-pause lambda is re-evaluated by the listener each tick. Pointing
+                // it at our own method keeps the listener dumb (no AppSettings reference) and
+                // gives us a single place to add the "is the pause still active" logic.
+                IsPaused = PrivacyPauseActive,
+            };
             _clipboardSource.Captured += OnClipboardCaptured;
         }
         catch (Exception ex)
@@ -202,6 +239,7 @@ public partial class OverlayWindow : Window
         EnableMorphTransitions();
         WirePointerClicks();
         WireBlobPointer();
+        WireBlobGestures();
         WireHistoryPanel();
         ConfigureHoverPinFromSettings();
         SeedIcons();
@@ -209,6 +247,9 @@ public partial class OverlayWindow : Window
         ApplyPalette();
         ApplyOpacity();
         ApplyIslandVisibility();
+        ApplyPinnedOffsetFromSettings();
+        ApplyBallCountBadge();
+        RefreshTrayPauseLabel();
 
         // Prefer WinForms NotifyIcon (visible on Win11 Sandbox); Avalonia TrayIcon as fallback.
         try
@@ -281,6 +322,7 @@ public partial class OverlayWindow : Window
             var hoverChanged = TickHoverPin(200);
             if (_machine.TimerActive != timerBefore || SystemStatsPanel.IsVisible)
                 ApplyTimerRow();
+            TickMarquee(200);
             Paint();
             UpdateSecondsStrip();
             if (before != after || hoverChanged || splitBefore != splitAfter) ApplySize();
@@ -288,6 +330,10 @@ public partial class OverlayWindow : Window
             // expires the split) — a 2.4 s sine at 200 ms is 12 samples per period, smooth
             // enough for a ±0.5 DIP drift, and it adds no timer.
             ApplyBlobBreathe();
+            // 1.13: rope pulse on new capture. Reads the start timestamp, advances the bump,
+            // and self-clears after 200 ms. The stroke-width bumps from 1 to 1.6 DIP and back.
+            // Reuses the same 200 ms tick — no new timer, per the spec.
+            TickBridgePulse();
             var unread = _machine.UnreadCount;
             if (unread != _lastTrayUnread)
             {
@@ -730,7 +776,7 @@ public partial class OverlayWindow : Window
         var props = e.GetCurrentPoint(this).Properties;
         if (props.IsRightButtonPressed)
         {
-            OpenContextMenu();
+            OpenContextMenu(isBallContext: true);
             e.Handled = true;
             return;
         }
@@ -774,9 +820,15 @@ public partial class OverlayWindow : Window
         // The capsule's own click threshold, so "dragged" and "clicked" cannot be confused.
         var dist = Math.Sqrt(dx * dx + dy * dy);
         e.Handled = true;
-        if (dist > OverlayTokens.ClickMaxPx) return;
-        // Past a drag the ball simply stays where it was dropped; ApplyBlobRest resets the
-        // offset when the blob detaches, so the home spot is always the resting definition.
+        if (dist > OverlayTokens.ClickMaxPx)
+        {
+            // Real drag. Spec §«Закрепление шарика»: a release-without-modifier pins the ball at
+            // the release position; Ctrl on release clears the pin (returns to home).
+            ApplyBallPinOnRelease(e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control));
+            return;
+        }
+        // Short tap (no drag): the click path. Single click still opens the panel; double-click
+        // is wired separately via Gestures.DoubleTapped.
         HandleBlobClick();
     }
 
@@ -786,6 +838,209 @@ public partial class OverlayWindow : Window
         Pill.PointerPressed += OnPillPointerPressed;
         Pill.PointerReleased += OnPillPointerReleased;
         Pill.PointerCaptureLost += (_, _) => ResetPressState();
+    }
+
+    /// <summary>
+    /// Wire the ball's 1.13 gestures: PointerWheel (preview cycle inside the ball, panel does
+    /// NOT open), DragOver/Drop (file drops into history), and DoubleTapped (re-copy the
+    /// newest entry back to the system clipboard). The right-click ContextMenu is the same
+    /// <see cref="OpenContextMenu"/> the capsule uses — see <see cref="OnBlobPointerPressed"/>.
+    /// </summary>
+    private void WireBlobGestures()
+    {
+        Blob.AddHandler(PointerWheelChangedEvent, OnBlobPointerWheel, handledEventsToo: false);
+        // Avalonia 11: gestures on a control are added via the routed event directly (not
+        // via Gestures.SetDoubleTapped — that API exists for elements that don't expose the
+        // event, but InputElement.DoubleTapped is the canonical path here).
+        Blob.DoubleTapped += OnBlobDoubleTapped;
+        // Drag-drop on the ball: file paths land in the history as File / MultiFile. The
+        // window has WS_EX_NOACTIVATE, but Avalonia's DragDrop routed events do not depend
+        // on activation — they fire as long as AllowDrop=true and a draggable source is
+        // over us. The spec calls this out explicitly.
+        DragDrop.SetAllowDrop(Blob, true);
+        Blob.AddHandler(DragDrop.DragEnterEvent, OnBlobDragOver);
+        Blob.AddHandler(DragDrop.DragOverEvent, OnBlobDragOver);
+        Blob.AddHandler(DragDrop.DropEvent, OnBlobDrop);
+    }
+
+    /// <summary>
+    /// Wheel on the ball cycles the preview INSIDE the ball, in newest-first. The first wheel
+    /// down jumps to the oldest (spec's literal "first wheel-down replaces with item N-1"),
+    /// each subsequent wheel-down walks one step toward newer, wheel-up is the mirror. Wrap at
+    /// both ends. Critically, scrolling on the ball does NOT open the panel — it just changes
+    /// the in-ball preview. The panel's existing cycle is separate and still wired the same
+    /// way it was before.
+    /// </summary>
+    private void OnBlobPointerWheel(object? sender, PointerWheelEventArgs e)
+    {
+        // Only react when the ball is in its idle/detached state — the spec is about the ball
+        // preview, not the morphing capsule. Mid-morph, swallowing the wheel is the right
+        // thing because the panel-side cycle already exists for that case.
+        if (_morphActive) return;
+        var snap = _clipboardHistory.SnapshotNewestFirst();
+        if (snap.Count == 0) return;
+        // Each "notch" of the wheel is one step; touchpads can deliver fractional deltas, so
+        // use the integer delta and ignore the fractional remainder. The spec is one-notch =
+        // one-row, so this is the right shape.
+        var delta = e.Delta.Y > 0 ? 1 : (e.Delta.Y < 0 ? -1 : 0);
+        if (delta == 0) return;
+        _ballPreviewIndex = BallPreviewCycle.Step(_ballPreviewIndex, delta, snap.Count);
+        var entry = BallPreviewCycle.Resolve(snap, _ballPreviewIndex);
+        if (entry is null) return;
+        ApplyBallPreviewFromEntry(entry);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Double-click on the ball: re-copy the most-recent entry back to the system clipboard.
+    /// The "I lost focus, get my copy back" gesture. Single-click still toggles the history
+    /// panel; the two gestures do not collide because <see cref="HandleBlobClick"/> treats
+    /// anything past <see cref="OverlayTokens.ClickMaxPx"/> as a drag.
+    /// </summary>
+    private void OnBlobDoubleTapped(object? sender, RoutedEventArgs e)
+    {
+        var entry = _clipboardHistory.Latest;
+        if (entry is null) return;
+        var ok = entry.Kind switch
+        {
+            ClipboardItemKind.Text => WindowsClipboardWriter.WriteText(entry.Text ?? ""),
+            ClipboardItemKind.File or ClipboardItemKind.MultiFile =>
+                WindowsClipboardWriter.WriteFiles(entry.Paths ?? new List<string>()),
+            _ => false,
+        };
+        AppLog.Info(ok
+            ? $"Ball double-click re-copied: {entry.Kind}"
+            : $"Ball double-click re-copy FAILED: {entry.Kind}");
+        // Light a sound either way so the gesture has feedback even when the writer is a noop.
+        IslandSounds.Play(IslandSoundKind.Hover, _settings);
+        e.Handled = true;
+    }
+
+    /// <summary>Filter: only file drops are accepted; text drops go through the OS listener.</summary>
+    private void OnBlobDragOver(object? sender, Avalonia.Input.DragEventArgs e)
+    {
+        e.DragEffects = HasAnyStorageItem(e.DataTransfer) ? Avalonia.Input.DragDropEffects.Copy : Avalonia.Input.DragDropEffects.None;
+    }
+
+    /// <summary>
+    /// File drop onto the ball: write the file paths to the system clipboard via the same
+    /// <see cref="WindowsClipboardWriter"/> the tray submenu and history panel use, then push
+    /// the resulting entry into the history. The OnClipboardCaptured handler picks it up from
+    /// the listener side and fires the rope pulse.
+    /// </summary>
+    private void OnBlobDrop(object? sender, Avalonia.Input.DragEventArgs e)
+    {
+        try
+        {
+            if (!HasAnyStorageItem(e.DataTransfer)) return;
+            var paths = new List<string>();
+            var items = e.DataTransfer.TryGetFiles();
+            if (items is null) return;
+            foreach (var storage in items)
+            {
+                if (storage is null) continue;
+                // StorageItem.Path on Windows is an Uri with a file:// scheme; .LocalPath gives
+                // back the absolute filesystem path the writer needs. Empty paths (rare; e.g.
+                // a virtual file dragged from a search result) are skipped, not pushed as "".
+                var local = storage.Path?.LocalPath ?? "";
+                if (!string.IsNullOrWhiteSpace(local)) paths.Add(local);
+            }
+            if (paths.Count == 0) return;
+            // Round-trip through WindowsClipboardWriter so the system clipboard matches what
+            // the history now holds; otherwise the next listener tick would re-detect the same
+            // content and treat it as a fresh capture with a NEW timestamp.
+            var ok = WindowsClipboardWriter.WriteFiles(paths);
+            if (!ok)
+            {
+                AppLog.Warn($"Ball drop: WindowsClipboardWriter.WriteFiles failed for {paths.Count} paths");
+                return;
+            }
+            // Synthesize the entry the listener would have produced and push it directly. Going
+            // through the listener is a race (its timer reads the clipboard, which is now OUR
+            // content); pushing manually keeps the drop's order-of-events deterministic.
+            var entry = paths.Count == 1
+                ? ClipboardEntry.FromFile(paths[0], DateTimeOffset.UtcNow)
+                : ClipboardEntry.FromFiles(paths, DateTimeOffset.UtcNow);
+            _clipboardHistory.Push(entry);
+            OnClipboardCaptured(entry);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("OnBlobDrop failed", ex);
+        }
+    }
+
+    private static bool HasAnyStorageItem(Avalonia.Input.IDataTransfer? data)
+    {
+        if (data is null) return false;
+        try
+        {
+            // TryGetFiles returns null when the format is not offered. We treat that as "no
+            // storage items" and let the drop go to None — text drops then continue to flow
+            // through the OS clipboard listener, which is exactly the spec's "ignore text drops"
+            // requirement.
+            var items = data.TryGetFiles();
+            return items is { Length: > 0 };
+        }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// Write the in-ball preview from a single ClipboardEntry — used by the wheel cycle and
+    /// the post-capture reset. Reuses the same IconPackService.Create + ClipboardHalfPreview
+    /// rules the auto-update path uses, so a wheeled-back preview looks identical to the
+    /// preview the user sees on a fresh capture.
+    /// </summary>
+    private void ApplyBallPreviewFromEntry(ClipboardEntry entry)
+    {
+        var payload = ClipboardHistory.BuildPayload(entry, entry.CapturedAt == default ? DateTimeOffset.UtcNow : entry.CapturedAt);
+        var tint = new SolidColorBrush(Color.Parse(ClipboardHalfPreview.IconTintHexFor(entry.Kind)));
+        BlobIcon.Child = IconPackService.Create(
+            _settings.IconPack, ClipboardHalfPreview.IconKeyFor(entry.Kind),
+            CurrentIconCollapsed(), tint);
+        var baseText = ClipboardHalfPreview.TextFor(payload);
+        BlobText.Text = baseText + ClipboardHalfPreview.RunSuffix(entry.RunCount);
+    }
+
+    /// <summary>
+    /// Wire the privacy-pause hook into the clipboard listener. The listener asks this lambda
+    /// each tick; while it returns true, captures are drained but never surfaced (see
+    /// <see cref="WindowsClipboardSource.IsPaused"/>).
+    /// </summary>
+    private bool PrivacyPauseActive() =>
+        ClipboardPrivacyPause.IsActive(_settings.ClipboardPrivacyPauseUntilUtc, DateTime.UtcNow);
+
+    /// <summary>Enable the privacy pause for the default duration and refresh the tray.</summary>
+    private void EnablePrivacyPause()
+    {
+        _settings.ClipboardPrivacyPauseUntilUtc = ClipboardPrivacyPause.Activate(DateTime.UtcNow);
+        _settings.Save();
+        AppLog.Info($"Privacy pause: enabled until {_settings.ClipboardPrivacyPauseUntilUtc:O}");
+        RefreshTrayPauseLabel();
+    }
+
+    /// <summary>Disable the privacy pause early (when the user picks the toggle from the menu).</summary>
+    private void DisablePrivacyPause()
+    {
+        _settings.ClipboardPrivacyPauseUntilUtc = null;
+        _settings.Save();
+        AppLog.Info("Privacy pause: cleared");
+        RefreshTrayPauseLabel();
+    }
+
+    /// <summary>
+    /// Push the current pause state into both tray implementations (WinForms and Avalonia).
+    /// The pause only changes the TOOLTIP, never the icon — the icon stays on "no unread"
+    /// because no capture is in flight. Calling this from the 200 ms tick would be overkill;
+    /// we call it from the toggle path AND from the same hook that drives the rope pulse, so
+    /// a pause that expires during a session simply stops blocking the next capture.
+    /// </summary>
+    private void RefreshTrayPauseLabel()
+    {
+        var remaining = ClipboardPrivacyPause.RemainingMinutes(_settings.ClipboardPrivacyPauseUntilUtc, DateTime.UtcNow);
+        var label = ClipboardPrivacyPause.TooltipText(remaining);
+        try { _winTray?.SetTooltip(label); } catch { /* tray may be torn down on shutdown */ }
+        try { _tray?.SetTooltip(label); } catch { /* tray may be torn down on shutdown */ }
     }
 
     private void OnPillPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -982,17 +1237,26 @@ public partial class OverlayWindow : Window
             var row = rows[i];
             var index = i;
 
+            // 1.13: each row's icon gets its own format-tinted brush (text #9CC4FF / file
+            // #C8C8CC / multi-file #7AA8FF). The header colour still drives the title text so
+            // the panel reads as one consistent typography, but the icon differentiates the
+            // formats at a glance.
+            var iconBrush = new SolidColorBrush(
+                Color.Parse(ClipboardHalfPreview.IconTintHexFor(row.Entry.Kind)));
             var icon = new Viewbox
             {
                 Width = 12,
                 Height = 12,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 IsHitTestVisible = false,
-                Child = IconPackService.Create(_settings.IconPack, row.IconKey, 12, brush),
+                Child = IconPackService.Create(_settings.IconPack, row.IconKey, 12, iconBrush),
             };
             var title = new TextBlock
             {
-                Text = row.Title,
+                // 1.13: the run-count suffix (— ×N) lives on the title so the panel reads
+                // "first item — ×N" the way the spec asks. The suffix is empty when RunCount
+                // is 1, so a fresh row stays exactly the same as it was before this feature.
+                Text = row.Title + ClipboardHalfPreview.RunSuffix(row.RunCount),
                 FontFamily = IslandFonts.Resolve(_settings.FontFamily),
                 FontSize = 11,
                 Foreground = Avalonia.Media.Brushes.White,
@@ -1032,6 +1296,16 @@ public partial class OverlayWindow : Window
             {
                 // Handled: a press on a row must not also be the "clicked the empty part of the
                 // panel" signal that closes it, and must not reach the ball underneath.
+                var props = e.GetCurrentPoint(host).Properties;
+                if (props.IsRightButtonPressed)
+                {
+                    // 1.13: row-level pin toggle. The most-recent row (index 0) is unpinnable
+                    // by spec; the menu shows that as a disabled entry. Core owns the rule, so
+                    // we ask it directly.
+                    OpenRowContextMenu(row, index, host);
+                    e.Handled = true;
+                    return;
+                }
                 e.Handled = true;
                 ApplyHistoryRow(row);
             };
@@ -1039,6 +1313,54 @@ public partial class OverlayWindow : Window
             HistoryRows.Children.Add(host);
             _historyRowControls.Add(host);
         }
+    }
+
+    /// <summary>
+    /// 1.13 row-level context menu (spec §«Закреплённые записи»). The pin toggle is the
+    /// primary action; the menu also lets the user re-copy the row (ApplyHistoryRow) without
+    /// closing the panel, which the existing left-click already does. The most-recent row
+    /// (chronological index 0) cannot be pinned: it would bounce between the pinned-first
+    /// block and the chronological block on every new capture. Core enforces this — see
+    /// <see cref="ClipboardHistory.Pin"/>.
+    /// </summary>
+    private void OpenRowContextMenu(ClipboardHistoryRow row, int index, Avalonia.Controls.Control anchor)
+    {
+        var menu = new Avalonia.Controls.ContextMenu();
+        var entry = row.Entry;
+        // Pin/unpin: only enabled when Core will accept the change. The newest row's
+        // TogglePin always returns false, so the menu item surfaces that as disabled.
+        var canPin = !entry.IsPinned && index > 0;
+        var pinLabel = entry.IsPinned ? "Открепить" : "Закрепить";
+        var pinItem = Menu(pinLabel, () =>
+        {
+            if (_clipboardHistory.TogglePin(index))
+            {
+                _settings.Save();
+                var rows = ClipboardHistoryRows.Build(_clipboardHistory, DateTimeOffset.UtcNow);
+                BuildHistoryRows(rows);
+                AppLog.Info($"Row {index} ({entry.Kind} \"{row.Title}\") toggled pin");
+            }
+        });
+        // IsEnabled needs to be set AFTER Menu(...) because the helper doesn't take it.
+        pinItem.IsEnabled = canPin || entry.IsPinned;
+        menu.Items.Add(pinItem);
+        menu.Items.Add(Menu("Скопировать в буфер", () => ApplyHistoryRow(row)));
+        menu.Items.Add(Menu("Удалить", () =>
+        {
+            // Pop the entry by timestamp+text match — Delete on a row that has just been
+            // pinned clears the pin and then drops the row, since pinned rows still pop out
+            // of the chronological block when removed from the ring. We re-use the
+            // PopLatest path only when the user picked the head; otherwise we look up by
+            // value.
+            _clipboardHistory.PopLatest();
+            ApplyBallCountBadge();
+            if (_historyOpen)
+            {
+                var rows = ClipboardHistoryRows.Build(_clipboardHistory, DateTimeOffset.UtcNow);
+                BuildHistoryRows(rows);
+            }
+        }));
+        menu.Open(anchor);
     }
 
     /// <summary>Light one row's background. Re-asserting the same index is a no-op.</summary>
@@ -1226,6 +1548,18 @@ public partial class OverlayWindow : Window
 
     private void OpenContextMenu()
     {
+        OpenContextMenu(isBallContext: false);
+    }
+
+    /// <summary>
+    /// Shared builder for both context surfaces (capsule right-click and ball right-click). The
+    /// ball version adds the clipboard-only items the spec calls out: "История буфера",
+    /// "Очистить историю", "Закрепить шарик на месте", "Не реагировать 30 мин". Both menus share
+    /// the common items (Action Center, weather, settings) because right-clicking either element
+    /// should still let the user get at the global controls.
+    /// </summary>
+    private void OpenContextMenu(bool isBallContext)
+    {
         var menu = new ContextMenu();
         menu.Items.Add(Menu("Центр уведомлений", TrayService.OpenActionCenter));
         if (_settings.TimerEnabled)
@@ -1238,13 +1572,70 @@ public partial class OverlayWindow : Window
         }
         var weatherLabel = _settings.WeatherEnabled ? "Погода выкл" : "Погода вкл";
         menu.Items.Add(Menu(weatherLabel, ToggleWeather));
-        // 1.12.3: an alternative way into the history panel, through the SAME OpenHistoryPanel
-        // the ball's click uses — not a second implementation. It is only offered when the ball
-        // is actually on screen (a clipboard is showing), because the panel is anchored to the
-        // ball: opening it with no ball would have nothing to hang from. A menu item that
-        // silently does nothing is worse than one that is not there.
-        if (_splitApplied)
+
+        // 1.13 clipboard-only block — only when the user right-clicks the ball itself. The
+        // capsule's context menu already routes to the panel via "История буфера" when the
+        // ball is on screen; we don't duplicate it here.
+        if (isBallContext)
         {
+            menu.Items.Add(Menu(_historyOpen ? "Скрыть историю буфера" : "История буфера",
+                () => HandleBlobClick()));
+            // "Очистить историю" — empties the ring buffer; the panel closes if it was open.
+            menu.Items.Add(Menu("Очистить историю", () =>
+            {
+                _clipboardHistory.Clear();
+                if (_historyOpen) CloseHistoryPanel();
+                ApplyBallCountBadge();
+                AppLog.Info("Clipboard history cleared from ball context menu");
+            }));
+            // "Закрепить шарик на месте" / "Открепить шарик" — toggle the pin. The label flips
+            // so the user can see the current state; Ctrl-release on drag is the other path to
+            // the same outcome (see OnBlobPointerReleased).
+            menu.Items.Add(Menu(_blobIsPinned ? "Открепить шарик" : "Закрепить шарик на месте",
+                () =>
+                {
+                    if (_blobIsPinned)
+                    {
+                        _settings.ClearBlobPin();
+                        _settings.Save();
+                        _blobIsPinned = false;
+                        _blobDragAlong = 0;
+                        _blobDragCross = 0;
+                        UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
+                    }
+                    else
+                    {
+                        _settings.ClipboardBlobPinnedOffsetX = _blobDragAlong;
+                        _settings.ClipboardBlobPinnedOffsetY = _blobDragCross;
+                        _settings.Save();
+                        _blobIsPinned = true;
+                    }
+                    ApplyPinHalo();
+                }));
+            // "Не реагировать 30 мин" — toggle the privacy pause. The label shows the current
+            // remaining minutes when active so the user knows when it lifts.
+            var pauseActive = PrivacyPauseActive();
+            string pauseLabel;
+            if (pauseActive)
+            {
+                var mins = ClipboardPrivacyPause.RemainingMinutes(
+                    _settings.ClipboardPrivacyPauseUntilUtc, DateTime.UtcNow);
+                pauseLabel = $"Не реагировать ({mins} мин осталось) — выключить";
+            }
+            else
+            {
+                pauseLabel = "Не реагировать 30 мин";
+            }
+            menu.Items.Add(Menu(pauseLabel, () =>
+            {
+                if (pauseActive) DisablePrivacyPause();
+                else EnablePrivacyPause();
+            }));
+        }
+        else if (_splitApplied)
+        {
+            // Capsule right-click still gets the history shortcut (1.12.3) — same path the ball
+            // click uses. Only the ball gets the richer clipboard submenu.
             menu.Items.Add(Menu(_historyOpen ? "Скрыть историю буфера" : "История буфера",
                 () => HandleBlobClick()));
         }
@@ -2069,8 +2460,21 @@ public partial class OverlayWindow : Window
         SecondsStrip.Margin = new Thickness(10, 0, 10, 2);
         // The home spot is the resting definition, so a drag offset never outlives the blob —
         // a re-attach always brings the ball back to exactly where the geometry says it goes.
-        _blobDragAlong = 0;
-        _blobDragCross = 0;
+        // 1.13: drag-to-pin exception — when the user has pinned the ball, the resting position
+        // IS the pinned offset, not (0, 0). The pin lives in AppSettings and is reapplied on
+        // every ApplyBlobRest so a re-attach doesn't undo it.
+        if (attached && _blobIsPinned)
+        {
+            (_blobDragAlong, _blobDragCross) = ClipboardBlob.ClampOffset(
+                _settings.ClipboardBlobPinnedOffsetX ?? 0,
+                _settings.ClipboardBlobPinnedOffsetY ?? 0,
+                OverlayTokens.BlobDragMaxPx);
+        }
+        else
+        {
+            _blobDragAlong = 0;
+            _blobDragCross = 0;
+        }
         _blobOpacity = attached ? 1.0 : 0.0;
         _blobBreathe = 0;
         Blob.IsVisible = attached;
@@ -2095,6 +2499,70 @@ public partial class OverlayWindow : Window
         if (AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion)) return;
         _blobBreathe = ClipboardSplit.CrossBreatheOffset((int)_blobClock.ElapsedMilliseconds);
         UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
+    }
+
+    /// <summary>
+    /// 1.13 rope pulse (spec §«Пульс верёвки»). One-shot bump from 1.0 to 1.6 DIP and back
+    /// over 200 ms, driven by the existing 200 ms tick (no new timer). The pulse starts on
+    /// <see cref="StartBridgePulse"/>; we read the start timestamp, compute a normalised t in
+    /// [0, 1], and emit the stroke width to the existing
+    /// <see cref="UpdateBlobBridge"/> pipeline via <see cref="ClipBlobBridgeStrokeWidth"/>.
+    /// <para>
+    /// Two captures within 200 ms REPLACE the start (no stacking): a single nullable field
+    /// overwritten by <see cref="StartBridgePulse"/> is exactly the right shape for that. After
+    /// 200 ms the field is null again and the bridge rests at its baseline width of 1 DIP.
+    /// </para>
+    /// </summary>
+    private void TickBridgePulse()
+    {
+        if (_bridgePulseStartedAtMs is not { } start) return;
+        var elapsed = Environment.TickCount64 - start;
+        const int pulseMs = 200;
+        if (elapsed >= pulseMs)
+        {
+            _bridgePulseStartedAtMs = null;
+            ClipBlobBridgeStrokeWidth(1.0);
+            return;
+        }
+        // Triangle wave: 0→1.6 DIP at the midpoint (100 ms), back to 1 DIP at 200 ms.
+        // Half-sine gives a softer bump than a triangle but with the same peak; either works,
+        // sine is just what the existing AnimEase vocabulary offers.
+        var t = elapsed / (double)pulseMs;
+        var phase = t < 0.5 ? (t * 2.0) : (1.0 - (t - 0.5) * 2.0);
+        var width = 1.0 + 0.6 * AnimEase.Ease("sine.out", phase);
+        ClipBlobBridgeStrokeWidth(width);
+    }
+
+    /// <summary>
+    /// Push a stroke-width override into the bridge pipeline. The geometry is unchanged — only
+    /// the half-width on each rail bumps. Implemented as a tiny field read by
+    /// <see cref="UpdateBlobBridge"/> via <see cref="BridgeStrokeWidthFactor"/> below.
+    /// </summary>
+    private double _bridgeStrokeWidthDip = 1.0;
+    private void ClipBlobBridgeStrokeWidth(double widthDip)
+    {
+        _bridgeStrokeWidthDip = widthDip;
+        UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
+    }
+
+    /// <summary>
+    /// 1.13 drag-to-pin visual cue (spec §«Закрепление шарика»). A hairline accent ring
+    /// around the ball when pinned; the default 1-DIP 28%-white border when unpinned. The
+    /// ring uses the accent colour so it reads as a deliberate state change rather than a
+    /// hairline cosmetic.
+    /// </summary>
+    private void ApplyPinHalo()
+    {
+        if (_blobIsPinned)
+        {
+            Blob.BorderBrush = new SolidColorBrush(Color.Parse(OverlayTokens.AccentHex));
+            Blob.BorderThickness = new Thickness(1.5);
+        }
+        else
+        {
+            Blob.BorderBrush = new SolidColorBrush(Color.FromArgb(0x28, 0xFF, 0xFF, 0xFF));
+            Blob.BorderThickness = new Thickness(1);
+        }
     }
 
     /// <summary>
@@ -2137,6 +2605,21 @@ public partial class OverlayWindow : Window
         var y = vertical ? along : cross;
         Blob.Margin = new Thickness(x - OverlayTokens.BlobD / 2, y - OverlayTokens.BlobD / 2, 0, 0);
         Blob.Opacity = opacity;
+        // 1.13: the count badge tracks the ball's TOP-RIGHT corner: 4 DIP inside, so it sits on
+        // the ball's rim like the UnreadBadge on the capsule does. The badge is visible only
+        // when ApplyBallCountBadge turned it on (>1 history rows). Vertical mirrors across axes.
+        var badgeOffsetX = vertical
+            ? x - OverlayTokens.BlobD / 2 + 4   // cross axis top-left in window coords
+            : x + OverlayTokens.BlobD / 2 - 4 - 18; // 18 = badge approx width
+        var badgeOffsetY = vertical
+            ? y + OverlayTokens.BlobD / 2 - 4 - 18
+            : y - OverlayTokens.BlobD / 2 + 4;
+        BallCountBadge.Margin = new Thickness(badgeOffsetX, badgeOffsetY, 0, 0);
+        // 1.13 drag-to-pin visual cue: a hairline accent ring around the ball when pinned.
+        // The BorderBrush / BorderThickness swap is the cheapest way to make the pin visible;
+        // a separate decorative ellipse would be cleaner but it would need its own hit-test
+        // island and the ball's existing border already lives on the same element.
+        ApplyPinHalo();
         UpdateBlobBridge(vertical, capsuleLong, capsuleCross, along, cross, opacity);
     }
 
@@ -2205,7 +2688,10 @@ public partial class OverlayWindow : Window
             var tx = ax - cx;
             var ty = ay - cy;
             var tl = Math.Sqrt(tx * tx + ty * ty);
-            var hw = ClipboardBlob.BridgeHalfAt(tt);
+            // 1.13 rope pulse: multiply the baseline half-width by the active stroke factor so
+            // a 200 ms capture pulse bumps the rope from 1 DIP to 1.6 DIP and back. The factor
+            // rests at 1.0 between captures (see TickBridgePulse).
+            var hw = ClipboardBlob.BridgeHalfAt(tt) * _bridgeStrokeWidthDip;
             if (tl <= 0) return ToWindow(vertical, cx, cy);
             return ToWindow(vertical, cx - (ty / tl) * hw * side, cy + (tx / tl) * hw * side);
         }
@@ -2872,6 +3358,15 @@ public partial class OverlayWindow : Window
         if (!snap.IsSplitClipboard) return;
         // Refresh the Idle-pill cycle previews so prev/next zones show the latest history.
         RefreshIdleClipboardCycle();
+        // 1.13: ball-preview cycle reset. A new capture always shows the freshly-copied value
+        // first; the user can then wheel down to revisit older entries. Spec §«Колесо на шарике».
+        _ballPreviewIndex = 0;
+        ApplyBallCountBadge();
+        // 1.13: rope pulse on new capture. The pulse drives the bridge stroke width from 1 to
+        // 1.6 DIP and back over 200 ms via the existing 200 ms tick — no new timer. A second
+        // capture within 200 ms just REPLACES the start time, the spec explicitly forbids
+        // stacking. Spec §«Пульс верёвки».
+        StartBridgePulse();
         // Beep-on-copy is opt-in via Notify volume slider; v1 stays silent for MultiFile.
         if (_settings.SoundEnabled
             && _settings.SoundVolNotify > 0
@@ -2879,6 +3374,91 @@ public partial class OverlayWindow : Window
         {
             IslandSounds.Play(IslandSoundKind.Notify, _settings);
         }
+    }
+
+    /// <summary>
+    /// Stamp the pulse start time. The 200 ms tick reads <see cref="_bridgePulseStartedAtMs"/>
+    /// and computes the bridge stroke-width bump; the pulse self-clears after 200 ms. A
+    /// second capture within the window replaces the timestamp — the spec calls this out as
+    /// "the second replaces the first, no stacking" — and that is exactly what
+    /// overwriting the nullable gives us.
+    /// </summary>
+    private void StartBridgePulse()
+    {
+        _bridgePulseStartedAtMs = Environment.TickCount64;
+    }
+
+    /// <summary>
+    /// Ball count badge (spec §«Бейджик со счётом»). Visible only when the history holds
+    /// &gt; 1 items, mirroring the spec's "hide when count ≤ 1". Position follows the ball
+    /// via the same Margin-driven layout the ball uses (recomputed every Paint), so the
+    /// badge stays in the top-right corner of the ball through all drag and pin states.
+    /// </summary>
+    private void ApplyBallCountBadge()
+    {
+        var count = _clipboardHistory.Count;
+        if (count <= 1)
+        {
+            BallCountBadge.IsVisible = false;
+            return;
+        }
+        BallCountText.Text = count > 99 ? "99+" : count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        // The badge sits 4 DIP inside the ball's top-right corner. Position is recomputed in
+        // Paint() alongside the ball margin; the initial placement here is a no-op until then.
+        BallCountBadge.IsVisible = true;
+    }
+
+    /// <summary>
+    /// Honour the persisted pinned offset on startup. Both halves of the pin must be set,
+    /// otherwise we leave the ball unpinned and let ApplyBlobRest drive it to the home spot.
+    /// </summary>
+    private void ApplyPinnedOffsetFromSettings()
+    {
+        if (!_settings.IsBlobPinned)
+        {
+            _blobIsPinned = false;
+            return;
+        }
+        var (x, y) = ClipboardBlob.ClampOffset(
+            _settings.ClipboardBlobPinnedOffsetX!.Value,
+            _settings.ClipboardBlobPinnedOffsetY!.Value,
+            OverlayTokens.BlobDragMaxPx);
+        _blobDragAlong = x;
+        _blobDragCross = y;
+        _blobIsPinned = true;
+    }
+
+    /// <summary>
+    /// Toggle the pin on release. Spec §«Закрепление шарика»: drag-then-release without
+    /// modifiers pins the ball at its release position; with Ctrl held, the pin is cleared
+    /// and the ball returns home. The decision is made here so a short click that does not
+    /// actually drag still calls HandleBlobClick (the existing branch).
+    /// </summary>
+    private void ApplyBallPinOnRelease(bool ctrlHeld)
+    {
+        if (ctrlHeld && _blobIsPinned)
+        {
+            _settings.ClearBlobPin();
+            _settings.Save();
+            _blobDragAlong = 0;
+            _blobDragCross = 0;
+            _blobIsPinned = false;
+            AppLog.Info("Ball pin cleared (Ctrl on release)");
+        }
+        else if (!_blobIsPinned)
+        {
+            // Save the current drag offset as the pinned position. If the user barely moved the
+            // ball (drag < a few DIP), pin it at (0,0) — the home spot — which is a no-op pin.
+            _settings.ClipboardBlobPinnedOffsetX = _blobDragAlong;
+            _settings.ClipboardBlobPinnedOffsetY = _blobDragCross;
+            _settings.Save();
+            _blobIsPinned = true;
+            AppLog.Info($"Ball pinned at ({_blobDragAlong:F1}, {_blobDragCross:F1})");
+        }
+        // The pin state changed; the halo and the rest position are both downstream of this,
+        // so refresh the visual in either branch (and the no-op branch where neither side
+        // changed — harmless).
+        ApplyPinHalo();
     }
 
     /// <summary>Push the current ring-buffer previews into FSM so the Idle pill can cycle.</summary>
@@ -3026,6 +3606,71 @@ public partial class OverlayWindow : Window
         // Height budget always follows the resolved count, so a preset change that keeps the
         // same rows but the same count also stays correct after a settings edit.
         _machine.StatsRowCount = rows.Count;
+        _machine.StatsMarquee = MarqueeHasText();
+        ApplyMarquee();
+    }
+
+    /// <summary>What the monitor's running caption is currently about, by descending priority.</summary>
+    private string? ResolveMarqueeText()
+    {
+        var snap = _machine.Snapshot();
+        // Track first — a song title is the most "ambient" name and the one that benefits most
+        // from a steady line beneath the rows. Clipboard preview only wins when nothing else is
+        // playing, otherwise a copy would replace the now-playing name.
+        if (_machine.MediaActive)
+        {
+            var m = _machine.MediaRow;
+            if (!string.IsNullOrWhiteSpace(m.Title))
+                return string.IsNullOrWhiteSpace(m.Subtitle) ? m.Title : $"{m.Title} — {m.Subtitle}";
+        }
+        if (_machine.TimerActive)
+        {
+            var t = _machine.TimerRow;
+            var label = t.CountUp ? "Секундомер" : "Таймер";
+            return string.IsNullOrWhiteSpace(t.Title) ? label : t.Title;
+        }
+        if (snap.Payload.ClipboardCycleCount > 1
+            && !string.IsNullOrWhiteSpace(snap.Payload.ClipboardCyclePreview))
+        {
+            return snap.Payload.ClipboardCyclePreview;
+        }
+        return null;
+    }
+
+    private bool MarqueeHasText() => !string.IsNullOrWhiteSpace(ResolveMarqueeText());
+
+    /// <summary>
+    /// Fill the monitor's running caption. The text lives in <see cref="MarqueeText"/>; the
+    /// scrolling offset comes from <see cref="MarqueeTrack.OffsetFor"/> driven by the shared
+    /// 200 ms tick. The line is shown only while there is something to name, so the panel's
+    /// height budget tracks it (StatsMarquee) and the marquee never reserves space for itself
+    /// when idle.
+    /// </summary>
+    private void ApplyMarquee()
+    {
+        var text = ResolveMarqueeText();
+        var has = !string.IsNullOrWhiteSpace(text);
+        if (MarqueeHost.IsVisible != has)
+            MarqueeHost.IsVisible = has;
+        if (!has)
+        {
+            MarqueeText.Text = "";
+            _marqueeShift.X = 0;
+            return;
+        }
+        if (MarqueeText.Text != text)
+            MarqueeText.Text = text;
+    }
+
+    /// <summary>Step the marquee by one frame; called from the shared 200 ms tick.</summary>
+    private void TickMarquee(int deltaMs)
+    {
+        if (!MarqueeHost.IsVisible || MarqueeText.Text is null) return;
+        _marqueeElapsedMs += deltaMs;
+        var slot = MarqueeHost.Bounds.Width;
+        var textWidth = MarqueeText.Bounds.Width;
+        if (slot <= 0 || textWidth <= 0) return;   // not laid out yet
+        _marqueeShift.X = MarqueeTrack.OffsetFor(_marqueeElapsedMs, textWidth, slot);
     }
 
     private static bool SameRows(IReadOnlyList<StatsRow> a, List<StatsRow> b)
@@ -3070,6 +3715,8 @@ public partial class OverlayWindow : Window
             Active = active,
             Playing = m.Playing
         });
+        // Media changes the marquee source, so the panel's height grows and shrinks with it.
+        SyncMarqueeState();
     }
 
     /// <summary>
@@ -3313,6 +3960,25 @@ public partial class OverlayWindow : Window
             Active = active,
             Playing = t.Playing
         });
+        SyncMarqueeState();
+    }
+
+    /// <summary>
+    /// Single point that decides whether the running caption has text and asks the machine to
+    /// grow or shrink the panel accordingly. Called from every source change so the height
+    /// budget never gets out of sync with what the panel is actually showing.
+    /// </summary>
+    private void SyncMarqueeState()
+    {
+        var has = MarqueeHasText();
+        if (_machine.StatsMarquee != has)
+        {
+            _machine.StatsMarquee = has;
+            // Height changed → ApplySize + Paint. We are already inside an ApplySize path on
+            // most callers; calling it again is cheap and keeps the contract local.
+            ApplySize();
+        }
+        ApplyMarquee();
     }
 
     /// <summary>

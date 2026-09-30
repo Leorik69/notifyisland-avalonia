@@ -50,6 +50,38 @@ public static class ClipboardHalfPreview
     };
 
     /// <summary>
+    /// Hex colours for the format-tinted icon brush (spec §«Цветные иконки формата»):
+    /// text → accent (#9CC4FF), file → neutral (#C8C8CC), multi-file → dim accent (#7AA8FF).
+    /// Hex strings on purpose: the panel and the in-ball preview both need to compose brushes
+    /// from Core-side decisions, and a Core-side string round-trips through Avalonia's
+    /// <c>Color.Parse</c> without taking a dependency on Avalonia types.
+    /// </summary>
+    public const string TextIconHex = "#9CC4FF";
+    public const string FileIconHex = "#C8C8CC";
+    public const string MultiFileIconHex = "#7AA8FF";
+
+    /// <summary>Format → icon tint. <see cref="ClipboardItemKind.None"/> falls back to the file tint
+    /// (neutral), which is the same fallback the icon key uses.</summary>
+    public static string IconTintHexFor(ClipboardItemKind kind) => kind switch
+    {
+        ClipboardItemKind.Text => TextIconHex,
+        ClipboardItemKind.File => FileIconHex,
+        ClipboardItemKind.MultiFile => MultiFileIconHex,
+        _ => FileIconHex,
+    };
+
+    /// <summary>
+    /// Suffix for a row whose <see cref="ClipboardEntry.RunCount"/> is &gt; 1. Returns "" for a
+    /// fresh single copy so the panel and the in-ball preview never show a stray «— ×1».
+    /// <c>"first item — ×N"</c> is the wording the spec calls for; the dash is U+2014 (em).
+    /// </summary>
+    public static string RunSuffix(int runCount)
+    {
+        if (runCount <= 1) return "";
+        return $" — ×{runCount}";
+    }
+
+    /// <summary>
     /// One-line preview for a payload.
     /// <para>
     /// Line breaks and tabs become single spaces: a copied multi-line string would

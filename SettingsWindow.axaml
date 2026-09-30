@@ -644,6 +644,39 @@
                            Text="v1 не вставляет в чужое окно автоматически — пользователь жмёт Ctrl+V сам. Это сохраняет focus у целевого приложения."/>
               </StackPanel>
             </Border>
+
+            <!-- 1.13 «Возможности шарика»: scannable catalogue of the new clipboard features,
+                 placed inside the clipboard section so users who came looking for history
+                 tweaks see it next to the existing controls. Russian; one line per feature;
+                 the bold name leads. A separate dedicated tab would dilute the existing IA
+                 (sidebar already lists island / weather / placement / theme / media+power /
+                 look / animation / sound / icons / clipboard / system / about); one more tab
+                 for two sentences of feature copy would not earn its sidebar slot. -->
+            <Border Classes="settingsCard">
+              <StackPanel Spacing="6">
+                <TextBlock Classes="sectionTitle" Text="Возможности шарика"/>
+                <TextBlock Classes="mutedNote"
+                           Text="Что умеет шарик истории — без отдельного меню, прямо в нём."/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Колесо на шарике — крутит превью прямо в нём, не открывая окно."/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Двойной клик — копирует самую свежую запись обратно в буфер обмена."/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Бейджик со счётом — показывает, сколько записей в истории."/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Схлопывание дублей — подряд одинаковые копии показываются одной строкой с «×N»."/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Закреплённые записи — прибитые строки всегда наверху списка."/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Цветные иконки формата — текст, файл и несколько файлов различаются цветом."/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Пульс верёвки — короткая волна при каждом новом копировании."/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Drag-and-drop файлов на шарик — кинул файл → попал в историю."/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Закрепление шарика — drag отпускаешь, шарик остаётся на месте; Ctrl — открепить."/>
+              </StackPanel>
+            </Border>
           </StackPanel>
         </ScrollViewer>
         <ScrollViewer x:Name="Panel_system" Classes="tabBody" IsVisible="False">

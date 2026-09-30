@@ -13,7 +13,17 @@ namespace NotifyIsland;
 /// already own the per-format wording and the Russian plurals. A second text rule in this file
 /// would be a second source of truth that the tests could disagree with.
 /// </summary>
-public sealed record ClipboardHistoryRow(string IconKey, string Title, string AgeText, ClipboardEntry Entry);
+public sealed record ClipboardHistoryRow(
+    string IconKey,
+    string Title,
+    string AgeText,
+    ClipboardEntry Entry,
+    /// <summary>Consecutive-duplicate count for this row. 1 = first copy; ≥ 2 means the row was
+    /// bumped because the user pasted the same value again. Drives the «— ×N» suffix.</summary>
+    int RunCount,
+    /// <summary>True when the user pinned the row from the panel context menu. Drives both
+    /// the sort order and the row's "закреп" badge.</summary>
+    bool IsPinned);
 
 /// <summary>
 /// Builds the panel's rows and the «сколько времени назад» wording.
@@ -35,12 +45,15 @@ public static class ClipboardHistoryRows
     public const string Yesterday = "вчера";
 
     /// <summary>
-    /// Rows for the panel, newest first, capped at <paramref name="maxRows"/>.
+    /// Rows for the panel, pinned-first then chronological-newest-first, capped at
+    /// <paramref name="maxRows"/>. Pinned rows render in pin order (oldest pin first), so the
+    /// user sees the row they care about at the very top without losing the rest of the stack
+    /// below.
     ///
-    /// Order comes from <see cref="ClipboardHistory.SnapshotNewestFirst"/> — the same order the
-    /// tray submenu shows — so the panel and the tray can never disagree about which item is
-    /// "the top one". <paramref name="now"/> is passed in rather than read from the clock, so the
-    /// whole row set is a pure function of (history, now) and is testable.
+    /// The sort is done by <see cref="ClipboardHistory.SnapshotPinnedFirst"/>; the panel and the
+    /// tray read the SAME history so the pinned-first ordering here is the one the tray's
+    /// submenu reflects too. <paramref name="now"/> is passed in rather than read from the
+    /// clock, so the whole row set is a pure function of (history, now) and is testable.
     /// </summary>
     public static IReadOnlyList<ClipboardHistoryRow> Build(
         ClipboardHistory? history, DateTimeOffset now, int maxRows = OverlayTokens.HistoryPanelMaxRows)
@@ -51,7 +64,7 @@ public static class ClipboardHistoryRows
         // Clamp to the token: the panel's height is a token-derived constant, so a caller asking
         // for more rows than fit would overflow the window the panel is laid out inside.
         var limit = Math.Min(maxRows, OverlayTokens.HistoryPanelMaxRows);
-        foreach (var entry in history.SnapshotNewestFirst())
+        foreach (var entry in history.SnapshotPinnedFirst())
         {
             if (rows.Count >= limit) break;
             var payload = ClipboardHistory.BuildPayload(entry, now);
@@ -59,7 +72,9 @@ public static class ClipboardHistoryRows
                 ClipboardHalfPreview.IconKeyFor(entry.Kind),
                 ClipboardHalfPreview.TextFor(payload),
                 AgeTextFor(payload.ClipboardCapturedAt, now),
-                entry));
+                entry,
+                entry.RunCount,
+                entry.IsPinned));
         }
         return rows;
     }

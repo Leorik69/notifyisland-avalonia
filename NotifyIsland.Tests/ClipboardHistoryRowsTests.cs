@@ -154,4 +154,83 @@ public class ClipboardHistoryRowsTests
     // 5 paths on purpose: 5-20 is the Russian plural band that reads «файлов», so this pins the
     // band rather than the trivial «2 файла».
     private static string[] FivePaths() => new[] { @"C:\a", @"C:\b", @"C:\c", @"C:\d", @"C:\e" };
+
+    // --- 1.13: pinned-first + run-count propagation into the row model -------------
+
+    [Fact]
+    public void Build_PutsPinnedRowsAtTheTop()
+    {
+        // Three captures: a, b, c (push order). Pin "a" (snapshot index 2). The panel must
+        // show "a" first, then the chronological newest-first tail (c, b).
+        var h = new ClipboardHistory();
+        h.Push(ClipboardEntry.FromText("a", Now.AddMinutes(-10)));
+        h.Push(ClipboardEntry.FromText("b", Now.AddMinutes(-5)));
+        h.Push(ClipboardEntry.FromText("c", Now));
+        Assert.True(h.Pin(2));
+
+        var rows = ClipboardHistoryRows.Build(h, Now);
+        Assert.Equal("a", rows[0].Title);
+        Assert.True(rows[0].IsPinned);
+        Assert.Equal("c", rows[1].Title);
+        Assert.False(rows[1].IsPinned);
+        Assert.Equal("b", rows[2].Title);
+        Assert.False(rows[2].IsPinned);
+    }
+
+    [Fact]
+    public void Build_SurfacesRunCountAndSticksToFirstCapturedTitle()
+    {
+        // Three identical pushes collapse into one row whose title is the first capture (no
+        // run suffix on the panel row itself — the suffix lives in the in-ball preview text
+        // and the HistoryRow's RunCount field, not in the row's Title). The "×N" wording is
+        // a concern of the panel builder, not of BuildPayload.
+        var h = new ClipboardHistory();
+        h.Push(ClipboardEntry.FromText("alpha", Now.AddMinutes(-5)));
+        h.Push(ClipboardEntry.FromText("alpha", Now.AddMinutes(-3)));
+        h.Push(ClipboardEntry.FromText("alpha", Now));
+
+        var row = Assert.Single(ClipboardHistoryRows.Build(h, Now));
+        Assert.Equal("alpha", row.Title);
+        Assert.Equal(3, row.RunCount);
+    }
+
+    [Fact]
+    public void Build_SurfacesRunSuffixOnDuplicates()
+    {
+        // The RunCount is exposed both as a row field AND as a built-in suffix, so the panel
+        // builder can choose whichever it wants. Pin the suffix wording here.
+        var h = new ClipboardHistory();
+        h.Push(ClipboardEntry.FromText("alpha", Now));
+        h.Push(ClipboardEntry.FromText("alpha", Now));
+        h.Push(ClipboardEntry.FromText("alpha", Now));
+        var row = Assert.Single(ClipboardHistoryRows.Build(h, Now));
+        Assert.Equal(3, row.RunCount);
+        Assert.EndsWith("— ×3", ClipboardHalfPreview.TextFor(ClipboardHistory.BuildPayload(row.Entry, Now))
+            + ClipboardHalfPreview.RunSuffix(row.RunCount));
+    }
+
+    [Fact]
+    public void FormatTint_AssignsThreeDistinctBrushes()
+    {
+        // The spec calls out three brushes by hex: text → #9CC4FF, file → #C8C8CC, multi-file
+        // → #7AA8FF. None of them is the same as the others.
+        var text = ClipboardHalfPreview.IconTintHexFor(ClipboardItemKind.Text);
+        var file = ClipboardHalfPreview.IconTintHexFor(ClipboardItemKind.File);
+        var multi = ClipboardHalfPreview.IconTintHexFor(ClipboardItemKind.MultiFile);
+        Assert.Equal("#9CC4FF", text);
+        Assert.Equal("#C8C8CC", file);
+        Assert.Equal("#7AA8FF", multi);
+        Assert.NotEqual(text, file);
+        Assert.NotEqual(text, multi);
+        Assert.NotEqual(file, multi);
+    }
+
+    [Fact]
+    public void RunSuffix_EmptyForSingleCopy()
+    {
+        // A row with RunCount=1 must not show a stray «— ×1» suffix.
+        Assert.Equal("", ClipboardHalfPreview.RunSuffix(1));
+        Assert.Equal("", ClipboardHalfPreview.RunSuffix(0));
+        Assert.Equal("", ClipboardHalfPreview.RunSuffix(-3));
+    }
 }

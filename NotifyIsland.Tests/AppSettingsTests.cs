@@ -438,4 +438,76 @@ public class AppSettingsTests
         Assert.True(s.SystemStatsHoverPeek);
         Assert.Equal(14, s.FontSize);
     }
+
+    // --- 1.13: clipboard privacy-pause + pinned-ball offset ------------------------
+
+    [Fact]
+    public void Defaults_PinAndPrivacyPauseAreNull()
+    {
+        // New settings on an old install deserialise to null because the keys are missing;
+        // the ball must read this as "not pinned, no pause", not crash.
+        var s = new AppSettings();
+        Assert.Null(s.ClipboardPrivacyPauseUntilUtc);
+        Assert.Null(s.ClipboardBlobPinnedOffsetX);
+        Assert.Null(s.ClipboardBlobPinnedOffsetY);
+        Assert.False(s.IsBlobPinned);
+    }
+
+    [Fact]
+    public void ClearBlobPin_ResetsBothAxes()
+    {
+        var s = new AppSettings
+        {
+            ClipboardBlobPinnedOffsetX = 12,
+            ClipboardBlobPinnedOffsetY = -7,
+        };
+        Assert.True(s.IsBlobPinned);
+        s.ClearBlobPin();
+        Assert.False(s.IsBlobPinned);
+        Assert.Null(s.ClipboardBlobPinnedOffsetX);
+        Assert.Null(s.ClipboardBlobPinnedOffsetY);
+    }
+
+    [Fact]
+    public void IsBlobPinned_OnlyTrueWhenBothAxesSet()
+    {
+        var s = new AppSettings { ClipboardBlobPinnedOffsetX = 5 };
+        Assert.False(s.IsBlobPinned); // missing Y
+        s.ClipboardBlobPinnedOffsetY = 0;
+        Assert.True(s.IsBlobPinned);
+    }
+
+    [Fact]
+    public void CopyTo_PropagatesPinAndPrivacyPause()
+    {
+        var src = new AppSettings
+        {
+            ClipboardPrivacyPauseUntilUtc = new DateTime(2026, 10, 1, 9, 30, 0, DateTimeKind.Utc),
+            ClipboardBlobPinnedOffsetX = 9,
+            ClipboardBlobPinnedOffsetY = -3,
+        };
+        var dst = new AppSettings();
+        src.CopyTo(dst);
+        Assert.Equal(src.ClipboardPrivacyPauseUntilUtc, dst.ClipboardPrivacyPauseUntilUtc);
+        Assert.Equal(9, dst.ClipboardBlobPinnedOffsetX);
+        Assert.Equal(-3, dst.ClipboardBlobPinnedOffsetY);
+    }
+
+    [Fact]
+    public void Json_RoundTrip_PreservesPinAndPrivacyPause()
+    {
+        var s = new AppSettings
+        {
+            ClipboardPrivacyPauseUntilUtc = new DateTime(2026, 10, 1, 9, 30, 0, DateTimeKind.Utc),
+            ClipboardBlobPinnedOffsetX = 17,
+            ClipboardBlobPinnedOffsetY = -8,
+        };
+        var json = s.ToJson();
+        var back = AppSettings.FromJson(json);
+        Assert.NotNull(back);
+        Assert.Equal(s.ClipboardPrivacyPauseUntilUtc, back!.ClipboardPrivacyPauseUntilUtc);
+        Assert.Equal(17, back.ClipboardBlobPinnedOffsetX);
+        Assert.Equal(-8, back.ClipboardBlobPinnedOffsetY);
+        Assert.True(back.IsBlobPinned);
+    }
 }
