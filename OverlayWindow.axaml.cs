@@ -192,6 +192,7 @@ public partial class OverlayWindow : Window
         _settings = AppSettings.Load();
         _settings.Normalize();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
+        _machine.CollapsedWidthScale = _settings.IslandWidthScale;
         _weather = new WindowsWeatherSource(_settings.Latitude, _settings.Longitude);
         _clipboardHistory = new ClipboardHistory(Math.Clamp(_settings.ClipboardMaxItems, 1, ClipboardHistory.HardCap));
         try
@@ -1650,6 +1651,7 @@ public partial class OverlayWindow : Window
         ThemePresets.AutodetectCustom(_settings);
         _settings.Save();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
+        _machine.CollapsedWidthScale = _settings.IslandWidthScale;
         _weather = new WindowsWeatherSource(_settings.Latitude, _settings.Longitude);
         if (!_settings.WeatherEnabled && _machine.Snapshot().Kind == OverlayKind.Weather)
             _machine.Dispatch(OverlayCommand.Collapse);
@@ -1976,15 +1978,22 @@ public partial class OverlayWindow : Window
         // pill; it lives in the ball, in the window around it. This is what makes the whole
         // rest of the island (click zones, seconds strip, hit test) work off the capsule again.
         var (w, h) = IslandLayout.SizeFor(snap.Kind, snap.WeatherEnabled, _settings.Orientation,
-            _settings.Edge, batteryChip, _machine.StatsMetricCount, _machine.StatsRowCount);
+            _settings.Edge, batteryChip, _machine.StatsMetricCount, _machine.StatsRowCount,
+            collapsedScale: _settings.IslandWidthScale);
         if (snap.Kind is OverlayKind.Idle or OverlayKind.Collapsed)
         {
             var peek = _hoverPin.IsContentExpanded;
             var showSeconds = _settings.ShowClockSeconds || peek;
+            // These two extras are appended AFTER SizeFor, so they are outside the width scale
+            // applied there. They are parts of the collapsed capsule (the seconds pair and the
+            // peek's extra content), so they scale with it — otherwise widening the island
+            // leaves a fixed-size stub on the right and the clock sits off-centre.
+            var extra = 0.0;
             if (showSeconds)
-                w += DigitalClockGlyphs.SecondsExtraCollapsedW;
+                extra += DigitalClockGlyphs.SecondsExtraCollapsedW;
             if (peek)
-                w += OverlayTokens.IdlePeekExtraW;
+                extra += OverlayTokens.IdlePeekExtraW;
+            w += extra * IslandWidth.ClampScale(_settings.IslandWidthScale);
         }
 
         // 1.14: the clipboard SECTION grows the capsule from the island's OWN length, so the

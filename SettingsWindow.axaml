@@ -408,6 +408,16 @@
               <Slider x:Name="FontSizeSlider" Minimum="10" Maximum="18" Value="12" TickFrequency="1" IsSnapToTickEnabled="True"/>
             </DockPanel>
 
+            <TextBlock Classes="fieldLabel" Text="Ширина островка"/>
+            <DockPanel>
+              <TextBlock x:Name="IslandWidthLabel" DockPanel.Dock="Right" Width="64" Text="170 DIP"
+                         Foreground="#FFFFFF" VerticalAlignment="Center"/>
+              <Slider x:Name="IslandWidthSlider" Minimum="0.75" Maximum="1.6" Value="1"
+                      TickFrequency="0.05" IsSnapToTickEnabled="True"/>
+            </DockPanel>
+            <TextBlock Classes="mutedNote"
+                       Text="Меняет длину свёрнутого островка. Раскрытая капсула, монитор и уведомления не меняются — они меряются по своему содержимому."/>
+
             <TextBlock Classes="fieldLabel" Text="Шрифт"/>
             <ComboBox x:Name="FontFamilyBox" Width="320">
               <ComboBoxItem Tag="System" Content="Системный (Segoe UI / Inter)"/>

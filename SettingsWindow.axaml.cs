@@ -69,6 +69,17 @@ public partial class SettingsWindow : Window
                 UpdatePreview();
             }
         };
+        IslandWidthSlider.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == Slider.ValueProperty)
+            {
+                // The label shows the resolved DIP width rather than the multiplier: a scale is
+                // an implementation detail, "215 DIP" is the thing the user is actually choosing.
+                IslandWidthLabel.Text =
+                    IslandWidth.Describe(IslandWidthSlider.Value, _draft.WeatherEnabled);
+                UpdatePreview();
+            }
+        };
         LowBatterySlider.PropertyChanged += (_, e) =>
         {
             if (e.Property == Slider.ValueProperty)
@@ -200,6 +211,9 @@ public partial class SettingsWindow : Window
         OffsetYBox.Value = _draft.OffsetY;
         OpacitySlider.Value = Math.Round(_draft.Opacity * 100);
         FontSizeSlider.Value = Math.Clamp(_draft.FontSize, 10, 18);
+        IslandWidthSlider.Value = IslandWidth.ClampScale(_draft.IslandWidthScale);
+        IslandWidthLabel.Text =
+            IslandWidth.Describe(IslandWidthSlider.Value, _draft.WeatherEnabled);
         VolumeSlider.Value = Math.Round(_draft.SoundVolume * 100);
         VolNotifySlider.Value = Math.Round(_draft.SoundVolNotify * 100);
         VolExpandSlider.Value = Math.Round(_draft.SoundVolExpand * 100);
@@ -576,6 +590,7 @@ public partial class SettingsWindow : Window
         _draft.OffsetY = (int)(OffsetYBox.Value ?? 0);
         _draft.Opacity = Math.Clamp(OpacitySlider.Value / 100.0, 0.35, 1.0);
         _draft.FontSize = Math.Clamp(FontSizeSlider.Value, 10, 18);
+        _draft.IslandWidthScale = IslandWidth.SnapToStep(IslandWidthSlider.Value);
         _draft.SoundVolume = Math.Clamp(VolumeSlider.Value / 100.0, 0.0, 1.0);
         _draft.SoundVolNotify = Math.Clamp(VolNotifySlider.Value / 100.0, 0.0, 1.0);
         _draft.SoundVolExpand = Math.Clamp(VolExpandSlider.Value / 100.0, 0.0, 1.0);

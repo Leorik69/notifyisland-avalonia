@@ -38,7 +38,8 @@ public static class IslandLayout
         bool batteryChip = false,
         int statsMetricCount = 0,
         int statsRowCount = 0,
-        bool splitClipboard = false)
+        bool splitClipboard = false,
+        double collapsedScale = IslandWidth.DefaultScale)
     {
         // SystemStats is a fixed-width block (1.12.1) whose height follows the resolved row
         // count; no metric-count width inflation, and the only kind exempt from the CollapsedH
@@ -48,7 +49,7 @@ public static class IslandLayout
             return (OverlayTokens.StatsExpandedW, StatsLayout.StatsHeightFor(statsRowCount));
 
         var longAxis = OverlayMachine.WidthFor(kind, weatherEnabled, batteryChip, statsMetricCount,
-                                               splitClipboard);
+                                               splitClipboard, collapsedScale);
         var shortAxis = OverlayTokens.CollapsedH;
         if (IsVertical(orientation, edge))
             return (shortAxis, longAxis);

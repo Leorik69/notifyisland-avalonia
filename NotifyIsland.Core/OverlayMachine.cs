@@ -252,6 +252,19 @@ public sealed class OverlayMachine
     public int StatsMetricCount { get; set; }
 
     /// <summary>
+    /// The user's collapsed-island width multiplier (1.14), mirrored from AppSettings. Clamped
+    /// on set rather than trusted, because the window sizes itself from the snapshot and an
+    /// out-of-range value here would push the capsule off screen.
+    /// </summary>
+    public double CollapsedWidthScale
+    {
+        get => _collapsedWidthScale;
+        set => _collapsedWidthScale = IslandWidth.ClampScale(value);
+    }
+
+    private double _collapsedWidthScale = IslandWidth.DefaultScale;
+
+    /// <summary>
     /// How many rows the System Stats surface shows, from the resolved preset.
     /// 0 means the default 5-row Full panel. Set by the Av layer from AppSettings.
     /// </summary>
@@ -274,7 +287,7 @@ public sealed class OverlayMachine
         Kind = _kind,
         Payload = Clone(_payload),
         Width = WidthFor(_kind, _weatherEnabled, statsMetricCount: StatsMetricCount,
-                         splitClipboard: _isSplitClipboard),
+                         splitClipboard: _isSplitClipboard, collapsedScale: _collapsedWidthScale),
         Height = HeightFor(_kind, StatsRowCount, StatsMarquee),
         NotifyMsLeft = Math.Max(0, _notifyMs),
         UnreadCount = _unreadCount,
@@ -828,7 +841,8 @@ public sealed class OverlayMachine
     /// </summary>
     public static double WidthFor(OverlayKind kind, bool weatherEnabled = false,
                                   bool batteryChip = false, int statsMetricCount = 0,
-                                  bool splitClipboard = false)
+                                  bool splitClipboard = false,
+                                  double collapsedScale = IslandWidth.DefaultScale)
     {
         if (kind == OverlayKind.SystemStats)
             return OverlayTokens.StatsExpandedW;
@@ -849,8 +863,12 @@ public sealed class OverlayMachine
         };
         if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
         {
+            // 1.14: the user's width customisation applies to the COLLAPSED island only. The
+            // battery chip's extra is added BEFORE scaling, so the chip scales together with the
+            // capsule instead of staying a fixed stub hanging off an otherwise wider one.
             if (batteryChip)
                 w += OverlayTokens.CollapsedBatteryExtraW;
+            w *= IslandWidth.ClampScale(collapsedScale);
             // The split half is orthogonal to the kind: it rides on the long axis of whatever
             // is currently shown, and is not clamped into the ExpandedMinW/MaxW range — a
             // split Notification is 380 + ClipboardHalfW, not squeezed back to 460.

@@ -95,4 +95,145 @@ public class IslandWidthTests
         Assert.Equal("240 DIP", IslandWidth.Describe(1.0, weatherEnabled: true));
         Assert.Equal("272 DIP", IslandWidth.Describe(IslandWidth.MaxScale, weatherEnabled: false));
     }
+
+    // --- the scale has to actually reach the geometry, not just exist in Core ---
+
+    [Fact]
+    public void WidthFor_ScalesTheCollapsedIsland()
+    {
+        var plain = OverlayMachine.WidthFor(OverlayKind.Collapsed);
+        var wide = OverlayMachine.WidthFor(OverlayKind.Collapsed,
+            collapsedScale: IslandWidth.MaxScale);
+        Assert.Equal(plain * IslandWidth.MaxScale, wide, 6);
+    }
+
+    [Fact]
+    public void WidthFor_DefaultScaleIsExactlyTheOldBehaviour()
+    {
+        // Every pre-1.14 test in the suite calls WidthFor without the scale; if the default were
+        // anything but 1.0 the whole existing suite would move, which is why this is pinned.
+        Assert.Equal(OverlayTokens.CollapsedW,
+            OverlayMachine.WidthFor(OverlayKind.Idle, collapsedScale: IslandWidth.DefaultScale));
+        Assert.Equal(OverlayTokens.CollapsedBatteryExtraW,
+            OverlayMachine.WidthFor(OverlayKind.Idle, batteryChip: true) - OverlayTokens.CollapsedW, 6);
+    }
+
+    [Fact]
+    public void WidthFor_BatteryChipScalesWithTheCapsule()
+    {
+        // The chip is added before the scale on purpose. Scaling it too is what stops a widened
+        // capsule from carrying a fixed-width stub; the delta must grow with the scale.
+        var narrow = OverlayMachine.WidthFor(OverlayKind.Collapsed,
+            batteryChip: true, collapsedScale: IslandWidth.MinScale)
+            - OverlayMachine.WidthFor(OverlayKind.Collapsed, collapsedScale: IslandWidth.MinScale);
+        var wide = OverlayMachine.WidthFor(OverlayKind.Collapsed,
+            batteryChip: true, collapsedScale: IslandWidth.MaxScale)
+            - OverlayMachine.WidthFor(OverlayKind.Collapsed, collapsedScale: IslandWidth.MaxScale);
+        Assert.Equal(OverlayTokens.CollapsedBatteryExtraW * IslandWidth.MinScale, narrow, 6);
+        Assert.Equal(OverlayTokens.CollapsedBatteryExtraW * IslandWidth.MaxScale, wide, 6);
+    }
+
+    [Fact]
+    public void WidthFor_DoesNotTouchTheNotificationKinds()
+    {
+        // Notifications size themselves from their content; scaling them would decouple the
+        // capsule from the rows inside it.
+        foreach (var kind in new[]
+                 {
+                     OverlayKind.Notification, OverlayKind.Progress, OverlayKind.Media,
+                     OverlayKind.Timer, OverlayKind.Error, OverlayKind.Weather,
+                     OverlayKind.Battery, OverlayKind.Clipboard, OverlayKind.SystemStats
+                 })
+        {
+            Assert.Equal(OverlayMachine.WidthFor(kind),
+                OverlayMachine.WidthFor(kind, collapsedScale: IslandWidth.MaxScale));
+        }
+    }
+
+    [Theory]
+    [InlineData(IslandOrientation.Horizontal, IslandEdge.Top)]
+    [InlineData(IslandOrientation.Vertical, IslandEdge.Left)]
+    public void SizeFor_ScaleLandsOnTheLongAxisOnly(
+        IslandOrientation orientation, IslandEdge edge)
+    {
+        var narrow = IslandLayout.SizeFor(OverlayKind.Collapsed, weatherEnabled: true,
+            orientation, edge, collapsedScale: 1.0);
+        var wide = IslandLayout.SizeFor(OverlayKind.Collapsed, weatherEnabled: true,
+            orientation, edge, collapsedScale: 1.5);
+        var isVertical = IslandLayout.IsVertical(orientation, edge);
+        if (isVertical)
+        {
+            Assert.Equal(OverlayTokens.CollapsedH, wide.Width, 6);   // cross axis fixed
+            Assert.Equal(narrow.Height * 1.5, wide.Height, 6);
+        }
+        else
+        {
+            Assert.Equal(narrow.Width * 1.5, wide.Width, 6);
+            Assert.Equal(OverlayTokens.CollapsedH, wide.Height, 6);  // cross axis fixed
+        }
+    }
+
+    [Fact]
+    public void Machine_SnapshotCarriesTheScale()
+    {
+        var m = new OverlayMachine();
+        m.CollapsedWidthScale = 1.5;
+        // A fresh machine is Idle with the weather chip on, so the base is CollapsedWeatherW.
+        Assert.Equal(OverlayTokens.CollapsedWeatherW * 1.5, m.Snapshot().Width, 6);
+    }
+
+    [Fact]
+    public void Machine_ScaleIsClampedOnAssignment()
+    {
+        // The window sizes itself from the snapshot, so an out-of-range value reaching the
+        // machine would push the capsule off screen. The machine refuses rather than trusting.
+        var m = new OverlayMachine();
+        m.CollapsedWidthScale = 99.0;
+        Assert.Equal(IslandWidth.MaxScale, m.CollapsedWidthScale);
+        m.CollapsedWidthScale = 0.1;
+        Assert.Equal(IslandWidth.MinScale, m.CollapsedWidthScale);
+        // NaN is not a width anyone chose, so it falls back to neutral rather than to a bound.
+        m.CollapsedWidthScale = double.NaN;
+        Assert.Equal(IslandWidth.DefaultScale, m.CollapsedWidthScale);
+    }
+
+    // --- the settings layer, which is where a stale or hand-edited value gets rescued ---
+
+    [Fact]
+    public void Settings_DefaultIsTheNeutralScale()
+    {
+        Assert.Equal(IslandWidth.DefaultScale, new AppSettings().IslandWidthScale);
+    }
+
+    [Fact]
+    public void Settings_NormalizeRescuesMissingAndZeroValues()
+    {
+        // A settings.json from before 1.14 has no islandWidthScale at all, and a hand-edit can
+        // write 0. Both would otherwise clamp to MinScale and silently shrink the island.
+        foreach (var raw in new[] { 0.0, -2.0, double.NaN })
+        {
+            var s = new AppSettings { IslandWidthScale = raw };
+            s.Normalize();
+            Assert.Equal(IslandWidth.DefaultScale, s.IslandWidthScale);
+        }
+    }
+
+    [Fact]
+    public void Settings_NormalizeClampsRealChoices()
+    {
+        var s = new AppSettings { IslandWidthScale = 42.0 };
+        s.Normalize();
+        Assert.Equal(IslandWidth.MaxScale, s.IslandWidthScale);
+    }
+
+    [Fact]
+    public void Settings_CopyToCarriesTheScaleThrough()
+    {
+        // The copy layer is where the 5 s grace got silently truncated to 3 s once; the scale
+        // must survive it unchanged or the save would be a lie.
+        var s = new AppSettings { IslandWidthScale = 1.35 };
+        var t = new AppSettings();
+        s.CopyTo(t);
+        Assert.Equal(1.35, t.IslandWidthScale, 6);
+    }
 }

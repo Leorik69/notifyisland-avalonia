@@ -130,6 +130,13 @@ public sealed class AppSettings
     /// </summary>
     public const int LegacyHoverCollapseGraceMs = 500;
 
+    /// <summary>
+    /// User control over the collapsed island's long axis (1.14), as a multiplier of the token
+    /// width rather than an absolute DIP count — see <see cref="IslandWidth"/> for why, and for
+    /// the argument behind MinScale/MaxScale. 1.0 = exactly the token widths.
+    /// </summary>
+    public double IslandWidthScale { get; set; } = IslandWidth.DefaultScale;
+
     /// <summary>Single click toggles pinned expanded Idle. Default ON.</summary>
     public bool ClickPinEnabled { get; set; } = true;
 
@@ -412,6 +419,7 @@ public sealed class AppSettings
         // the only thing deciding the grace the user actually got — and it decided 3 s. The
         // ceiling now matches HoverPinMachine.Configure.
         target.HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 10000);
+        target.IslandWidthScale = IslandWidth.ClampScale(IslandWidthScale);
         target.ClickPinEnabled = ClickPinEnabled;
         target.HideOnFullscreen = HideOnFullscreen;
         target.ClickThroughOnFullscreen = ClickThroughOnFullscreen;
@@ -509,6 +517,13 @@ public sealed class AppSettings
         if (HoverCollapseGraceMs == LegacyHoverCollapseGraceMs
             && OverlayTokens.HoverCollapseGraceMs != LegacyHoverCollapseGraceMs)
             HoverCollapseGraceMs = OverlayTokens.HoverCollapseGraceMs;
+        // A settings.json written before 1.14 has no islandWidthScale key at all, and a few
+        // intermediate builds could persist 0. Neither is a choice — a scale of 0 would clamp
+        // to MinScale and silently shrink the island the first time such a file is loaded.
+        if (double.IsNaN(IslandWidthScale) || IslandWidthScale <= 0)
+            IslandWidthScale = IslandWidth.DefaultScale;
+        else
+            IslandWidthScale = IslandWidth.ClampScale(IslandWidthScale);
         SystemStatsRefreshMs = Math.Clamp(SystemStatsRefreshMs,
             OverlayTokens.StatsRefreshMinMs, OverlayTokens.StatsRefreshMaxMs);
 
