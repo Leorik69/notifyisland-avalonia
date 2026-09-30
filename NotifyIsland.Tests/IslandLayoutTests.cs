@@ -64,62 +64,77 @@ public class IslandLayoutTests
     [Fact]
     public void DragHoldMs_Is200() => Assert.Equal(200, IslandLayout.DragHoldMs);
 
-    // -- 1.12.3 goo blob: the window is bigger than the capsule, the capsule must not move --
+    // -- 1.14 clipboard drawer: the window is capsule(+drawer), the capsule must not move --
 
     [Fact]
-    public void BlobWindowFor_Horizontal_KeepsXAndCentresCrossAxis()
+    public void DrawerWindowFor_Horizontal_KeepsXAndTakesTheDrawerOnY()
     {
-        // Capsule 170×30 at (400, 100); the blob window needs 264 of cross axis.
-        var (x, y) = IslandLayout.BlobWindowFor(
-            isVertical: false, homeX: 400, homeY: 100, homeW: 170, homeH: 30, windowW: 352, windowH: 264);
+        // Capsule 170x30 at (400, 100), drawer opening downwards (+1) so it needs no shift.
+        var (x, y) = IslandLayout.DrawerWindowFor(
+            isVertical: false, capsuleX: 400, capsuleY: 100, crossShiftDip: 0, scale: 1);
         Assert.Equal(400, x);
-        Assert.Equal(100 - (264 - 30) / 2, y);
-    }
-
-    [Fact]
-    public void BlobWindowFor_Vertical_KeepsYAndCentresCrossAxis()
-    {
-        var (x, y) = IslandLayout.BlobWindowFor(
-            isVertical: true, homeX: 400, homeY: 100, homeW: 30, homeH: 170, windowW: 264, windowH: 352);
-        Assert.Equal(400 - (264 - 30) / 2, x);
         Assert.Equal(100, y);
     }
 
     [Fact]
-    public void BlobWindowFor_LeavesCapsuleAtTheSameScreenSpot()
+    public void DrawerWindowFor_Vertical_KeepsYAndTakesTheDrawerOnX()
     {
-        // The whole point of the function: whatever the window size, the capsule's top-left
-        // on screen is unchanged. Reproduce the offset math PlaceIsland does. The two
-        // orientations use the same capsule, rotated: 170×30 on Top/Bottom, 30×170 on
-        // Left/Right.
-        const int homeX = 400, homeY = 100;
+        var (x, y) = IslandLayout.DrawerWindowFor(
+            isVertical: true, capsuleX: 400, capsuleY: 100, crossShiftDip: 0, scale: 1);
+        Assert.Equal(400, x);
+        Assert.Equal(100, y);
+    }
+
+    [Fact]
+    public void DrawerWindowFor_ShiftsBackByTheDrawerWhenItOpensUpwards()
+    {
+        // A Bottom/Right island grows its drawer UPWARDS/LEFTWARDS, so the drawer occupies the
+        // part of the window nearest the origin and the window must start that much ABOVE the
+        // capsule. Getting this sign wrong is what draws the drawer off-screen.
+        var (x, y) = IslandLayout.DrawerWindowFor(
+            isVertical: false, capsuleX: 400, capsuleY: 100, crossShiftDip: -120, scale: 1);
+        Assert.Equal(400, x);
+        Assert.Equal(-20, y);
+    }
+
+    [Fact]
+    public void DrawerWindowFor_LeavesCapsuleAtTheSameScreenSpot()
+    {
+        // The whole point of the function: whatever the drawer does, the capsule's screen spot is
+        // unchanged. Reproduce the anchor math PlaceIsland uses. The two orientations use the
+        // same capsule rotated: 170x30 on Top/Bottom, 30x170 on Left/Right.
+        // The shifts below are ClipboardDrawer.CrossShiftDipFor's whole range: 0 (drawer grows
+        // away from the capsule) and negative by the drawer's extent (grows the other way).
+        const int capX = 400, capY = 100;
         foreach (var vertical in new[] { false, true })
         {
-            var (homeW, homeH) = vertical ? (30, 170) : (170, 30);
-            var (hw, hh) = vertical ? (homeH, homeW) : (homeW, homeH);
-            // Both window shapes: the plain capsule-sized window (no blob) and the enlarged
-            // one ClipboardBlob asks for.
-            var w0 = ClipboardBlob.WindowFor(vertical, hw, hh);
-            foreach (var (winW, winH) in new[] { ((double)homeW, (double)homeH), w0 })
+            foreach (var shiftDip in new[] { 0.0, -120.0, -384.0 })
             {
-                var (x, y) = IslandLayout.BlobWindowFor(vertical, homeX, homeY, homeW, homeH,
-                    (int)winW, (int)winH);
-                // Capsule anchored Leading on the long axis, Center on the cross axis.
-                var capX = vertical ? x + (winW - homeW) / 2 : x;
-                var capY = vertical ? y : y + (winH - homeH) / 2;
-                Assert.Equal(homeX, Math.Round(capX), 1);
-                Assert.Equal(homeY, Math.Round(capY), 1);
+                var (x, y) = IslandLayout.DrawerWindowFor(vertical, capX, capY, shiftDip, 1);
+                // The capsule is anchored at window offset -shiftDip on the cross axis -- flush
+                // against the edge the drawer is NOT growing from.
+                var capsuleX = vertical ? x - (int)shiftDip : x;
+                var capsuleY = vertical ? y : y - (int)shiftDip;
+                Assert.Equal(capX, capsuleX);
+                Assert.Equal(capY, capsuleY);
             }
         }
     }
 
     [Fact]
-    public void BlobWindowFor_WindowNoLargerThanCapsule_IsIdentity()
+    public void DrawerWindowFor_ScalesTheShiftToPixels()
     {
-        var (x, y) = IslandLayout.BlobWindowFor(false, 10, 20, 170, 30, 170, 30);
+        // At 150% the same 120 DIP shift is 180 px. Measuring in DIP would leave a 60 px seam.
+        var (_, y1) = IslandLayout.DrawerWindowFor(false, 0, 0, -120, scale: 1);
+        var (_, y15) = IslandLayout.DrawerWindowFor(false, 0, 0, -120, scale: 1.5);
+        Assert.Equal(-120, y1);
+        Assert.Equal(-180, y15);
+    }
+
+    [Fact]
+    public void DrawerWindowFor_ZeroShiftIsIdentity()
+    {
+        var (x, y) = IslandLayout.DrawerWindowFor(false, 10, 20, 0, 1);
         Assert.Equal((10, 20), (x, y));
-        // A stale/shrinking measurement must never push the window back over the capsule.
-        var (x2, y2) = IslandLayout.BlobWindowFor(false, 10, 20, 170, 30, 100, 10);
-        Assert.Equal((10, 20), (x2, y2));
     }
 }

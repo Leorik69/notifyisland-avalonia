@@ -15,10 +15,10 @@ public readonly record struct AnimPhase(string Name, double From, double To)
 /// Scenario schedule: the phases of one animation declared as a single ordered list on 0..1.
 ///
 /// Spec: docs/superpowers/specs/2026-09-29--notifyisland-animation-layer.md ("AnimTimeline — расписание
-/// сценария"). The point is structural, not cosmetic: today the copy scenario's island spread and
-/// ball detach are tied together by the hand-synced <c>BlobPeekShare</c> constant, and touching one
-/// silently desyncs the other. Phases that are one list *cannot* desync — that is the invariant the
-/// tests below pin down.
+/// сценария"). The point is structural, not cosmetic: the copy scenario used to have its island
+/// spread and its ball detach tied together by the hand-synced <c>BlobPeekShare</c> constant, and
+/// touching one silently desynced the other (1.14 removed the ball and with it the desync). Phases
+/// that are one list *cannot* desync — that is the invariant the tests below pin down.
 ///
 /// The timeline itself is unitless. Real milliseconds stay the job of the existing
 /// <see cref="AnimationTiming"/>; convert with <see cref="ProgressOf"/> / <see cref="ElapsedMsOf"/>.

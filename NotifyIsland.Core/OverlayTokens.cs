@@ -237,32 +237,23 @@ public static class OverlayTokens
     /// <summary>Peak scale of the split half: 1.0 → 1.06 → 1.0. Same shape as ClickPop.</summary>
     public const double ClipboardHalfPopPeak = 1.06;
 
-    // -- Goo blob (1.12.3) ---------------------------------------------------
-    /// <summary>Diameter of the clipboard blob (DIP).</summary>
-    public const double BlobD = 64.0;
-    /// <summary>Clear length of the bridge between the capsule edge and the ball.</summary>
-    public const double BlobBridgeMin = 18.0;
-    /// <summary>Half-width of the rope where it leaves the capsule (DIP). 1.12.4: 3, not 12 —
-    /// a rope is thin at both ends. The old 12→5 taper read as a stretched cone, not a rope.</summary>
-    public const double BlobBridgeBaseHalf = 3.0;
-    /// <summary>Half-width of the rope where it meets the ball (DIP). Non-zero on purpose: the
-    /// rope must always overlap the ball so it can never read as detached.</summary>
-    public const double BlobBridgeTipHalf = 2.5;
-    /// <summary>How far the blob may be dragged from its home spot, every direction.</summary>
-    public const double BlobDragMaxPx = 100.0;
-    /// <summary>How far the rope droops at its middle when the ball sits at home (DIP).
-    /// The rope hangs under the ball's weight, so its middle sinks along the CROSS axis; the
-    /// droop is 0 at zero length and capped here, which is what keeps the detach from
-    /// snapping the rope sideways when the ball reaches home.</summary>
-    public const double BlobRopeSagMaxPx = 7.0;
-    /// <summary>Extra long-axis length the capsule takes for phase A of the split morph
-    /// (DIP). The capsule grows to the RIGHT (down, on a vertical island) only — its leading
-    /// edge and its screen position never move, so "the island is still" survives.</summary>
-    public const double BlobPeekW = 110.0;
-    /// <summary>Share of the split morph spent on phase A — the capsule growing and revealing
-    /// the clipboard preview. The remaining 1 − this is the detach itself. A token, not a
-    /// literal in the morph, so the code and its comments cannot drift apart.</summary>
-    public const double BlobPeekShare = 0.4;
+    // -- Clipboard section + drawer (1.14) ----------------------------------
+    // Replaces the goo ball and its rope entirely (1.12.3–1.13.1). The clipboard is a section
+    // of the capsule and the history is a drawer that slides out of the capsule's cross edge.
+    // There is deliberately no drag-slack token any more: nothing is draggable, so the window
+    // is exactly as big as what it shows, which is what removes the off-screen class of bug.
+    /// <summary>Extra long-axis length the capsule takes for the clipboard section (DIP). The
+    /// capsule grows to the RIGHT (down, on a vertical island) only — its leading edge and its
+    /// screen position never move, so "the island is still" survives.</summary>
+    public const double ClipboardSectionW        = 110.0;
+    /// <summary>Share of the split morph held before the section's content starts fading in.
+    /// The ink trails the width so the preview is never half-outside the growing rounded cap.</summary>
+    public const double ClipboardSectionFadeDelay = 0.15;
+    /// <summary>How far the drawer sits outside the seam before it starts travelling in (DIP).</summary>
+    public const double ClipboardDrawerTravel    = 10.0;
+    /// <summary>Corner radius of the drawer at its off-seam end (DIP). The seam corners go
+    /// square instead — see ClipboardDrawer.CapsuleRadiiFor.</summary>
+    public const double ClipboardDrawerRadius    = 12.0;
 
     // -- Clipboard history panel (1.12.3, §«Панель истории») ----------------
     /// <summary>Maximum rows the history panel shows. The list is newest-first, so this is
@@ -279,12 +270,8 @@ public static class OverlayTokens
     public const double HistoryPanelPadY      = 8.0;
     /// <summary>Inner padding of the panel on the long axis, left and right (DIP).</summary>
     public const double HistoryPanelPadX      = 10.0;
-    /// <summary>Gap between the panel and the blob's home spot on the long axis (DIP). The hand
-    /// that reached for the ball has to reach the panel, so the two are read as one gesture and
-    /// not as two separate surfaces that happen to be near each other.</summary>
-    public const double HistoryPanelGap       = 12.0;
-    /// <summary>Appear / dismiss duration (ms). Slightly under MorphMs so the panel settles
-    /// before the window it lives in finishes growing — a panel that lands after its own frame
+    /// <summary>Appear / dismiss duration (ms). Slightly under MorphMs so the drawer settles
+    /// before the window it lives in finishes growing — a drawer that lands after its own frame
     /// reads as a repaint.</summary>
     public const int    HistoryPanelMs        = 300;
 

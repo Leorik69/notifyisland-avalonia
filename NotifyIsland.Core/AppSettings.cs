@@ -322,31 +322,14 @@ public sealed class AppSettings
     /// <summary>
     /// When set, the clipboard listener ignores captures until this UTC instant (spec §«Не
     /// реагировать 30 мин»). Null = listening normally. The tray tooltip surfaces the
-    /// remaining time so the user can see why new copies don't reach the ball.
+    /// remaining time so the user can see why new copies don't reach the clipboard section.
+    /// <para>
+    /// 1.14: the pause SURVIVED the ball. Everything around the clipboard's on-screen position
+    /// (the ball pin, its drag offsets) went with the ball, but this is a listener-level switch
+    /// and nothing about it depended on the ball existing.
+    /// </para>
     /// </summary>
     public DateTime? ClipboardPrivacyPauseUntilUtc { get; set; }
-
-    /// <summary>
-    /// Pinned offset of the ball from its home spot, in DIP. Null = unpinned (the ball
-    /// always returns to the home spot on every ApplyBlobRest). Persists across restarts
-    /// because the spec says the drag-to-pin position survives a relaunch. Stored as doubles
-    /// so the clamp/precision rules of the drag stay in ClipboardBlob.
-    /// </summary>
-    public double? ClipboardBlobPinnedOffsetX { get; set; }
-
-    /// <summary>Y half of <see cref="ClipboardBlobPinnedOffsetX"/>. Both null = unpinned.</summary>
-    public double? ClipboardBlobPinnedOffsetY { get; set; }
-
-    /// <summary>True when both pinned offsets are set and within the drag disc.</summary>
-    public bool IsBlobPinned =>
-        ClipboardBlobPinnedOffsetX is { } x && ClipboardBlobPinnedOffsetY is { } y;
-
-    /// <summary>Clear the pin. Safe to call when not pinned.</summary>
-    public void ClearBlobPin()
-    {
-        ClipboardBlobPinnedOffsetX = null;
-        ClipboardBlobPinnedOffsetY = null;
-    }
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -486,8 +469,6 @@ public sealed class AppSettings
         target.SettingsWindowWidth = SettingsWindowWidth;
         target.SettingsWindowHeight = SettingsWindowHeight;
         target.ClipboardPrivacyPauseUntilUtc = ClipboardPrivacyPauseUntilUtc;
-        target.ClipboardBlobPinnedOffsetX = ClipboardBlobPinnedOffsetX;
-        target.ClipboardBlobPinnedOffsetY = ClipboardBlobPinnedOffsetY;
     }
 
     /// <summary>Clamp opacity / volume into valid ranges after deserialize.</summary>

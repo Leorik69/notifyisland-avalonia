@@ -1,4 +1,5 @@
 using Xunit;
+using NotifyIsland;
 
 namespace NotifyIsland.Tests;
 
@@ -100,5 +101,71 @@ public class MorphRestartTests
             morphActive: true,
             toW: IdleW, toH: IdleH, winToW: 512, winToH: IdleWinH,
             newW: IdleW, newH: IdleH, newWinToW: 513, newWinToH: IdleWinH));
+    }
+
+    // -- 1.14: the clipboard DRAWER is a window-only morph of exactly this shape ---------
+    //
+    // Opening the drawer changes the window and nothing else: the capsule does not move, exactly
+    // like the old ball attach above. So the same guard has to cover it, for the same reason --
+    // and it is the reason a double open/close a millisecond apart would read as a stutter.
+    // These tests build the real window targets from ClipboardDrawer rather than literals, so
+    // they fail if the drawer geometry changes out from under the guard.
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DrawerOpen_IsAWindowOnlyMorphTheGuardCovers(bool vertical)
+    {
+        const double capsuleLong = 170, capsuleCross = 30;
+        var (closedW, closedH) = ClipboardDrawer.WindowFor(vertical, capsuleLong, capsuleCross, 0, false);
+        var (openW, openH) = ClipboardDrawer.WindowFor(
+            vertical, capsuleLong, capsuleCross, OverlayTokens.HistoryPanelMaxRows, true);
+
+        // The premise: the drawer really is window-only. If this ever stops holding, the
+        // guard's coverage below would be testing the wrong scenario.
+        var capsuleMoved = vertical
+            ? Math.Abs(openH - closedH) > 0.001
+            : Math.Abs(openW - closedW) > 0.001;
+        Assert.False(capsuleMoved, "the drawer's window growth must not move the capsule's long axis");
+
+        // The duplicate open: same target, a millisecond later, while the first is in flight.
+        Assert.True(MorphRestart.WouldRestartSameTarget(
+            morphActive: true,
+            toW: openW, toH: openH, winToW: openW, winToH: openH,
+            newW: openW, newH: openH, newWinToW: openW, newWinToH: openH));
+
+        // Closing targets the closed window, which is a genuine retarget and is allowed --
+        // otherwise an interrupted open could never reverse.
+        Assert.False(MorphRestart.WouldRestartSameTarget(
+            morphActive: true,
+            toW: openW, toH: openH, winToW: openW, winToH: openH,
+            newW: closedW, newH: closedH, newWinToW: closedW, newWinToH: closedH));
+    }
+
+    [Fact]
+    public void DrawerToggle_OpenThenCloseThenOpen_BlocksOnlyTheRepeats()
+    {
+        // The user's gesture, as ApplySize would see it. Each toggle is a real size change, so
+        // each is allowed; a repeat of the target already in flight is the one that must be
+        // blocked, because that is the stutter.
+        var (closedW, closedH) = ClipboardDrawer.WindowFor(false, 170, 30, 0, false);
+        var (openW, openH) = ClipboardDrawer.WindowFor(
+            false, 170, 30, OverlayTokens.HistoryPanelMaxRows, true);
+
+        // Open: from rest, allowed.
+        Assert.False(MorphRestart.WouldRestartSameTarget(
+            morphActive: false, toW: openW, toH: openH, winToW: openW, winToH: openH,
+            newW: openW, newH: openH, newWinToW: openW, newWinToH: openH));
+
+        // A second ApplySize for the same open, while it is in flight: blocked. This is the
+        // call that used to land a millisecond after the first.
+        Assert.True(MorphRestart.WouldRestartSameTarget(
+            morphActive: true, toW: openW, toH: openH, winToW: openW, winToH: openH,
+            newW: openW, newH: openH, newWinToW: openW, newWinToH: openH));
+
+        // Close mid-open: retarget, allowed.
+        Assert.False(MorphRestart.WouldRestartSameTarget(
+            morphActive: true, toW: openW, toH: openH, winToW: openW, winToH: openH,
+            newW: closedW, newH: closedH, newWinToW: closedW, newWinToH: closedH));
     }
 }

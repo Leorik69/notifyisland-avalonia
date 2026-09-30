@@ -661,24 +661,29 @@
               </StackPanel>
             </Border>
 
-            <!-- 1.13 «Возможности шарика»: scannable catalogue of the new clipboard features,
-                 placed inside the clipboard section so users who came looking for history
-                 tweaks see it next to the existing controls. Russian; one line per feature;
-                 the bold name leads. A separate dedicated tab would dilute the existing IA
-                 (sidebar already lists island / weather / placement / theme / media+power /
-                 look / animation / sound / icons / clipboard / system / about); one more tab
-                 for two sentences of feature copy would not earn its sidebar slot. -->
+            <!-- 1.14 «Секция буфера»: scannable catalogue of the clipboard features, placed
+                 inside the clipboard section so users who came looking for history tweaks see
+                 it next to the existing controls. Russian; one line per feature; the bold name
+                 leads. A separate dedicated tab would dilute the existing IA (sidebar already
+                 lists island / weather / placement / theme / media+power / look / animation /
+                 sound / icons / clipboard / system / about); one more tab for two sentences of
+                 feature copy would not earn its sidebar slot.
+                 The four lines that described the ball itself (count badge, rope pulse,
+                 drag-to-pin, "drop a file on the ball") were REMOVED with it — the remaining
+                 four all still exist, they just live in the section now. -->
             <Border Classes="settingsCard">
               <StackPanel Spacing="6">
-                <TextBlock Classes="sectionTitle" Text="Возможности шарика"/>
+                <TextBlock Classes="sectionTitle" Text="Секция буфера"/>
                 <TextBlock Classes="mutedNote"
-                           Text="Что умеет шарик истории — без отдельного меню, прямо в нём."/>
+                           Text="Что умеет секция буфера в капсуле — без отдельного меню, прямо в ней."/>
                 <TextBlock TextWrapping="Wrap"
-                           Text="• Колесо на шарике — крутит превью прямо в нём, не открывая окно."/>
+                           Text="• Секция в капсуле — при копировании капсула разъезжается вправо, часы остаются на месте."/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Клик по секции — выезжает ящик истории прямо из капсулы."/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="• Колесо на секции — крутит превью прямо в ней, не открывая ящик."/>
                 <TextBlock TextWrapping="Wrap"
                            Text="• Двойной клик — копирует самую свежую запись обратно в буфер обмена."/>
-                <TextBlock TextWrapping="Wrap"
-                           Text="• Бейджик со счётом — показывает, сколько записей в истории."/>
                 <TextBlock TextWrapping="Wrap"
                            Text="• Схлопывание дублей — подряд одинаковые копии показываются одной строкой с «×N»."/>
                 <TextBlock TextWrapping="Wrap"
@@ -686,11 +691,7 @@
                 <TextBlock TextWrapping="Wrap"
                            Text="• Цветные иконки формата — текст, файл и несколько файлов различаются цветом."/>
                 <TextBlock TextWrapping="Wrap"
-                           Text="• Пульс верёвки — короткая волна при каждом новом копировании."/>
-                <TextBlock TextWrapping="Wrap"
-                           Text="• Drag-and-drop файлов на шарик — кинул файл → попал в историю."/>
-                <TextBlock TextWrapping="Wrap"
-                           Text="• Закрепление шарика — drag отпускаешь, шарик остаётся на месте; Ctrl — открепить."/>
+                           Text="• Drag-and-drop файлов на секцию — кинул файл → попал в историю."/>
               </StackPanel>
             </Border>
           </StackPanel>

@@ -12,26 +12,15 @@
         TransparencyBackgroundFallback="#080808"
         Background="Transparent"
         WindowStartupLocation="Manual">
-  <!-- 1.12.3 goo blob (spec: docs/superpowers/specs/2026-09-29 goo-blob.md).
-       The window is now much bigger than the capsule (≈352×264 instead of 170×30): it has to
-       hold the ball plus its whole BlobDragMaxPx disc around it. A transparent window that
-       large would swallow every click on the desktop behind it, so the root container is
-       NOT hit-testable and the two shapes that are — the capsule and the ball — opt back in
-       individually. The bridge deliberately stays out: it is drawn *behind* the ball and
-       belongs to the ball's drag, not to its own hit area.
-       Child order is the paint order: bridge under the capsule and the ball, so the bridge's
-       ends are always hidden inside one of them and can never read as detached. -->
+  <!-- 1.14: буфер — секция самой капсулы (spec: docs/superpowers/specs, 2026-09-30,
+       notifyisland-clipboard-section).
+       Шарик на верёвке, его drag-диск и бейдж счёта удалены: окно теперь ровно того размера,
+       что оно показывает — капсула по длинной оси, капсула+ящик по короткой, — поэтому
+       запаса под перетаскивание больше нет и прозрачное окно не может уехать за край.
+       Root не хит-тестится, и обратно в игру opt-in'ятся только капсула, секция буфера и
+       ящик истории. Порядок детей — это порядок отрисовки. -->
   <Grid x:Name="Root"
         IsHitTestVisible="False">
-    <!-- Bridge geometry is rebuilt in code every frame from the capsule's edge to the ball's
-         centre (see OverlayWindow.UpdateBlobBridge), not declared here: continuity between
-         the two shapes is a property of how it is constructed, not of an animation. -->
-    <Path x:Name="BlobBridge"
-          IsVisible="False"
-          IsHitTestVisible="False"
-          StrokeThickness="1"
-          Fill="#080808"
-          Stroke="#28FFFFFF" />
     <Border x:Name="Pill"
           Width="170" Height="30"
           CornerRadius="15"
@@ -329,27 +318,30 @@
                    Margin="12,0,12,2"
                    IsVisible="False" />
 
-      <!-- 1.12.4 phase A: the clipboard preview inside the capsule, the one the split pill
-           showed in 1.12.2. It lives INSIDE the capsule and is anchored to its growing end, so
-           it is clipped by the capsule (ClipToBounds + the Width OverlayWindow sets from
-           ClipboardBlob.PeekWidthAt) instead of spilling over the rounded corner. Icon and text
-           are the same ClipboardHalfPreview output the ball uses — no second text rule.
-           IsHitTestVisible=False: the capsule is the hit region, the preview is only ink. -->
-      <Border x:Name="BlobPeek"
+      <!-- 1.14: секция буфера — правая часть САМОЙ капсулы. При копировании капсула
+           разъезжается на ClipboardSectionW по длинной оси, часы остаются у ведущего края,
+           а здесь появляется иконка формата и превью содержимого.
+           Живой элемент, а не только чернила: IsHitTestVisible=True и клик по нему открывает
+           ящик истории (OverlayWindow.HandleClipboardSectionClick). ClipToBounds — чтобы текст
+           обрезался скруглённой крышкой капсулы, а не вылезал за неё; ширина и отступы пишутся
+           из кода по ClipboardSection.CapsuleLongAt / OpacityAt. -->
+      <Border x:Name="ClipboardSection"
               IsVisible="False"
-              IsHitTestVisible="False"
+              IsHitTestVisible="True"
               ClipToBounds="True"
-              CornerRadius="15"
               HorizontalAlignment="Right"
               VerticalAlignment="Center"
               Margin="0,0,15,0"
-              Opacity="0">
+              Opacity="0"
+              Background="Transparent"
+              Cursor="Hand"
+              ToolTip.Tip="История буфера">
         <StackPanel Orientation="Horizontal"
                     Spacing="3"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Center">
-          <Viewbox x:Name="BlobPeekIcon" Width="12" Height="12" VerticalAlignment="Center" />
-          <TextBlock x:Name="BlobPeekText"
+          <Viewbox x:Name="ClipboardSectionIcon" Width="12" Height="12" VerticalAlignment="Center" />
+          <TextBlock x:Name="ClipboardSectionText"
                      VerticalAlignment="Center"
                      FontFamily="Segoe UI Variable, Inter, Segoe UI"
                      FontSize="11"
@@ -362,82 +354,14 @@
     </Grid>
   </Border>
 
-    <!-- The goo ball. Sized and positioned from code (OverlayTokens.BlobD, ClipboardBlob):
-         the margin carries the home spot plus the clamped drag offset, the single
-         ScaleTransform carries the ClickPop of the detach. Hit-testable because the user has
-         to grab and click it — that is the ONE piece of the enlarged window that is. The row
-         inside stays on one line with CharacterEllipsis trimming: a ball is round, so text has
-         to be short by construction rather than reflowed.
-
-         1.13 Drag-drop: AllowDrop=true so file drops land here; the handler filters out anything
-         that is not an IStorageItem and pushes the rest through WindowsClipboardWriter.
-         DoubleTapped re-copies the most recent entry. Right-click opens the clipboard context
-         menu. -->
-    <Border x:Name="Blob"
-            Width="64" Height="64"
-            CornerRadius="32"
-            Background="#080808"
-            BorderBrush="#28FFFFFF"
-            BorderThickness="1"
-            IsVisible="False"
-            IsHitTestVisible="True"
-            ClipToBounds="True"
-            HorizontalAlignment="Left"
-            VerticalAlignment="Top"
-            RenderTransformOrigin="50%,50%">
-      <StackPanel Orientation="Horizontal"
-                  Spacing="3"
-                  HorizontalAlignment="Center"
-                  VerticalAlignment="Center">
-        <Viewbox x:Name="BlobIcon" Width="13" Height="13" VerticalAlignment="Center" />
-        <TextBlock x:Name="BlobText"
-                   VerticalAlignment="Center"
-                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                   FontSize="9"
-                   FontWeight="Medium"
-                   Foreground="#C8C8CC"
-                   MaxWidth="26"
-                   TextTrimming="CharacterEllipsis"
-                   Text="буфер" />
-      </StackPanel>
-    </Border>
-
-    <!-- 1.13 ball count badge (spec §«Бейджик со счётом»). Sibling of Blob so it can sit at the
-         top-right corner of the ball without being clipped by Blob's ClipToBounds. Margin is
-         updated in code to track Blob's actual position, the same way Blob.Margin is. Hidden
-         when the history holds ≤ 1 items, mirroring the spec. Same accent + contrast as the
-         UnreadBadge, so the two read as siblings of one design system. -->
-    <Border x:Name="BallCountBadge"
-            MinWidth="16" Height="16"
-            CornerRadius="8"
-            Background="#3D9CF0"
-            Padding="4,0"
-            VerticalAlignment="Top"
-            HorizontalAlignment="Left"
-            IsVisible="False"
-            IsHitTestVisible="False"
-            RenderTransformOrigin="50%,50%">
-      <TextBlock x:Name="BallCountText"
-                 FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                 FontSize="9"
-                 FontWeight="SemiBold"
-                 Foreground="#FFFFFF"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center"
-                 Text="2" />
-    </Border>
-
-    <!-- 1.12.3 clipboard history panel (spec §«Панель истории»): the list a click on the ball
-         unfolds. It is a sibling of the capsule and the ball, NOT a second Window — one window
-         means one transparent surface, and a second topmost no-activate window would have to
-         re-derive the island's position independently and could only ever be a frame late.
-         IsHitTestVisible is False until a click opens it, and the Root's own False (line 25)
-         is the reason a click on the empty desktop around it still reaches the desktop: only
-         the panel itself opts in, exactly like the capsule and the ball do.
-         Painted LAST so it occludes the ball if the user drags the ball under it — see
-         ClipboardHistoryPanel.BallSideExtent. Rows are built at runtime from
-         ClipboardHistoryRows; the text and icons are NOT declared here, they come from the same
-         BuildPayload / ClipboardHalfPreview rules the ball uses. -->
+    <!-- 1.14: ящик истории буфера. Выезжает из кромки капсулы по короткой оси и остаётся к
+         ней примыкающим: та же длинная ось, ноль зазора, а углы на стыке становятся прямыми
+         (ClipboardDrawer.CapsuleRadiiFor / DrawerRadiiFor пишут их из кода). Он НЕ отдельное
+         окно и НЕ привязан верёвкой — это продолжение капсулы, поэтому одного окна хватает,
+         а «ящик» вместо «второй капсулы» читается именно по стыку.
+         IsHitTestVisible=False до клика по секции буфера: закрытый ящик не перехватывает
+         клики по рабочему столу. Отрисован последним, чтобы перекрыть капсулу, если стык
+         разъехался на кадр. -->
     <Border x:Name="HistoryPanel"
             Width="260"
             CornerRadius="12"

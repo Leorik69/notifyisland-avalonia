@@ -100,30 +100,35 @@ public static class IslandLayout
     }
 
     /// <summary>
-    /// 1.12.3 (goo blob, spec docs/superpowers/specs/2026-09-29--notifyisland-goo-blob.md):
-    /// shift a blob-sized window so that the capsule inside it stays exactly where
-    /// <see cref="Place"/> put it. With a blob the window is much larger than the capsule —
-    /// it has to hold the ball and its whole drag disc — but the island's own geometry (edge
-    /// anchor, user offsets, click zones, hit test) is all defined against the capsule, and
-    /// letting the window drag the capsule along with it would move the island on every
-    /// attach. So Place() keeps positioning the capsule and this only re-seats the window:
-    /// <list type="bullet">
-    ///   <item>horizontal (Top/Bottom): the long axis is X, the window grows rightwards, so
-    ///     X is kept verbatim and the cross-axis slack is split evenly above and below;</item>
-    ///   <item>vertical (Left/Right): the same with the axes swapped — the long axis is Y and
-    ///     the window grows downwards, so Y is kept and X is centred on the capsule.</item>
-    /// </list>
-    /// The capsule itself is pinned inside the window by alignment (Leading on the long axis,
-    /// Center on the cross axis), so no other island code has to know the window grew.
-    /// Sizes are pixels; slack can never be negative by construction, but a caller that hands
-    /// in a stale measurement must not move the window backwards, hence the max(0, …).
+    /// Seat the window around a capsule that a clipboard drawer may be attached to (1.14).
+    /// <para>
+    /// The window is the capsule on the long axis and capsule+drawer on the cross axis, so the
+    /// only slack that can ever exist is the drawer's own extent on the cross axis, and
+    /// <paramref name="crossShiftDip"/> is exactly that. The long axis is copied verbatim: the
+    /// window is never wider or taller than the island along it, so the island cannot move when
+    /// the drawer opens.
+    /// </para>
+    /// <para>
+    /// <b>No drag slack is re-introduced here.</b> The 1.12.3 version of this function existed
+    /// only to re-seat a window inflated by <c>BlobDragMaxPx</c> in every direction, and that
+    /// oversized transparent window is the direct cause of the off-screen bugs this workstream
+    /// is fixing. Nothing is draggable any more, so the window is exactly the content it shows
+    /// and clamping the capsule with <see cref="Place"/> is enough to keep it all on screen.
+    /// </para>
+    /// <para>
+    /// <paramref name="crossShiftDip"/> MUST be zero or negative — it is
+    /// <c>ClipboardDrawer.CrossShiftDipFor</c>, which is 0 when the drawer grows away from the
+    /// capsule and negative by the drawer's extent when it grows the other way. The capsule sits
+    /// at window offset <c>-crossShiftDip</c> on the cross axis, so a POSITIVE shift would seat
+    /// the capsule outside the window it is supposed to be inside; that is a caller bug, not a
+    /// case this function tries to absorb.
+    /// </para>
     /// </summary>
-    public static (int X, int Y) BlobWindowFor(
-        bool isVertical, int homeX, int homeY, int homeW, int homeH, int windowW, int windowH)
+    public static (int X, int Y) DrawerWindowFor(
+        bool isVertical, int capsuleX, int capsuleY, double crossShiftDip, double scale)
     {
-        if (isVertical)
-            return (homeX - Math.Max(0, windowW - homeW) / 2, homeY);
-        return (homeX, homeY - Math.Max(0, windowH - homeH) / 2);
+        var shift = (int)Math.Round(crossShiftDip * scale);
+        return isVertical ? (capsuleX + shift, capsuleY) : (capsuleX, capsuleY + shift);
     }
 
     /// <summary>

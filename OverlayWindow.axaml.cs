@@ -87,7 +87,7 @@ public partial class OverlayWindow : Window
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromMilliseconds(OverlayTokens.FullscreenPollMs) };
     private bool _hiddenByFullscreen;
     private bool _clickThroughActive;
-    private bool _pointerOverUi;                                  // aggregate over Pill, Blob, HistoryPanel
+    private bool _pointerOverUi;                                  // aggregate over Pill, ClipboardSection, HistoryPanel
     private int _uiHoverCount;                                    // refcount so an enter/exit pair across two controls cancels cleanly
     private DateTime _lastPillClickUtc = DateTime.MinValue;
     private bool _peekSecondsActive;
@@ -95,56 +95,42 @@ public partial class OverlayWindow : Window
     // 1.12.2: the split half's preview cap lives in ClipboardHalfPreview.TextMaxChars —
     // truncating text is a tested rule now, not a constant hiding in the view.
 
-    // 1.12.3 goo blob. See docs/superpowers/specs/2026-09-29--notifyisland-goo-blob.md.
-    // The ball has exactly ONE transform writer: a uniform scale for the ClickPop of the
-    // detach. Its position is NOT a transform — it is the Margin, recomputed from the home
-    // spot, the drag offset and the morph travel, because a layout-driven position keeps the
-    // bridge's arithmetic and the hit test reading the same number. The bridge has no
-    // transform at all: its outline is rebuilt from the capsule edge to the ball centre on
-    // every frame, so the two shapes cannot come apart.
-    private readonly ScaleTransform _blobScale = new(1, 1);
-    /// <summary>Wall clock for the ball's breathe sine, started when the blob goes idle.</summary>
-    private readonly Stopwatch _blobClock = new();
-    /// <summary>Split state the ball is currently drawn for; the last settled value.</summary>
+    // 1.14: the clipboard SECTION (spec
+    // docs/superpowers/specs/2026-09-30--notifyisland-clipboard-section.md). The ball, its rope,
+    // its drag, its peek, its count badge and its pin are all gone; the clipboard is a
+    // compartment of the capsule now, so none of the per-frame state they needed survives.
+    //
+    // The section's growth rides the ordinary morph: _sectionDir is 0 unless THIS morph is
+    // carrying an attach (+1) or a retract (-1), and the amount the capsule is running out by is
+    // _sectionPeek — kept as a field, exactly like the old peek was, because the window must be
+    // measured WITHOUT it (see PlaceIsland) and the island's click zones must not slide.
     private bool _splitApplied;
-    /// <summary>0 = no blob transition in flight, +1 = detaching out, -1 = retracting.</summary>
-    private int _blobDir;
-    /// <summary>Ball offset from its home spot, already clamped to the BlobDragMaxPx disc.</summary>
-    private double _blobDragAlong, _blobDragCross;
-    private bool _blobDragging;
-    private Point _blobPressOrigin;
-    private double _blobDragStartAlong, _blobDragStartCross;
-    private double _blobOpacity;
-    /// <summary>Cross-axis breathe offset in DIP, written by the 200 ms tick.</summary>
-    private double _blobBreathe;
-    /// <summary>Extra long-axis length the capsule currently shows for phase A (DIP). Kept as
-    /// a field because the window must be measured WITHOUT it: the island's screen position is
-    /// computed from the capsule's own 170 DIP, so a temporarily wider capsule must not push the
-    /// window around (see PlaceIsland and ApplyBlobPeek).</summary>
-    private double _blobPeek;
-    /// <summary>The capsule's own long-axis length, captured when a blob transition starts —
-    /// the base phase A grows from. It is read, never written by the morph, so the peek cannot
+    /// <summary>0 = no section transition in flight, +1 = running out, -1 = retracting.</summary>
+    private int _sectionDir;
+    /// <summary>Extra long-axis length the capsule currently shows for the section (DIP).</summary>
+    private double _sectionPeek;
+    /// <summary>The capsule's own long-axis length captured when a section transition starts —
+    /// the base the section grows FROM. Read, never written by the morph, so the section cannot
     /// feed back into the length the island and the window are sized from.</summary>
-    private double _blobPeekBase;
+    private double _sectionBase;
 
-    // -- 1.12.3 clipboard history panel -------------------------------------------
-    // Opened by a click on the ball, closed by a second ball click, Escape, a click on the
-    // panel's own empty padding, or picking a row. The panel rides the EXISTING 16 ms morph
-    // tick (see ApplyHistoryPanelAnim) — opening it changes the window size, so there is
-    // already a morph running and the panel has a progress value to read for free. A second
+    // -- 1.14 clipboard history drawer ---------------------------------------------
+    // Opened by a click on the clipboard section, closed by a second such click, Escape, a
+    // click on the drawer's own empty padding, or picking a row. The drawer rides the EXISTING
+    // 16 ms morph tick (see ApplyDrawerAnim) — opening it changes the window size, so there is
+    // already a morph running and the drawer has a progress value to read for free. A second
     // timer would be a second source of "when is this animation over".
     private bool _historyOpen;
-    /// <summary>Row hosts currently in the panel, kept so the hover highlight can be moved and a
-    /// close can reset exactly what it showed. Typed as Border (not Control) because the hover
-    /// IS a Background change, and going through Control would need a cast at every call site.
-    /// Avalonia.Controls.Border spelled out: this file also sees System.Windows.Forms.</summary>
+    /// <summary>Row hosts currently in the drawer, kept so the hover highlight can be moved and
+    /// a close can reset exactly what it showed. Typed as Border (not Control) because the
+    /// hover IS a Background change, and going through Control would need a cast at every call
+    /// site. Avalonia.Controls.Border spelled out: this file also sees System.Windows.Forms.</summary>
     private readonly List<Avalonia.Controls.Border> _historyRowControls = new();
-    /// <summary>Row count the panel is currently laid out for — the window's size input.</summary>
+    /// <summary>Row count the drawer is currently laid out for — the window's size input.</summary>
     private int _historyRowCount;
-    /// <summary>Panel's slide offset in DIP, written by the morph tick (negative = travelling in).</summary>
+    /// <summary>Drawer's slide offset in DIP, written by the morph tick.</summary>
     private readonly TranslateTransform _historySlide = new();
-    private readonly ScaleTransform _historyScale = new(1, 1);
-    /// <summary>+1 while the panel is opening, -1 while it is closing, 0 at rest.</summary>
+    /// <summary>+1 while the drawer is opening, -1 while it is closing, 0 at rest.</summary>
     private int _historyDir;
     /// <summary>Row whose background is currently lit by the pointer, -1 for none.</summary>
     private int _historyHover = -1;
@@ -166,21 +152,18 @@ public partial class OverlayWindow : Window
     private NotifyDismissStyle _morphDismiss = NotifyDismissStyle.Collapse;
     private bool _morphUsesNotifyStyle;
 
-    // -- 1.13: clipboard ball features (wheel cycle / context menu / drag-to-pin) ----
+    // 1.13: clipboard preview cycle (wheel over the clipboard section). The wheel changes
+    // WHICH entry the section previews; it never opens the drawer. Kept in Core
+    // (BallPreviewCycle) so the step/resolve rules stay testable without a window.
     /// <summary>
-    /// Index into the newest-first snapshot, the ball preview is showing. <c>0</c> means
+    /// Index into the newest-first snapshot, the section preview is showing. <c>0</c> means
     /// "newest = the entry that just got captured"; non-zero means the user wheeled DOWN and is
     /// browsing older items. Reset to 0 on every new capture (handled in
     /// <see cref="OnClipboardCaptured"/>) so the freshly-copied value always pops up first.
     /// </summary>
     private int _ballPreviewIndex;
-    /// <summary>Wall clock the most recent rope pulse was started at. Null = no pulse in flight.
-    /// The 200 ms tick reads it to drive the stroke-width bump; a second capture within the
-    /// 200 ms window replaces it instead of stacking (see <see cref="OnClipboardCaptured"/>).</summary>
-    private long? _bridgePulseStartedAtMs;
-    /// <summary>True iff <see cref="AppSettings.IsBlobPinned"/> is set. Cached here so the pin
-    /// halo doesn't have to read settings every frame.</summary>
-    private bool _blobIsPinned;
+    /// <summary>Where a press on the clipboard section started, for the click-vs-drag test.</summary>
+    private Point _sectionPressOrigin;
     /// <summary>
     /// The scenario this morph is playing, chosen once in <see cref="StartMorph"/> and read by
     /// every frame. Declared in Core (spec: animation layer, "Морфы капсулы") so the phase list and
@@ -205,9 +188,7 @@ public partial class OverlayWindow : Window
         // so the XAML's <TranslateTransform x:Name="MarqueeShift"/> would compile without a
         // matching code-side field. Wire it onto the TextBlock here instead.
         MarqueeText.RenderTransform = _marqueeShift;
-        // 1.12.3: the ball's only transform is the detach pop — see the field docs.
-        Blob.RenderTransform = _blobScale;
-        ApplyBlobRest(attached: false);
+        ApplySectionRest(attached: false);
         _settings = AppSettings.Load();
         _settings.Normalize();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
@@ -243,8 +224,7 @@ public partial class OverlayWindow : Window
 
         EnableMorphTransitions();
         WirePointerClicks();
-        WireBlobPointer();
-        WireBlobGestures();
+        WireClipboardSection();
         WireHistoryPanel();
         ConfigureHoverPinFromSettings();
         SeedIcons();
@@ -252,8 +232,6 @@ public partial class OverlayWindow : Window
         ApplyPalette();
         ApplyOpacity();
         ApplyIslandVisibility();
-        ApplyPinnedOffsetFromSettings();
-        ApplyBallCountBadge();
         RefreshTrayPauseLabel();
 
         // Prefer WinForms NotifyIcon (visible on Win11 Sandbox); Avalonia TrayIcon as fallback.
@@ -331,14 +309,6 @@ public partial class OverlayWindow : Window
             Paint();
             UpdateSecondsStrip();
             if (before != after || hoverChanged || splitBefore != splitAfter) ApplySize();
-            // 1.12.3 idle breathe of the ball. Reuses this 200 ms tick (the one that already
-            // expires the split) — a 2.4 s sine at 200 ms is 12 samples per period, smooth
-            // enough for a ±0.5 DIP drift, and it adds no timer.
-            ApplyBlobBreathe();
-            // 1.13: rope pulse on new capture. Reads the start timestamp, advances the bump,
-            // and self-clears after 200 ms. The stroke-width bumps from 1 to 1.6 DIP and back.
-            // Reuses the same 200 ms tick — no new timer, per the spec.
-            TickBridgePulse();
             var unread = _machine.UnreadCount;
             if (unread != _lastTrayUnread)
             {
@@ -445,12 +415,12 @@ public partial class OverlayWindow : Window
 
         // The System Stats panel must stay open while the pointer is over ANY of the
         // surfaces the user is likely to read: the capsule (Pill, including the panel
-        // inside it), the blob (which sits OUTSIDE the pill), and the history panel
-        // (also outside). A refcount keeps a fast move from one control to another —
-        // say, pill → ball — from briefly registering as "leave all" and starting the
-        // 5-second grace prematurely.
+        // and the clipboard SECTION inside it), and the history drawer (which sits
+        // OUTSIDE the pill, stacked on the cross axis). A refcount keeps a fast move
+        // from one control to another — say, capsule → drawer — from briefly
+        // registering as "leave all" and starting the 5-second grace prematurely.
         WireUiHover(Pill);
-        WireUiHover(Blob);
+        WireUiHover(ClipboardSection);
         WireUiHover(HistoryPanel);
     }
 
@@ -490,7 +460,6 @@ public partial class OverlayWindow : Window
         Pill.BorderBrush = new SolidColorBrush(Color.Parse(
             _hoverPin.IsPinned ? "#88FFFFFF" : "#55FFFFFF"));
         Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, Math.Min(1.0, _idleFillA + 0.06)));
-        SyncBlobFill();
         IslandSounds.Play(IslandSoundKind.Hover, _settings);
     }
 
@@ -630,8 +599,8 @@ public partial class OverlayWindow : Window
     /// <para>
     /// 1.12.4: the timer and the media surfaces have no animation of their own to migrate — they
     /// enter and leave through the same morph as every other kind, and the sine below is the only
-    /// endless motion in the capsule besides the ball's breathe. So the reduced-motion promise for
-    /// this file is carried by two guards: this pulse and <see cref="ApplyBlobBreathe"/>.
+    /// endless motion left in the capsule (the ball's breathe went with the ball in 1.14). So
+    /// the reduced-motion promise for this file is carried by this one guard.
     /// </para>
     /// </summary>
     private bool TickUnreadPulse()
@@ -658,26 +627,6 @@ public partial class OverlayWindow : Window
     {
         _idleFillA = Math.Clamp(_settings.Opacity, 0.35, 1.0);
         Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, _idleFillA));
-        SyncBlobFill();
-    }
-
-    /// <summary>
-    /// 1.12.3: the ball and its bridge are painted in the capsule's own colours, so they have
-    /// to follow every brush change the capsule makes (palette, opacity slider, hover). The
-    /// bridge in particular is a plain filled Path with no reference to the capsule, so without
-    /// this it would stay the XAML default colour and the "one goo structure" reading would
-    /// break as soon as the user changed the capsule colour.
-    /// </summary>
-    private void SyncBlobFill()
-    {
-        Blob.Background = Pill.Background;
-        Blob.BorderBrush = Pill.BorderBrush;
-        BlobBridge.Fill = Pill.Background;
-        // The neck gets the capsule's outline too. It is the only thing separating the two
-        // shapes on a dark desktop: filled with the capsule colour it was literally the same
-        // value as the wallpaper behind it, so the connection was invisible and the pair read
-        // as two loose circles. The outline is what makes it one goo structure.
-        BlobBridge.Stroke = Pill.BorderBrush;
     }
 
     /// <summary>Apply user palette (capsule / accent / text) live from settings.</summary>
@@ -758,33 +707,37 @@ public partial class OverlayWindow : Window
         var vertical = IslandLayout.IsVertical(_settings.Orientation, _settings.Edge);
         CollapsedRow.Orientation = vertical ? Avalonia.Layout.Orientation.Vertical : Avalonia.Layout.Orientation.Horizontal;
         MinimalWeather.Orientation = vertical ? Avalonia.Layout.Orientation.Vertical : Avalonia.Layout.Orientation.Horizontal;
-        ApplyBlobAnchor(vertical);
+        ApplyDrawerAnchor(vertical);
     }
 
-    // -- 1.12.3 goo blob: anchor, hit test, drag ---------------------------------------
+    // -- 1.14 clipboard section + drawer: anchor, hit test ---------------------------
 
     /// <summary>
-    /// True when the capsule's long axis is its height (Left/Right edges). The ball's home
-    /// spot, its drag disc, the bridge geometry and the window growth all key off this one
-    /// flag: the long axis is X on Top/Bottom and Y on Left/Right.
+    /// True when the capsule's long axis is its height (Left/Right edges). The section's anchor,
+    /// the drawer's slide axis and the window growth all key off this one flag: the long axis is
+    /// X on Top/Bottom and Y on Left/Right.
     /// </summary>
     private bool SplitIsVertical => IslandLayout.IsVertical(_settings.Orientation, _settings.Edge);
 
+    /// <summary>Which way the drawer grows, as seen from the capsule (1 = down / right).</summary>
+    private int DrawerCrossDirection => ClipboardDrawer.CrossDirectionFor(_settings.Edge);
+
     /// <summary>
-    /// Pin the capsule to its corner of the enlarged window: Leading on the long axis (the
-    /// window only ever grows towards the ball) and Center on the cross axis (it grows evenly
-    /// both ways). This is the layout half of "the island does not move" — the other half is
-    /// IslandLayout.BlobWindowFor, which positions the window around the capsule. Together
-    /// they keep the capsule on the same screen pixels for the whole morph, not just at rest.
+    /// Pin the capsule inside the window: Leading on the long axis (the window is never longer
+    /// than the capsule there, so this is just "flush with the near edge") and, on the cross
+    /// axis, against whichever edge the drawer grows FROM. That second half is what keeps the
+    /// island still — the window grows away from the capsule, and the capsule is arranged
+    /// against the far side of it rather than floated in the middle.
     /// </summary>
-    private void ApplyBlobAnchor(bool vertical)
+    private void ApplyDrawerAnchor(bool vertical)
     {
+        var away = DrawerCrossDirection > 0;
         Pill.HorizontalAlignment = vertical
-            ? Avalonia.Layout.HorizontalAlignment.Center
+            ? (away ? Avalonia.Layout.HorizontalAlignment.Left : Avalonia.Layout.HorizontalAlignment.Right)
             : Avalonia.Layout.HorizontalAlignment.Left;
         Pill.VerticalAlignment = vertical
             ? Avalonia.Layout.VerticalAlignment.Top
-            : Avalonia.Layout.VerticalAlignment.Center;
+            : (away ? Avalonia.Layout.VerticalAlignment.Top : Avalonia.Layout.VerticalAlignment.Bottom);
     }
 
     /// <summary>Capsule's current long-axis extent: the height on a vertical edge, else the width.</summary>
@@ -796,32 +749,48 @@ public partial class OverlayWindow : Window
 
     /// <summary>
     /// Extent of the island along the long axis, which is what the ⅓/⅓/⅓ clipboard cycle
-    /// zones are measured against. In 1.12.2 the capsule grew by a half and the zones had to
-    /// stop at the divider; in 1.12.3 the capsule IS the island again (the clipboard moved out
-    /// into the ball, which lives in the window around it), so the island's extent is simply
-    /// the capsule's own length and the zones cannot move when the blob attaches.
+    /// zones and the section hit test are measured against. The capsule IS the island, so this
+    /// is the capsule's own length MINUS the clipboard section — the section sits on the far end
+    /// and must not push the island's own click zones outwards while it is showing.
     /// </summary>
     private double IslandHalfExtent()
     {
-        // IslandLongAxis, not PillLongAxis: during phase A the capsule is temporarily longer,
-        // but the ⅓/⅓/⅓ cycle zones belong to the island's OWN 170 DIP and must not slide
-        // outboard just because the preview is on screen.
         var longAxis = IslandLongAxis();
         return longAxis > 0 ? longAxis : OverlayTokens.CollapsedW;
     }
 
-    /// <summary>Wire the ball's own press/move/release. The bridge is not wired: it belongs to
-    /// the ball's drag, and a hit area that follows the ball would swallow clicks meant for
-    /// the desktop between the two shapes.</summary>
-    private void WireBlobPointer()
+    /// <summary>
+    /// Wire the clipboard SECTION: click opens the drawer, wheel cycles the preview inside the
+    /// section, double-click re-copies the newest entry, and file drops land here. Right-click
+    /// opens the same clipboard block of the context menu the ball used to.
+    /// </summary>
+    private void WireClipboardSection()
     {
-        Blob.PointerPressed += OnBlobPointerPressed;
-        Blob.PointerMoved += OnBlobPointerMoved;
-        Blob.PointerReleased += OnBlobPointerReleased;
-        Blob.PointerCaptureLost += (_, _) => ReleaseBlobHold();
+        ClipboardSection.PointerPressed += OnClipboardSectionPressed;
+        ClipboardSection.PointerReleased += OnClipboardSectionReleased;
+        ClipboardSection.PointerCaptureLost += (_, _) => _machine.SplitHold = false;
+        // Avalonia 11: gestures on a control are added via the routed event directly (not
+        // via Gestures.SetDoubleTapped — that API exists for elements that don't expose the
+        // event, but InputElement.DoubleTapped is the canonical path here).
+        ClipboardSection.AddHandler(PointerWheelChangedEvent, OnClipboardSectionWheel,
+            handledEventsToo: false);
+        ClipboardSection.DoubleTapped += OnClipboardSectionDoubleTapped;
+        // Drag-drop on the section: file paths land in the history as File / MultiFile. The
+        // window has WS_EX_NOACTIVATE, but Avalonia's DragDrop routed events do not depend
+        // on activation — they fire as long as AllowDrop=true and a draggable source is
+        // over us. The spec calls this out explicitly.
+        DragDrop.SetAllowDrop(ClipboardSection, true);
+        ClipboardSection.AddHandler(DragDrop.DragEnterEvent, OnClipboardDropOver);
+        ClipboardSection.AddHandler(DragDrop.DragOverEvent, OnClipboardDropOver);
+        ClipboardSection.AddHandler(DragDrop.DropEvent, OnClipboardDrop);
     }
 
-    private void OnBlobPointerPressed(object? sender, PointerPressedEventArgs e)
+    /// <summary>
+    /// Press on the clipboard section. It is a CHILD of the capsule, so unlike the old ball it
+    /// does have to mark the press handled or the capsule's own click path would also run — and
+    /// the capsule's path is a long-axis hit test that would treat the section as the island.
+    /// </summary>
+    private void OnClipboardSectionPressed(object? sender, PointerPressedEventArgs e)
     {
         var props = e.GetCurrentPoint(this).Properties;
         if (props.IsRightButtonPressed)
@@ -830,114 +799,41 @@ public partial class OverlayWindow : Window
             e.Handled = true;
             return;
         }
-
         if (!props.IsLeftButtonPressed) return;
-
-        _blobPressOrigin = e.GetPosition(this);
-        _blobDragStartAlong = _blobDragAlong;
-        _blobDragStartCross = _blobDragCross;
-        _blobDragging = true;
-        // 1.13.1: holding the ball freezes its 6 s idle lifetime. The countdown used to run
-        // regardless, so a ball picked up and held still fell off the capsule mid-gesture — the
-        // drag kept working but the thing being dragged disappeared under the pointer.
+        // A press on the section freezes the clipboard section's own lifetime, so a user who
+        // opened the drawer and then read it did not lose the section out from under them.
         _machine.SplitHold = true;
-        // Same capture as the capsule: the drag must survive the pointer leaving the ball,
-        // which it always does as soon as it moves by more than the ball's own radius.
-        e.Pointer.Capture(Blob);
+        _sectionPressOrigin = e.GetPosition(this);
+        e.Pointer.Capture(ClipboardSection);
         e.Handled = true;
     }
 
-    private void ReleaseBlobHold()
+    /// <summary>
+    /// Release on the clipboard section. A press past the capsule's own
+    /// <see cref="OverlayTokens.ClickMaxPx"/> threshold is a drag, and the section is not
+    /// draggable any more, so it is simply ignored — the same threshold the capsule uses, so
+    /// "dragged" and "clicked" cannot be confused.
+    /// </summary>
+    private void OnClipboardSectionReleased(object? sender, PointerReleasedEventArgs e)
     {
-        _blobDragging = false;
-        // The machine tops the budget back up on every held tick, so by now the ball has a full
-        // lifetime again and releasing the pointer lets it settle away on its own time.
-        _machine.SplitHold = false;
-    }
-
-    private void OnBlobPointerMoved(object? sender, PointerEventArgs e)
-    {
-        if (!_blobDragging) return;
-        var pos = e.GetPosition(this);
-        // Circular clamp, not per-axis: a per-axis clamp would let a diagonal drag reach
-        // BlobDragMaxPx·√2 ≈ 141 DIP and the ball would be clipped by the window edge,
-        // because the window only reserves BlobDragMaxPx in every direction.
-        (_blobDragAlong, _blobDragCross) = ClipboardBlob.ClampOffset(
-            _blobDragStartAlong + (pos.X - _blobPressOrigin.X),
-            _blobDragStartCross + (pos.Y - _blobPressOrigin.Y),
-            OverlayTokens.BlobDragMaxPx);
-        UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
-        e.Handled = true;
-    }
-
-    private void OnBlobPointerReleased(object? sender, PointerReleasedEventArgs e)
-    {
-        if (!_blobDragging) return;
-        ReleaseBlobHold();
         e.Pointer.Capture(null);
-
+        _machine.SplitHold = false;
         var pos = e.GetPosition(this);
-        var dx = pos.X - _blobPressOrigin.X;
-        var dy = pos.Y - _blobPressOrigin.Y;
-        // The capsule's own click threshold, so "dragged" and "clicked" cannot be confused.
-        var dist = Math.Sqrt(dx * dx + dy * dy);
+        var dx = pos.X - _sectionPressOrigin.X;
+        var dy = pos.Y - _sectionPressOrigin.Y;
         e.Handled = true;
-        if (dist > OverlayTokens.ClickMaxPx)
-        {
-            // Real drag. Spec §«Закрепление шарика»: a release-without-modifier pins the ball at
-            // the release position; Ctrl on release clears the pin (returns to home).
-            ApplyBallPinOnRelease(e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control));
-            return;
-        }
-        // Short tap (no drag): the click path. Single click still opens the panel; double-click
-        // is wired separately via Gestures.DoubleTapped.
-        HandleBlobClick();
-    }
-
-    /// <summary>Clicks only (1.8.1). Swipe L/R/U/D cycle/collapse removed — CycleNext/Prev remain for API/tests.</summary>
-    private void WirePointerClicks()
-    {
-        Pill.PointerPressed += OnPillPointerPressed;
-        Pill.PointerReleased += OnPillPointerReleased;
-        Pill.PointerCaptureLost += (_, _) => ResetPressState();
+        if (Math.Sqrt(dx * dx + dy * dy) > OverlayTokens.ClickMaxPx) return;
+        HandleClipboardSectionClick();
     }
 
     /// <summary>
-    /// Wire the ball's 1.13 gestures: PointerWheel (preview cycle inside the ball, panel does
-    /// NOT open), DragOver/Drop (file drops into history), and DoubleTapped (re-copy the
-    /// newest entry back to the system clipboard). The right-click ContextMenu is the same
-    /// <see cref="OpenContextMenu"/> the capsule uses — see <see cref="OnBlobPointerPressed"/>.
+    /// Wheel over the clipboard section cycles the preview INSIDE it, newest-first. The first
+    /// wheel down jumps to the oldest, each subsequent wheel-down walks one step toward newer,
+    /// wheel-up is the mirror, and it wraps at both ends. Scrolling here does NOT open the
+    /// drawer — it just changes what the section previews.
     /// </summary>
-    private void WireBlobGestures()
+    private void OnClipboardSectionWheel(object? sender, PointerWheelEventArgs e)
     {
-        Blob.AddHandler(PointerWheelChangedEvent, OnBlobPointerWheel, handledEventsToo: false);
-        // Avalonia 11: gestures on a control are added via the routed event directly (not
-        // via Gestures.SetDoubleTapped — that API exists for elements that don't expose the
-        // event, but InputElement.DoubleTapped is the canonical path here).
-        Blob.DoubleTapped += OnBlobDoubleTapped;
-        // Drag-drop on the ball: file paths land in the history as File / MultiFile. The
-        // window has WS_EX_NOACTIVATE, but Avalonia's DragDrop routed events do not depend
-        // on activation — they fire as long as AllowDrop=true and a draggable source is
-        // over us. The spec calls this out explicitly.
-        DragDrop.SetAllowDrop(Blob, true);
-        Blob.AddHandler(DragDrop.DragEnterEvent, OnBlobDragOver);
-        Blob.AddHandler(DragDrop.DragOverEvent, OnBlobDragOver);
-        Blob.AddHandler(DragDrop.DropEvent, OnBlobDrop);
-    }
-
-    /// <summary>
-    /// Wheel on the ball cycles the preview INSIDE the ball, in newest-first. The first wheel
-    /// down jumps to the oldest (spec's literal "first wheel-down replaces with item N-1"),
-    /// each subsequent wheel-down walks one step toward newer, wheel-up is the mirror. Wrap at
-    /// both ends. Critically, scrolling on the ball does NOT open the panel — it just changes
-    /// the in-ball preview. The panel's existing cycle is separate and still wired the same
-    /// way it was before.
-    /// </summary>
-    private void OnBlobPointerWheel(object? sender, PointerWheelEventArgs e)
-    {
-        // Only react when the ball is in its idle/detached state — the spec is about the ball
-        // preview, not the morphing capsule. Mid-morph, swallowing the wheel is the right
-        // thing because the panel-side cycle already exists for that case.
         if (_morphActive) return;
         var snap = _clipboardHistory.SnapshotNewestFirst();
         if (snap.Count == 0) return;
@@ -954,12 +850,11 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// Double-click on the ball: re-copy the most-recent entry back to the system clipboard.
-    /// The "I lost focus, get my copy back" gesture. Single-click still toggles the history
-    /// panel; the two gestures do not collide because <see cref="HandleBlobClick"/> treats
-    /// anything past <see cref="OverlayTokens.ClickMaxPx"/> as a drag.
+    /// Double-click on the clipboard section: re-copy the most-recent entry back to the system
+    /// clipboard. The "I lost focus, get my copy back" gesture. Single-click still toggles the
+    /// drawer.
     /// </summary>
-    private void OnBlobDoubleTapped(object? sender, RoutedEventArgs e)
+    private void OnClipboardSectionDoubleTapped(object? sender, RoutedEventArgs e)
     {
         var entry = _clipboardHistory.Latest;
         if (entry is null) return;
@@ -971,26 +866,25 @@ public partial class OverlayWindow : Window
             _ => false,
         };
         AppLog.Info(ok
-            ? $"Ball double-click re-copied: {entry.Kind}"
-            : $"Ball double-click re-copy FAILED: {entry.Kind}");
+            ? $"Section double-click re-copied: {entry.Kind}"
+            : $"Section double-click re-copy FAILED: {entry.Kind}");
         // Light a sound either way so the gesture has feedback even when the writer is a noop.
         IslandSounds.Play(IslandSoundKind.Hover, _settings);
         e.Handled = true;
     }
 
     /// <summary>Filter: only file drops are accepted; text drops go through the OS listener.</summary>
-    private void OnBlobDragOver(object? sender, Avalonia.Input.DragEventArgs e)
+    private void OnClipboardDropOver(object? sender, Avalonia.Input.DragEventArgs e)
     {
         e.DragEffects = HasAnyStorageItem(e.DataTransfer) ? Avalonia.Input.DragDropEffects.Copy : Avalonia.Input.DragDropEffects.None;
     }
 
     /// <summary>
-    /// File drop onto the ball: write the file paths to the system clipboard via the same
-    /// <see cref="WindowsClipboardWriter"/> the tray submenu and history panel use, then push
-    /// the resulting entry into the history. The OnClipboardCaptured handler picks it up from
-    /// the listener side and fires the rope pulse.
+    /// File drop onto the clipboard section: write the file paths to the system clipboard via
+    /// the same <see cref="WindowsClipboardWriter"/> the tray submenu and drawer use, then push
+    /// the resulting entry into the history.
     /// </summary>
-    private void OnBlobDrop(object? sender, Avalonia.Input.DragEventArgs e)
+    private void OnClipboardDrop(object? sender, Avalonia.Input.DragEventArgs e)
     {
         try
         {
@@ -1014,7 +908,7 @@ public partial class OverlayWindow : Window
             var ok = WindowsClipboardWriter.WriteFiles(paths);
             if (!ok)
             {
-                AppLog.Warn($"Ball drop: WindowsClipboardWriter.WriteFiles failed for {paths.Count} paths");
+                AppLog.Warn($"Section drop: WindowsClipboardWriter.WriteFiles failed for {paths.Count} paths");
                 return;
             }
             // Synthesize the entry the listener would have produced and push it directly. Going
@@ -1028,8 +922,16 @@ public partial class OverlayWindow : Window
         }
         catch (Exception ex)
         {
-            AppLog.Warn("OnBlobDrop failed", ex);
+            AppLog.Warn("OnClipboardDrop failed", ex);
         }
+    }
+
+    /// <summary>Clicks only (1.8.1). Swipe L/R/U/D cycle/collapse removed — CycleNext/Prev remain for API/tests.</summary>
+    private void WirePointerClicks()
+    {
+        Pill.PointerPressed += OnPillPointerPressed;
+        Pill.PointerReleased += OnPillPointerReleased;
+        Pill.PointerCaptureLost += (_, _) => ResetPressState();
     }
 
     private static bool HasAnyStorageItem(Avalonia.Input.IDataTransfer? data)
@@ -1048,20 +950,20 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// Write the in-ball preview from a single ClipboardEntry — used by the wheel cycle and
-    /// the post-capture reset. Reuses the same IconPackService.Create + ClipboardHalfPreview
-    /// rules the auto-update path uses, so a wheeled-back preview looks identical to the
-    /// preview the user sees on a fresh capture.
+    /// Write the clipboard section's preview from a single ClipboardEntry — used by the wheel
+    /// cycle and the post-capture reset. Reuses the same IconPackService.Create +
+    /// ClipboardHalfPreview rules the auto-update path uses, so a wheeled-back preview looks
+    /// identical to the preview the user sees on a fresh capture.
     /// </summary>
     private void ApplyBallPreviewFromEntry(ClipboardEntry entry)
     {
         var payload = ClipboardHistory.BuildPayload(entry, entry.CapturedAt == default ? DateTimeOffset.UtcNow : entry.CapturedAt);
         var tint = new SolidColorBrush(Color.Parse(ClipboardHalfPreview.IconTintHexFor(entry.Kind)));
-        BlobIcon.Child = IconPackService.Create(
+        ClipboardSectionIcon.Child = IconPackService.Create(
             _settings.IconPack, ClipboardHalfPreview.IconKeyFor(entry.Kind),
             CurrentIconCollapsed(), tint);
         var baseText = ClipboardHalfPreview.TextFor(payload);
-        BlobText.Text = baseText + ClipboardHalfPreview.RunSuffix(entry.RunCount);
+        ClipboardSectionText.Text = baseText + ClipboardHalfPreview.RunSuffix(entry.RunCount);
     }
 
     /// <summary>
@@ -1118,10 +1020,10 @@ public partial class OverlayWindow : Window
         if (!props.IsLeftButtonPressed) return;
 
         _pressOrigin = e.GetPosition(this);
-        // 1.12.3: no half to disambiguate any more — the capsule is the island again and the
-        // ball is a separate element with its own handlers, so a press here is always the
-        // island's. The two hit regions cannot overlap: the capsule is anchored to the
-        // window's leading corner and the ball lives beyond its far edge.
+        // 1.14: the clipboard section is a CHILD of the capsule and handles its own press, so
+        // anything reaching this handler is a press on the island's own content. There is no
+        // second hit region outside the capsule any more — the ball and its whole enlarged
+        // window are gone.
         _pressing = true;
         _pressWatch.Restart();
         e.Pointer.Capture(Pill);
@@ -1146,9 +1048,9 @@ public partial class OverlayWindow : Window
         if (dist <= OverlayTokens.ClickMaxPx)
         {
             // Position on the capsule's long axis relative to its leading edge (0) so the
-            // ⅓/⅓/⅓ clipboard-cycle zones keep their collapsed-pill positions. Since 1.12.3
-            // the capsule never grows, so zoneExtent is just the capsule's own length and the
-            // zones cannot slide outboard when the blob attaches.
+            // ⅓/⅓/⅓ clipboard-cycle zones keep their collapsed-pill positions. The zone extent
+            // is the island's OWN length — the clipboard section sits beyond it and is not part
+            // of the cycle, so the zones cannot slide outboard while a copy is showing.
             var zoneExtent = IslandHalfExtent();
             var zonePos = SplitIsVertical ? pos.Y : pos.X;
 
@@ -1192,15 +1094,10 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// 1.12.3: click on the ball. It must NOT fall through to the idle-pill click: the ball is
-    /// a sibling of the capsule, not a child, and the press/release pair is handled and marked
-    /// here, so HandleIdlePillClick is never reached and the island stays open.
-    /// A click toggles the history panel (spec §«Панель истории»).
-    /// </summary>
-    /// <summary>
-    /// The panel's own dismiss affordances: a press on its padding (the empty part) closes it.
-    /// The rows handle their own press and mark it handled, so they never reach this — which is
-    /// how "click a row" and "click the empty part" stay two different actions off one handler.
+    /// 1.14: the drawer's own dismiss affordances: a press on its padding (the empty part)
+    /// closes it. The rows handle their own press and mark it handled, so they never reach
+    /// this — which is how "click a row" and "click the empty part" stay two different actions
+    /// off one handler.
     /// </summary>
     private void WireHistoryPanel()
     {
@@ -1211,10 +1108,20 @@ public partial class OverlayWindow : Window
             CloseHistoryPanel();
             e.Handled = true;
         };
+        // 1.14: leaving the drawer closes it. The section and the drawer are one surface now,
+        // so a pointer that wanders off the pair dismisses rather than leaving a list hanging
+        // in mid-air — the same rule the hover-refcount already applies to the island.
+        HistoryPanel.PointerExited += (_, _) => CloseHistoryPanel();
     }
 
-    private void HandleBlobClick()
+    /// <summary>
+    /// 1.14: click on the clipboard section toggles the history drawer. The section is a child
+    /// of the capsule, so this runs instead of — never in addition to — the island's own click
+    /// path, and the island's pin/unpin does not fire.
+    /// </summary>
+    private void HandleClipboardSectionClick()
     {
+        _machine.SplitHold = false;
         if (_historyOpen)
         {
             CloseHistoryPanel();
@@ -1239,7 +1146,7 @@ public partial class OverlayWindow : Window
         var rows = ClipboardHistoryRows.Build(_clipboardHistory, DateTimeOffset.UtcNow);
         if (rows.Count == 0)
         {
-            AppLog.Info("Blob click: clipboard history is empty — panel not opened");
+            AppLog.Info("Section click: clipboard history is empty — drawer not opened");
             IslandSounds.Play(IslandSoundKind.Hover, _settings);
             return;
         }
@@ -1250,24 +1157,29 @@ public partial class OverlayWindow : Window
         _historyDir = 1;
         // Visible and hit-testable from the first frame, at zero opacity. Making it hit-testable
         // only when the fade finished would mean a click during the 300 ms fade went through to
-        // the ball and TOGGLED THE PANEL SHUT — the fastest possible way to make the panel feel
-        // broken. It is transparent, not absent: a transparent-but-present control takes the
+        // the section and TOGGLED THE DRAWER SHUT — the fastest possible way to make the drawer
+        // feel broken. It is transparent, not absent: a transparent-but-present control takes the
         // click, which is what "open" means.
         HistoryPanel.IsVisible = true;
         HistoryPanel.IsHitTestVisible = true;
         HistoryPanel.Opacity = 0;
-        HistoryPanel.Width = ClipboardHistoryPanel.SizeFor(rows.Count).Width;
-        HistoryPanel.Height = ClipboardHistoryPanel.SizeFor(rows.Count).Height;
+        // The drawer spans the CAPSULE's long axis exactly, so its size is a function of the
+        // current capsule length and the row count — see ClipboardDrawer.SizeFor. That equality
+        // is what makes the seam read as one object instead of two shapes that happen to touch.
+        var (capsuleLong, capsuleCross) = IslandCapsuleSize();
+        var drawer = ClipboardDrawer.SizeFor(rows.Count, capsuleLong);
+        HistoryPanel.Width = drawer.Width;
+        HistoryPanel.Height = drawer.Height;
         IslandSounds.Play(IslandSoundKind.Expand, _settings);
-        // The window has to grow to hold the panel, and ApplySize is what does that — the same
-        // path the blob attach uses, so the panel and the ball share one morph.
+        // The window has to grow to hold the drawer, and ApplySize is what does that — the same
+        // path every size change uses, so the capsule and the drawer share one morph.
         ApplySize();
         PlaceHistoryPanel();
     }
 
     /// <summary>
-    /// Fold the panel away. The rows stay alive until the dismiss finishes, so the panel is one
-    /// continuous surface rather than something rebuilt and re-faded.
+    /// Fold the drawer away. The rows stay alive until the dismiss finishes, so the drawer is
+    /// one continuous surface rather than something rebuilt and re-faded.
     /// </summary>
     private void CloseHistoryPanel()
     {
@@ -1415,7 +1327,6 @@ public partial class OverlayWindow : Window
             // PopLatest path only when the user picked the head; otherwise we look up by
             // value.
             _clipboardHistory.PopLatest();
-            ApplyBallCountBadge();
             if (_historyOpen)
             {
                 var rows = ClipboardHistoryRows.Build(_clipboardHistory, DateTimeOffset.UtcNow);
@@ -1523,29 +1434,35 @@ public partial class OverlayWindow : Window
         public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, out int pvParam, uint fWinIni);
     }
 
-    private void ApplyHistoryPanelAnim(double t)
+    /// <summary>
+    /// Per-frame drawer motion, driven from the existing 16 ms morph tick. No new timer.
+    /// <para>
+    /// The window is already growing/shrinking around the drawer, so its own <c>t</c> IS the
+    /// drawer's progress — the two are the same movement by construction. All of the phase
+    /// maths lives in <see cref="ClipboardDrawer"/> (Core), so "the drawer is at the seam at
+    /// t = 1" and "the drawer leaves from the direction it opens in" are tests, not comments.
+    /// </para>
+    /// </summary>
+    private void ApplyDrawerAnim(double t)
     {
         if (_historyDir == 0) return;
-        var reversed = _historyDir < 0;
-        // One phase, 0→1: the slide and the fade are the same event. Two phases here would be
-        // two numbers to keep in sync for no gain — see AnimTimeline for what a schedule is for.
-        var (_, local) = HistoryPanelTimeline.PhaseAt(reversed ? 1.0 - t : t);
+        var opening = _historyDir > 0;
+        var frame = ClipboardDrawer.FrameAt(t, opening, DrawerCrossDirection);
         var reduced = AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion);
-        var eased = AnimEase.WithReducedMotion(AnimEase.Ease("power2.out", local), reduced);
+        var eased = AnimEase.WithReducedMotion(frame.Opacity, reduced);
 
         HistoryPanel.Opacity = eased;
-        // 10 DIP of travel, from the direction the panel opens in: it comes FROM the ball, so
-        // the gesture that reached for the ball is continued rather than interrupted.
-        var dir = ClipboardHistoryPanel.CrossDirectionFor(_settings.Edge) > 0 ? 1 : -1;
-        _historySlide.Y = SplitIsVertical ? 0 : (1.0 - eased) * -10 * dir;
-        _historySlide.X = SplitIsVertical ? (1.0 - eased) * -10 * dir : 0;
-        HistoryPanel.RenderTransform = new TransformGroup { Children = { _historySlide, _historyScale } };
+        // The travel is on the cross axis, signed towards the seam. On a horizontal island
+        // that is Y, on a vertical one X — the same axis the drawer itself grew along.
+        if (SplitIsVertical) _historySlide.X = -frame.Slide;
+        else _historySlide.Y = -frame.Slide;
+        HistoryPanel.RenderTransform = _historySlide;
     }
 
     /// <summary>
-    /// Panel's resting state, called wherever a morph finishes. Mirrors <see cref="SettleBlob"/>:
-    /// the transition is allowed to end in exactly one place, so no residual opacity or offset
-    /// survives into the next open.
+    /// The drawer's resting state, called wherever a morph finishes. Mirrors
+    /// <see cref="SettleClipboardSection"/>: the transition is allowed to end in exactly one
+    /// place, so no residual opacity or offset survives into the next open.
     /// </summary>
     private void SettleHistoryPanel()
     {
@@ -1567,45 +1484,42 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// One-phase schedule for the panel, declared once so appear and dismiss cannot disagree
-    /// about what "the panel's own progress" means. Spec: the animation layer doc's AnimTimeline.
+    /// One-phase schedule for the drawer, declared once so appear and dismiss cannot disagree
+    /// about what "the drawer's own progress" means. Spec: the animation layer doc's
+    /// AnimTimeline. The drawer is a single movement — it slides out and fades as one event —
+    /// so a schedule with one phase is the honest description, not a simplification.
     /// </summary>
-    private static readonly AnimTimeline HistoryPanelTimeline = new(new[] { ("panel", 0.0, 1.0) });
+    private static readonly AnimTimeline HistoryPanelTimeline = new(new[] { ("drawer", 0.0, 1.0) });
 
     /// <summary>
-    /// Put the panel where <see cref="ClipboardHistoryPanel"/> says it goes, in window
-    /// coordinates. Called from the morph tick and after <see cref="ApplySize"/>, because the
-    /// panel's position is a function of the window size — the same reason
-    /// <see cref="UpdateBlobVisual"/> re-derives the ball every frame.
+    /// Put the drawer where <see cref="ClipboardDrawer"/> says it goes, in window coordinates.
+    /// Called from the morph tick and after <see cref="ApplySize"/>, because the drawer's
+    /// position is a function of the window size.
     /// <para>
-    /// The panel's coordinates are taken from the CAPSULE, and the window origin is added on top.
-    /// The capsule sits at the window's leading edge on the long axis and at
-    /// <see cref="HistoryWindowSeatFor"/>'s cross origin on the short one, so those two offsets
-    /// ARE the window origin — read back rather than re-derived, so the panel cannot drift away
-    /// from the ball by a rounding error.
+    /// The long axis is 0 — the drawer starts at the capsule's leading edge and spans exactly
+    /// the capsule's length, so it is flush along the whole seam. The cross axis is the
+    /// capsule's cross origin plus the drawer's near edge, which is also flush. Nothing here
+    /// has a gap in it; that is the whole point.
     /// </para>
     /// </summary>
     private void PlaceHistoryPanel()
     {
         if (!_historyOpen) return;
         var (capsuleLong, capsuleCross) = IslandCapsuleSize();
-        var (_, panelCross) = ClipboardHistoryPanel.SizeFor(Math.Max(1, _historyRowCount));
-        var capsuleCentre = capsuleCross / 2;
-
-        // Window-space origin of the capsule itself, from the same rule that seats the window.
-        // Identical arithmetic to HistoryWindowSeatFor on purpose: the panel and the window have
-        // to agree on where the capsule is, and two copies of that expression would drift.
         var scale = RenderScaling <= 0 ? 1 : RenderScaling;
-        var crossOrigin = ClipboardHistoryPanel.CrossOriginFor(
-            _settings.Edge, capsuleCentre, panelCross) * scale;
 
-        var along = ClipboardHistoryPanel.PanelAlongStart(capsuleLong);
-        var cross = ClipboardHistoryPanel.PanelCrossStart(_settings.Edge, capsuleCentre);
+        // The window's cross origin sits from the capsule's by the drawer's own extent, on
+        // whichever side the drawer grows into — the same number PlaceIsland seats the window
+        // with, so the two cannot disagree about where the capsule is.
+        var crossShift = ClipboardDrawer.CrossShiftDipFor(_settings.Edge, _historyRowCount) * scale;
+        var drawerCrossStart = ClipboardDrawer.DrawerCrossStart(
+            _settings.Edge, capsuleCross, _historyRowCount) + crossShift;
+
         // Margin is measured from the window's own top-left, so the capsule's position inside
         // the window is added to the capsule-relative geometry.
         HistoryPanel.Margin = SplitIsVertical
-            ? new Thickness(crossOrigin + cross, along, 0, 0)
-            : new Thickness(along, crossOrigin + cross, 0, 0);
+            ? new Thickness(drawerCrossStart, 0, 0, 0)
+            : new Thickness(0, drawerCrossStart, 0, 0);
     }
 
     private void OpenContextMenu()
@@ -1614,11 +1528,15 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// Shared builder for both context surfaces (capsule right-click and ball right-click). The
-    /// ball version adds the clipboard-only items the spec calls out: "История буфера",
-    /// "Очистить историю", "Закрепить шарик на месте", "Не реагировать 30 мин". Both menus share
-    /// the common items (Action Center, weather, settings) because right-clicking either element
-    /// should still let the user get at the global controls.
+    /// Shared builder for both context surfaces (capsule right-click and clipboard-section
+    /// right-click). The section version adds the clipboard-only items: "История буфера",
+    /// "Очистить историю", "Не реагировать 30 мин". Both menus share the common items
+    /// (Action Center, weather, settings) because right-clicking either element should still
+    /// let the user get at the global controls.
+    /// <para>
+    /// 1.14: the "Закрепить шарик" entry is gone. Pinning existed only because the ball could be
+    /// dragged off its home spot, and there is nothing left to pin.
+    /// </para>
     /// </summary>
     private void OpenContextMenu(bool isBallContext)
     {
@@ -1635,45 +1553,19 @@ public partial class OverlayWindow : Window
         var weatherLabel = _settings.WeatherEnabled ? "Погода выкл" : "Погода вкл";
         menu.Items.Add(Menu(weatherLabel, ToggleWeather));
 
-        // 1.13 clipboard-only block — only when the user right-clicks the ball itself. The
-        // capsule's context menu already routes to the panel via "История буфера" when the
-        // ball is on screen; we don't duplicate it here.
+        // 1.13 clipboard-only block — only when the user right-clicks the clipboard section
+        // itself. The capsule's context menu gets just the history shortcut.
         if (isBallContext)
         {
             menu.Items.Add(Menu(_historyOpen ? "Скрыть историю буфера" : "История буфера",
-                () => HandleBlobClick()));
-            // "Очистить историю" — empties the ring buffer; the panel closes if it was open.
+                () => HandleClipboardSectionClick()));
+            // "Очистить историю" — empties the ring buffer; the drawer closes if it was open.
             menu.Items.Add(Menu("Очистить историю", () =>
             {
                 _clipboardHistory.Clear();
                 if (_historyOpen) CloseHistoryPanel();
-                ApplyBallCountBadge();
-                AppLog.Info("Clipboard history cleared from ball context menu");
+                AppLog.Info("История буфера очищена из меню секции");
             }));
-            // "Закрепить шарик на месте" / "Открепить шарик" — toggle the pin. The label flips
-            // so the user can see the current state; Ctrl-release on drag is the other path to
-            // the same outcome (see OnBlobPointerReleased).
-            menu.Items.Add(Menu(_blobIsPinned ? "Открепить шарик" : "Закрепить шарик на месте",
-                () =>
-                {
-                    if (_blobIsPinned)
-                    {
-                        _settings.ClearBlobPin();
-                        _settings.Save();
-                        _blobIsPinned = false;
-                        _blobDragAlong = 0;
-                        _blobDragCross = 0;
-                        UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
-                    }
-                    else
-                    {
-                        _settings.ClipboardBlobPinnedOffsetX = _blobDragAlong;
-                        _settings.ClipboardBlobPinnedOffsetY = _blobDragCross;
-                        _settings.Save();
-                        _blobIsPinned = true;
-                    }
-                    ApplyPinHalo();
-                }));
             // "Не реагировать 30 мин" — toggle the privacy pause. The label shows the current
             // remaining minutes when active so the user knows when it lifts.
             var pauseActive = PrivacyPauseActive();
@@ -1696,10 +1588,10 @@ public partial class OverlayWindow : Window
         }
         else if (_splitApplied)
         {
-            // Capsule right-click still gets the history shortcut (1.12.3) — same path the ball
-            // click uses. Only the ball gets the richer clipboard submenu.
+            // Capsule right-click still gets the history shortcut (1.12.3) — same path the
+            // section click uses. Only the section gets the richer clipboard submenu.
             menu.Items.Add(Menu(_historyOpen ? "Скрыть историю буфера" : "История буфера",
-                () => HandleBlobClick()));
+                () => HandleClipboardSectionClick()));
         }
         menu.Items.Add(Menu("Настроить монитор…", () => OpenSettings("system")));
         menu.Items.Add(new Separator());
@@ -2049,34 +1941,32 @@ public partial class OverlayWindow : Window
     {
         var snap = _machine.Snapshot();
         ApplyOrientationLayout();
-        // 1.12.3: does this call carry a blob attach/retract? Both routes into a changed
-        // IsSplitClipboard — the machine's own expiry in OverlayMachine.Tick and the capture
-        // command — land here, because both callers follow the dispatch with ApplySize. The
-        // capsule size morphs through the normal StartMorph path below; what is recorded here
-        // is the DIRECTION, which drives the ball's own travel and scale per frame in
-        // ApplyBlobMorph. The window size target is derived separately, below.
+        // 1.14: does this call carry a clipboard section attach/retract? Both routes into a
+        // changed IsSplitClipboard — the machine's own expiry in OverlayMachine.Tick and the
+        // capture command — land here, because both callers follow the dispatch with ApplySize.
+        // The capsule size morphs through the normal StartMorph path below; what is recorded
+        // here is the DIRECTION, which drives the section's own growth per frame in
+        // ApplyClipboardSectionMorph.
         if (snap.IsSplitClipboard != _splitApplied)
         {
-            _blobDir = snap.IsSplitClipboard ? 1 : -1;
+            _sectionDir = snap.IsSplitClipboard ? 1 : -1;
             _splitApplied = snap.IsSplitClipboard;
-            _blobClock.Restart();
-            // 1.12.3: the panel cannot outlive the ball. The split has its own 6 s lifetime
-            // (ClipboardHistory.MaxPillMs), so a panel left open across the expiry would keep
-            // asking for the panel-sized window while the ball retracted into the capsule — the
-            // panel would be drawn outside a window that had just shrunk around it, and the
-            // "click the ball to open history" entry point would be gone. Closing here folds the
-            // panel's dismissal into the same morph that pulls the ball back, so there is one
-            // movement rather than two.
+            // 1.14: the drawer cannot outlive the section. The split has its own 6 s lifetime
+            // (ClipboardHistory.MaxPillMs), so a drawer left open across the expiry would keep
+            // asking for the drawer-sized window while the section retracted into the capsule —
+            // and the section that opens it would be gone. Closing here folds the drawer's
+            // dismissal into the same morph that pulls the section back, so there is one movement
+            // rather than two.
             if (!snap.IsSplitClipboard && _historyOpen)
             {
                 _historyOpen = false;
-                // -1 so the panel fades out on THIS morph's t. Left at 0 it would sit at full
+                // -1 so the drawer fades out on THIS morph's t. Left at 0 it would sit at full
                 // opacity until some later morph happened to call SettleHistoryPanel, which may
-                // never come — a panel stuck on screen over a shrinking window.
+                // never come — a drawer stuck on screen over a shrinking window.
                 _historyDir = -1;
             }
             // The capsule's own length is captured further down, once (w, h) are known —
-            // see _blobPeekBase.
+            // see _sectionBase.
         }
         var batteryChip = _settings.ShowBatteryInCollapsed
             && _lastPower is { HasBattery: true }
@@ -2097,15 +1987,16 @@ public partial class OverlayWindow : Window
                 w += OverlayTokens.IdlePeekExtraW;
         }
 
-        // 1.12.4: phase A grows the capsule from the island's OWN length, so the base is
-        // captured on every ApplySize while a blob transition is in flight, not only on the
-        // frame it starts. Without this a re-ApplySize mid-morph (the 200 ms tick does it
-        // whenever the kind changes) would leave the peek growing off a stale base.
-        if (_blobDir != 0) _blobPeekBase = SplitIsVertical ? h : w;
+        // 1.14: the clipboard SECTION grows the capsule from the island's OWN length, so the
+        // base is captured on every ApplySize while a section transition is in flight, not
+        // only on the frame it starts. Without this a re-ApplySize mid-morph (the 200 ms tick
+        // does it whenever the kind changes) would leave the section growing off a stale base.
+        if (_sectionDir != 0) _sectionBase = SplitIsVertical ? h : w;
 
-        // The window is a separate target: with a blob it must be big enough for the ball and
-        // its whole drag disc, and it follows the NEW split state while the capsule target
-        // above does not — that is what makes an attach a window-only morph.
+        // The window is a separate target: with a section (and, once the section is clicked,
+        // a drawer hanging off it) the window has to be big enough to hold the drawer, and it
+        // follows the NEW split state while the capsule target above does not — that is what
+        // makes an attach a window-only morph.
         var (winToW, winToH) = WindowFor(snap.IsSplitClipboard, w, h);
 
         // If width is morphing, measure from the settled base so we don't spuriously morph.
@@ -2118,17 +2009,17 @@ public partial class OverlayWindow : Window
 
         var same = Math.Abs(fromW - w) < 0.5 && Math.Abs(fromH - h) < 0.5
                    && Math.Abs(winFromW - winToW) < 0.5 && Math.Abs(winFromH - winToH) < 0.5;
-        // Inflate is decided on whichever of the two grew: with a blob attach the capsule does
-        // not move at all and only the window does, and that has to count as an inflate.
+        // Inflate is decided on whichever of the two grew: opening the clipboard DRAWER does not
+        // move the capsule at all and only the window does, and that has to count as an inflate.
         var inflate = (w * h) >= (fromW * fromH) || (winToW * winToH) >= (winFromW * winFromH);
         var morphSpeed = AnimationTiming.Effective(
             _settings.AnimationSpeed,
             inflate ? _settings.AnimMorphInflate : _settings.AnimMorphCollapse);
         // Reduced motion takes the same path as "animations off" in the speed setting, and on
         // purpose the same path: the branch below does not merely jump the size, it also
-        // settles the ball and the panel to their defined resting states, which is exactly
+        // settles the section and the drawer to their defined resting states, which is exactly
         // what a user who cannot tolerate motion needs. Shorter durations would leave the
-        // blob mid-travel and the panel mid-fade.
+        // section mid-growth and the drawer mid-slide.
         // 1.12.4: this is the ONLY reduced-motion branch for size changes, and it is deliberately
         // a settle and not a zero-duration run. Everything downstream of it — the hover peek's
         // width change, the monitor's expansion, the appear/dismiss styles — reaches the reduced
@@ -2136,14 +2027,17 @@ public partial class OverlayWindow : Window
         var reduced = AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion);
         if (same || reduced || !AnimationTiming.IsEnabled(morphSpeed) || !IsVisible)
         {
-            // No morph will run, so nothing will ever consume _blobDir or _historyDir. Settle the
-            // ball and the panel to their defined resting states here instead of leaving them
-            // mid-animation.
+            // No morph will run, so nothing will ever consume _sectionDir or _historyDir. Settle
+            // the section and the drawer to their defined resting states here instead of leaving
+            // them mid-animation.
             StopMorph(snapToTarget: false);
             ResetMorphVisuals();
-            SettleBlob();
-            SettleHistoryPanel();
+            // Size FIRST, then settle. The settle writes the section's resting length onto the
+            // pill, and the size write is what puts the pill at the island's own length — so the
+            // other order would leave a capsule 110 DIP shorter than the section it is drawing.
             SetSizeImmediate(w, h);
+            SettleClipboardSection();
+            SettleHistoryPanel();
             return;
         }
 
@@ -2157,8 +2051,14 @@ public partial class OverlayWindow : Window
         // through the tick's own `if (hoverChanged) ApplySize()`. The second call re-entered
         // StartMorph a millisecond later, which re-ran PrepareMorphVisualStart and
         // _morphWatch.Restart() over a morph that had not ticked yet — so the track restarted
-        // from the pre-morph width, the blob's own phase was reseeded, and the result read as a
-        // stutter. The log showed it plainly: every hover morph logged twice, 1 ms apart.
+        // from the pre-morph width, the section's own growth was reseeded, and the result read
+        // as a stutter. The log showed it plainly: every hover morph logged twice, 1 ms apart.
+        //
+        // 1.14: this guard is also what keeps the DRAWER honest. Opening and closing the drawer
+        // changes the window target and nothing else — the capsule size does not move — so
+        // "a morph already flying to this exact target" is precisely the "a second open/close
+        // a millisecond later" case, and it is caught by the same comparison. If this call were
+        // ever reordered above the guard, every drawer toggle would read as a stutter again.
         //
         // Guarding inside StartMorph rather than at the call sites is deliberate: ApplySize has
         // 28 callers and any of them can be the second one. Comparing targets catches the whole
@@ -2174,34 +2074,39 @@ public partial class OverlayWindow : Window
     /// <summary>
     /// Window size for a capsule of <paramref name="w"/>×<paramref name="h"/>.
     /// <para>
-    /// Three states, not two: no blob (the capsule alone), a blob, and a blob with the history
-    /// panel unfolded. The third is not derivable from the second — the panel's window is
-    /// ASYMMETRIC across the short axis, so it is a separate size, not a bigger blob window.
+    /// 1.14: three states, not two — no section (the capsule alone), a section (still the
+    /// capsule alone, because a section is PART of the capsule and needs no window), and a
+    /// section with the drawer unfolded (capsule + drawer stacked on the cross axis). The
+    /// section state being identical to the closed state is the point: the clipboard no longer
+    /// needs any room of its own, which is what removed the drag-slack window.
     /// </para>
     /// </summary>
-    private (double Width, double Height) WindowFor(bool withBlob, double w, double h)
+    private (double Width, double Height) WindowFor(bool withSection, double w, double h)
     {
-        if (!withBlob) return (w, h);
-        return _historyOpen && _historyRowCount > 0
-            ? ClipboardHistoryPanel.WindowFor(SplitIsVertical, w, h, _historyRowCount)
-            : ClipboardBlob.WindowFor(SplitIsVertical, w, h);
+        var (capsuleLong, capsuleCross) = IslandCapsuleSize(w, h);
+        return ClipboardDrawer.WindowFor(SplitIsVertical, capsuleLong, capsuleCross,
+            withSection ? _historyRowCount : 0, withSection && _historyOpen);
     }
+
+    private (double Long, double Cross) IslandCapsuleSize(double w, double h) =>
+        IslandCapsuleSizeFor(w, h);
 
     private void SetSizeImmediate(double w, double h)
     {
-        // The capsule keeps its own size; only the window around it grows. PlaceIsland() then
-        // re-seats the window so the capsule lands on the same screen pixels either way.
+        // The capsule keeps its own size; only the window around it grows when the drawer is
+        // out. PlaceIsland() then re-seats the window so the capsule lands on the same screen
+        // pixels either way.
         Pill.Width = w;
         Pill.Height = h;
-        Pill.CornerRadius = new CornerRadius(Math.Min(w, h) / 2);
-        var (ww, wh) = WindowFor(_splitApplied || _blobDir != 0, w, h);
+        var (ww, wh) = WindowFor(_splitApplied || _sectionDir != 0, w, h);
         Width = ww;
         Height = wh;
-        if (_blobDir == 0) UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
         PlaceIsland();
-        // The panel's position depends on the window size it just took, so it is placed after
-        // the window is written — otherwise it would sit at the previous frame's coordinates for
-        // one frame, which on a window that grew by 250 DIP is a visible flash at the old spot.
+        // The drawer's position and the seam's corner radii both depend on the window size it
+        // just took, so they are written after the window is — otherwise the drawer would sit
+        // at the previous frame's coordinates for one frame, which on a window that grew by
+        // 250 DIP is a visible flash at the old spot.
+        ApplySeamRadii();
         PlaceHistoryPanel();
     }
 
@@ -2372,117 +2277,86 @@ public partial class OverlayWindow : Window
         {
             StopMorph(snapToTarget: false);
             ResetMorphVisuals();
-            // A blob morph that just finished must land on the ball's resting values, not on
-            // the last frame's scale/opacity. Settling also clears the direction so the next
-            // attach starts from the capsule's centre again.
-            SettleBlob();
-            // Same for the panel: opacity, offset and the row cleanup land in exactly one place.
-            SettleHistoryPanel();
+            // A clipboard section morph that just finished must land on the section's resting
+            // values, not on the last frame's width/opacity. Settling also clears the direction
+            // so the next attach starts from the island's own length again.
             SetSizeImmediate(_morphToW, _morphToH);
+            // Same for the drawer: opacity, offset and the row cleanup land in exactly one place.
+            SettleClipboardSection();
+            SettleHistoryPanel();
         }
     }
 
-    // -- 1.12.3 goo blob animation and geometry -----------------------------------------
+    // -- 1.14 clipboard section + drawer animation and geometry -------------------------
 
     /// <summary>
-    /// Per-frame ball motion. <see cref="_blobDir"/> is 0 unless this morph is carrying a blob
-    /// attach (+1) or retract (-1), so an unrelated morph (notify appear, hover peek) leaves
-    /// the ball alone. No new timer: this rides the existing 16 ms morph tick.
-    ///
-    /// <paramref name="travel"/> is 0 = ball at the capsule's own centre, 1 = ball at its home
-    /// spot; the caller derives it from the ClickPop curve so the ball overshoots its home and
-    /// settles back, and the bridge is rebuilt from the capsule edge to wherever the ball
-    /// currently is — that is what makes the pair look welded together at every frame instead
-    /// of only at the ends.
+    /// The per-frame clipboard SECTION motion, driven from the same morph <c>t</c> as the
+    /// capsule and the window so the island growing and the clipboard appearing are one
+    /// movement. Runs before the notify-style branch in <see cref="ApplyMorphAux"/> because a
+    /// clipboard morph is not a notify morph — the section has to animate for both.
+    /// <para>
+    /// This is the whole of the 1.12.4 two-phase morph, collapsed to one phase. There is no
+    /// "run the capsule out, then bring it back and peel a ball out of it" any more: the capsule
+    /// runs out once and STAYS out, because the clipboard section is the resting state while a
+    /// copy is live. All the phase maths is in <see cref="ClipboardSection"/> (Core).
+    /// </para>
     /// </summary>
-    private void ApplyBlobMorph(double t)
+    private void ApplyClipboardSectionMorph(double t)
     {
-        if (_blobDir == 0) return;
-        var entering = _blobDir > 0;
-        // 1.12.4, two phases off ONE token (spec §Анимация). Phase A is the island running out
-        // and showing the clipboard again — the 1.12.2 behaviour the user asked to get back.
-        // Phase B is the capsule returning to 170 while the ball peels out of it. The user's
-        // complaint was that there was "no animation at all": a ball sliding out of a capsule
-        // that never changed reads as a repaint, not a detach, because nothing sets up the
-        // second shape to leave from.
-        var a = ClipboardBlob.PeekPhaseAt(t);
-        var b = ClipboardBlob.DetachPhaseAt(t);
-        ApplyBlobPeek(t);
-
-        // The ball only exists in phase B. During phase A it sits at travel 0, which is INSIDE
-        // the capsule, and the rope has no length — so it is hidden rather than drawn as a dot
-        // under the island. It fades in over the first fifth of phase B, by which point the
-        // capsule has already started pulling back and the ball is visibly emerging from under
-        // it rather than appearing out of nothing.
-        var p = b;
-        // ClickPop peaks above 1; remap its 1..peak range onto 0..1 so the overshoot becomes a
-        // nudge past the home spot on the travel axis instead of a change of size.
-        // 1.12.4: through the dictionary, so the detach pop and the click pop are visibly the
-        // same curve reached by name (see AnimEase's clickPop entry).
-        var pop = AnimEase.Ease("clickPop", p);
-        var eased = (pop - 1.0) / (OverlayTokens.ClipboardHalfPopPeak - 1.0);
-        var travel = entering ? eased : 1.0 - eased;
-        var opacity = entering
-            ? Math.Clamp(p / 0.2, 0.0, 1.0)
-            : 1.0 - Math.Clamp(p, 0.0, 1.0);
-        UpdateBlobVisual(travel, opacity);
-        // A retracting ball must stay visible for the whole morph or the collapse reads as a
-        // snap; SettleBlob hides it once the direction clears.
-        Blob.IsVisible = b > 0;
-        BlobBridge.IsVisible = opacity > 0.01;
-        _blobScale.ScaleX = _blobScale.ScaleY = entering ? pop : 2.0 - pop;
+        if (_sectionDir == 0) return;
+        ApplyClipboardSection(t);
     }
 
     /// <summary>
-    /// Phase A: run the capsule out by <see cref="OverlayTokens.BlobPeekW"/> and fade the
-    /// clipboard preview in, then bring both back over phase B.
-    ///
-    /// The growth goes on the capsule's LEADING end only and the preview is anchored to that
-    /// same end, so the capsule's near edge — the one the eye uses to locate the island — never
-    /// moves. That is what keeps "the island is static" (spec §Окно) true while it is briefly
-    /// longer. The extra length is subtracted back off everywhere the island is MEASURED:
-    /// <see cref="PlaceIsland"/> (else the window would creep sideways) and the click zones
-    /// (else the ⅓/⅓/⅓ split would slide while the preview is up).
+    /// Run the capsule out by <see cref="OverlayTokens.ClipboardSectionW"/> on its TRAILING end
+    /// and fade the clipboard preview in.
+    /// <para>
+    /// The growth goes on the far end only and the section is anchored to that same end, so the
+    /// capsule's near edge — the one the eye uses to locate the island — never moves. That is
+    /// what keeps "the island is static" (spec §Окно) true while the capsule is longer. The
+    /// extra length is subtracted back off everywhere the island is MEASURED:
+    /// <see cref="PlaceIsland"/> and the click zones (else the ⅓/⅓/⅓ split would slide while the
+    /// section is up).
+    /// </para>
     /// </summary>
-    private void ApplyBlobPeek(double t)
+    private void ApplyClipboardSection(double t)
     {
-        var peek = ClipboardBlob.PeekWidthAt(t);
+        var peek = ClipboardSectionTrack.CapsuleLongAt(t, _sectionBase) - _sectionBase;
         var vertical = SplitIsVertical;
-        // The preview is opaque only while there is capsule to show it in; it fades in over
-        // phase A and out over phase B so the text never sits half-outside the rounded cap.
-        var a = AnimEase.Ease("power2.out", ClipboardBlob.PeekPhaseAt(t));
-        var b = AnimEase.Ease("power2.out", ClipboardBlob.DetachPhaseAt(t));
-        BlobPeek.IsVisible = peek > 0.5;
-        BlobPeek.Opacity = a * (1.0 - b);
+        var reduced = AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion);
+        var opacity = AnimEase.WithReducedMotion(ClipboardSectionTrack.OpacityAt(t), reduced);
+
+        ClipboardSection.IsVisible = peek > 0.5;
+        ClipboardSection.Opacity = opacity;
         // Clip the preview by the capsule's current length, on whichever axis is the long one.
-        // The 15 DIP trailing inset is the corner radius, so the text stops before the curve
+        // The trailing inset is the capsule's corner radius, so the text stops before the curve
         // instead of running over it.
         if (vertical)
         {
-            BlobPeek.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
-            BlobPeek.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom;
-            BlobPeek.Margin = new Thickness(0);
-            BlobPeek.Width = double.NaN;
-            BlobPeek.Height = Math.Max(0, peek - 15);
+            ClipboardSection.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
+            ClipboardSection.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom;
+            ClipboardSection.Margin = new Thickness(0);
+            ClipboardSection.Width = double.NaN;
+            ClipboardSection.Height = Math.Max(0, peek);
         }
         else
         {
-            BlobPeek.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
-            BlobPeek.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
-            BlobPeek.Margin = new Thickness(0, 0, 15, 0);
-            BlobPeek.Width = Math.Max(0, peek - 15);
-            BlobPeek.Height = double.NaN;
+            ClipboardSection.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
+            ClipboardSection.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
+            ClipboardSection.Margin = new Thickness(0, 0, ClipboardSectionTrack.CapInsetFor(OverlayTokens.CollapsedH), 0);
+            ClipboardSection.Width = Math.Max(0, peek);
+            ClipboardSection.Height = double.NaN;
         }
 
-        if (Math.Abs(peek - _blobPeek) < 0.01) return;
-        _blobPeek = peek;
+        if (Math.Abs(peek - _sectionPeek) < 0.01) return;
+        _sectionPeek = peek;
 
         // Keep the island's OWN content where it is. CollapsedRow and SecondsStrip are
         // centre-aligned in the capsule, so a capsule 110 DIP longer would slide both 55 DIP
         // along the long axis — the capsule's edge would hold still while its contents crawled
         // out from under it, which is exactly the "the island moves" the spec rules out. A
-        // trailing margin of the peek length takes that room back on the growing side, so the
-        // content keeps centring in the ORIGINAL 170 DIP box for the whole phase.
+        // trailing margin of the section length takes that room back on the growing side, so the
+        // content keeps centring in the ORIGINAL 170 DIP box.
         var hold = new Thickness(vertical ? 0 : 0, 0, vertical ? 0 : peek, vertical ? peek : 0);
         CollapsedRow.Margin = hold;
         SecondsStrip.Margin = vertical
@@ -2490,313 +2364,119 @@ public partial class OverlayWindow : Window
             : new Thickness(10, 0, 10 + peek, 2);
         // Grow the capsule on its long axis FROM the morph's own base, not from the previous
         // frame: OnMorphTick has already written this frame's interpolated capsule length, and
-        // for a blob attach that base is the settled 170. Accumulating onto the live value would
-        // let any unrelated interpolation leak into the peek.
-        // The pill is Left/Top anchored in the window, so the extra length appears on the
+        // for an attach that base is the settled 170. Accumulating onto the live value would
+        // let any unrelated interpolation leak into the section.
+        // The pill is anchored to the window's near edge, so the extra length appears on the
         // trailing side without moving the near edge.
-        if (vertical) Pill.Height = _blobPeekBase + peek;
-        else Pill.Width = _blobPeekBase + peek;
+        if (vertical) Pill.Height = _sectionBase + peek;
+        else Pill.Width = _sectionBase + peek;
     }
 
-    /// <summary>Capsule length WITHOUT the phase-A peek — what the island and its hit zones
-    /// are measured against.</summary>
-    private double IslandLongAxis() => PillLongAxis() - _blobPeek;
+    /// <summary>Capsule length WITHOUT the clipboard section — what the island and its hit
+    /// zones are measured against.</summary>
+    private double IslandLongAxis() => PillLongAxis() - _sectionPeek;
 
     /// <summary>
-    /// The capsule's size as the island knows it: its live size minus the phase-A peek, with
-    /// the window as the fallback when the pill has no size yet. One place, so the placement
-    /// and the click zones cannot disagree about how long the island is.
-    /// </summary>
-    private (double Width, double Height) IslandCapsuleSize()
-    {
-        var w = (SplitIsVertical ? Pill.Width : Pill.Width - _blobPeek);
-        var h = (SplitIsVertical ? Pill.Height - _blobPeek : Pill.Height);
-        if (w <= 0) w = Width;
-        if (h <= 0) h = Height;
-        return (w, h);
-    }
-
-    /// <summary>
-    /// Land the ball on its defined resting state and clear the transition. Attached → ball at
-    /// its home spot, visible, bridge drawn; detached → hidden. This is the only place a blob
-    /// morph is allowed to end, which is what guarantees no residual offset, scale or drag
-    /// survives into the next attach.
-    /// </summary>
-    private void SettleBlob()
-    {
-        if (_blobDir == 0 && _splitApplied) return;
-        ApplyBlobRest(_splitApplied);
-        _blobDir = 0;
-        _blobClock.Restart();
-    }
-
-    /// <summary>Write one well-defined resting frame of the ball and its bridge.</summary>
-    private void ApplyBlobRest(bool attached)
-    {
-        _blobScale.ScaleX = 1;
-        _blobScale.ScaleY = 1;
-        // Phase A is over at rest, by definition: the capsule is exactly its own length and the
-        // preview is gone. Left set, a later ApplySize would find a capsule 110 DIP too long.
-        _blobPeek = 0;
-        BlobPeek.IsVisible = false;
-        BlobPeek.Opacity = 0;
-        // Release the hold the phase-A margin put on the island's own rows — see ApplyBlobPeek.
-        CollapsedRow.Margin = new Thickness(0);
-        SecondsStrip.Margin = new Thickness(10, 0, 10, 2);
-        // The home spot is the resting definition, so a drag offset never outlives the blob —
-        // a re-attach always brings the ball back to exactly where the geometry says it goes.
-        // 1.13: drag-to-pin exception — when the user has pinned the ball, the resting position
-        // IS the pinned offset, not (0, 0). The pin lives in AppSettings and is reapplied on
-        // every ApplyBlobRest so a re-attach doesn't undo it.
-        if (attached && _blobIsPinned)
-        {
-            (_blobDragAlong, _blobDragCross) = ClipboardBlob.ClampOffset(
-                _settings.ClipboardBlobPinnedOffsetX ?? 0,
-                _settings.ClipboardBlobPinnedOffsetY ?? 0,
-                OverlayTokens.BlobDragMaxPx);
-        }
-        else
-        {
-            _blobDragAlong = 0;
-            _blobDragCross = 0;
-        }
-        _blobOpacity = attached ? 1.0 : 0.0;
-        _blobBreathe = 0;
-        Blob.IsVisible = attached;
-        BlobBridge.IsVisible = attached;
-        if (attached) UpdateBlobVisual(travel: 1.0, opacity: 1.0);
-        else BlobBridge.Data = null;
-    }
-
-    /// <summary>
-    /// Idle breathe, called from the existing 200 ms tick — the same tick that already drives
-    /// the split's own expiry, so no timer is added. ±<see cref="OverlayTokens.ClipboardHalfBreathePx"/>
-    /// DIP across the short axis, on the sine ClipboardSplit already owns. Suppressed while a
-    /// morph runs: the ball is mid-travel then, and a 200 ms step would fight the morph.
-    /// </summary>
-    private void ApplyBlobBreathe()
-    {
-        if (!_splitApplied || _blobDir != 0 || _morphActive) return;
-        // 1.12.4: the second endless loop, and the other half of the reduced-motion promise the
-        // spec states ("бесконечные циклы … выключены"). A loop has no end state to land on, so
-        // reduced motion can only mean not running it; _blobBreathe is left at 0, which is the
-        // ball's defined resting offset.
-        if (AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion)) return;
-        _blobBreathe = ClipboardSplit.CrossBreatheOffset((int)_blobClock.ElapsedMilliseconds);
-        UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
-    }
-
-    /// <summary>
-    /// 1.13 rope pulse (spec §«Пульс верёвки»). One-shot bump from 1.0 to 1.6 DIP and back
-    /// over 200 ms, driven by the existing 200 ms tick (no new timer). The pulse starts on
-    /// <see cref="StartBridgePulse"/>; we read the start timestamp, compute a normalised t in
-    /// [0, 1], and emit the stroke width to the existing
-    /// <see cref="UpdateBlobBridge"/> pipeline via <see cref="ClipBlobBridgeStrokeWidth"/>.
+    /// The capsule's size as the island knows it: its live size minus the clipboard section,
+    /// with the window as the fallback when the pill has no size yet. One place, so the
+    /// placement, the click zones and the drawer's long axis cannot disagree about how long the
+    /// island is.
     /// <para>
-    /// Two captures within 200 ms REPLACE the start (no stacking): a single nullable field
-    /// overwritten by <see cref="StartBridgePulse"/> is exactly the right shape for that. After
-    /// 200 ms the field is null again and the bridge rests at its baseline width of 1 DIP.
+    /// 1.14: the section is subtracted here exactly the way the old phase-A peek was. It is a
+    /// compartment of the capsule, not a separate window that has to be accounted for, so what
+    /// the island is measured against is unchanged by this workstream — only the thing being
+    /// added to the far end of the capsule is different.
     /// </para>
     /// </summary>
-    private void TickBridgePulse()
+    private (double Width, double Height) IslandCapsuleSize() =>
+        IslandCapsuleSizeFor(Pill.Width, Pill.Height);
+
+    /// <summary>
+    /// Long/cross extents of a capsule of the given size, with the clipboard section removed
+    /// from the long axis. The cross axis is never touched — the section does not grow it, and
+    /// the drawer is accounted for separately as window space, not as capsule space.
+    /// </summary>
+    private (double Long, double Cross) IslandCapsuleSizeFor(double pillW, double pillH)
     {
-        if (_bridgePulseStartedAtMs is not { } start) return;
-        var elapsed = Environment.TickCount64 - start;
-        const int pulseMs = 200;
-        if (elapsed >= pulseMs)
-        {
-            _bridgePulseStartedAtMs = null;
-            ClipBlobBridgeStrokeWidth(1.0);
-            return;
-        }
-        // Triangle wave: 0→1.6 DIP at the midpoint (100 ms), back to 1 DIP at 200 ms.
-        // Half-sine gives a softer bump than a triangle but with the same peak; either works,
-        // sine is just what the existing AnimEase vocabulary offers.
-        var t = elapsed / (double)pulseMs;
-        var phase = t < 0.5 ? (t * 2.0) : (1.0 - (t - 0.5) * 2.0);
-        var width = 1.0 + 0.6 * AnimEase.Ease("sine.out", phase);
-        ClipBlobBridgeStrokeWidth(width);
+        var w = SplitIsVertical ? pillW : pillW - _sectionPeek;
+        var h = SplitIsVertical ? pillH - _sectionPeek : pillH;
+        if (w <= 0) w = Width;
+        if (h <= 0) h = Height;
+        return SplitIsVertical ? (h, w) : (w, h);
     }
 
     /// <summary>
-    /// Push a stroke-width override into the bridge pipeline. The geometry is unchanged — only
-    /// the half-width on each rail bumps. Implemented as a tiny field read by
-    /// <see cref="UpdateBlobBridge"/> via <see cref="BridgeStrokeWidthFactor"/> below.
+    /// Land the clipboard section on its defined resting state and clear the transition.
+    /// Attached → the section is fully out and the capsule is ClipboardSectionW longer;
+    /// detached → the section is gone and the capsule is exactly its own length. This is the
+    /// ONLY place a clipboard morph is allowed to end, which is what guarantees no residual
+    /// length or margin survives into the next attach.
     /// </summary>
-    private double _bridgeStrokeWidthDip = 1.0;
-    private void ClipBlobBridgeStrokeWidth(double widthDip)
+    private void SettleClipboardSection()
     {
-        _bridgeStrokeWidthDip = widthDip;
-        UpdateBlobVisual(travel: 1.0, opacity: _blobOpacity);
+        if (_sectionDir == 0 && _splitApplied) return;
+        ApplySectionRest(_splitApplied);
+        _sectionDir = 0;
+    }
+
+    /// <summary>Write one well-defined resting frame of the clipboard section.</summary>
+    private void ApplySectionRest(bool attached)
+    {
+        // At rest the section is either fully out or fully gone, by definition. Left at a
+        // partial length, a later ApplySize would find a capsule that is not any of the sizes
+        // the island actually asks for.
+        _sectionPeek = attached ? ClipboardSectionTrack.Width : 0;
+        ClipboardSection.IsVisible = attached;
+        ClipboardSection.Opacity = attached ? 1 : 0;
+        // The resting capsule carries the section on its long axis. This is written here rather
+        // than left to the morph because the two "no morph will run" callers land here after
+        // SetSizeImmediate has put the pill at the island's OWN length — without this the
+        // section would be laid out right-aligned inside a capsule that has no room for it.
+        if (Pill.Width > 0 || Pill.Height > 0)
+        {
+            if (SplitIsVertical) Pill.Height = _sectionBase + _sectionPeek;
+            else Pill.Width = _sectionBase + _sectionPeek;
+        }
+        // Release the hold the section's margin put on the island's own rows — see
+        // ApplyClipboardSection.
+        CollapsedRow.Margin = new Thickness(0);
+        SecondsStrip.Margin = new Thickness(10, 0, 10, 2);
+        ApplySeamRadii();
     }
 
     /// <summary>
-    /// 1.13 drag-to-pin visual cue (spec §«Закрепление шарика»). A hairline accent ring
-    /// around the ball when pinned; the default 1-DIP 28%-white border when unpinned. The
-    /// ring uses the accent colour so it reads as a deliberate state change rather than a
-    /// hairline cosmetic.
+    /// The seam. While the drawer is out, the capsule's two corners on the seam go square and
+    /// the drawer's two matching corners go square, so the pair reads as one object with a lid
+    /// rather than two capsules that happen to be touching. The maths is in
+    /// <see cref="ClipboardDrawer"/> (Core); this only composes it into the two shapes, and
+    /// only when the drawer is actually open.
     /// </summary>
-    private void ApplyPinHalo()
+    private void ApplySeamRadii()
     {
-        if (_blobIsPinned)
-        {
-            Blob.BorderBrush = new SolidColorBrush(Color.Parse(OverlayTokens.AccentHex));
-            Blob.BorderThickness = new Thickness(1.5);
-        }
-        else
-        {
-            Blob.BorderBrush = new SolidColorBrush(Color.FromArgb(0x28, 0xFF, 0xFF, 0xFF));
-            Blob.BorderThickness = new Thickness(1);
-        }
+        var capsuleRadius = Math.Min(Pill.Width, Pill.Height) / 2;
+        if (Pill.Width <= 0 || Pill.Height <= 0) return;
+        var joined = _historyOpen && _historyRowCount > 0;
+        var dir = DrawerCrossDirection;
+        var c = ClipboardDrawer.CapsuleRadiiFor(capsuleRadius, joined, dir, SplitIsVertical);
+        Pill.CornerRadius = new CornerRadius(c.TopLeft, c.TopRight, c.BottomRight, c.BottomLeft);
+        if (!joined) return;
+        var d = ClipboardDrawer.DrawerRadiiFor(joined, dir, SplitIsVertical);
+        HistoryPanel.CornerRadius = new CornerRadius(d.TopLeft, d.TopRight, d.BottomRight, d.BottomLeft);
     }
 
-    /// <summary>
-    /// Put the ball and the bridge where they belong for a given travel fraction. The single
-    /// place that knows the ball's coordinates, shared by the morph, the drag and the breathe,
-    /// so render and hit test cannot drift apart.
-    ///
-    /// The ball's centre is <see cref="ClipboardBlob.BlobHomeAlong"/> from the capsule's
-    /// trailing edge plus the clamped drag offset; on the cross axis it sits on the capsule's
-    /// centre line (the window grows evenly around that line, so the two agree), which is also
-    /// why the drag clamp is a disc and not a box.
-    /// </summary>
-    private void UpdateBlobVisual(double travel, double opacity)
+    /// <summary>Seam-aware corner radius for the capsule, for the paths that write it directly.</summary>
+    private CornerRadius SeamCapsuleRadii(CornerRadius fallback, double capsuleRadius) =>
+        _historyOpen && _historyRowCount > 0
+            ? ApplySeamCapsuleRadius(capsuleRadius)
+            : new CornerRadius(capsuleRadius);
+
+    private CornerRadius ApplySeamCapsuleRadius(double capsuleRadius)
     {
-        var vertical = SplitIsVertical;
-        // The PEEK-FREE capsule length: the ball's home spot and the rope's start are defined
-        // against the island's own 170 DIP. Measuring them against the temporarily grown
-        // capsule would drag the ball outwards during phase A and leave the rope a frame behind
-        // when the capsule snapped back.
-        var capsuleLong = IslandLongAxis();
-        var capsuleCross = vertical ? Pill.Width : Pill.Height;
-        if (capsuleLong <= 0 || capsuleCross <= 0) return;
-
-        _blobOpacity = opacity;
-        var homeAlong = ClipboardBlob.BlobHomeAlong(capsuleLong);
-        // The cross coordinate is measured from the WINDOW's edge, not the capsule's: the
-        // window grew evenly around the capsule's cross centre (see IslandLayout.BlobWindowFor
-        // and ApplyBlobAnchor), so the capsule's centre line sits at windowCross / 2 and not
-        // at capsuleCross / 2. Measuring from the capsule instead put the ball a full
-        // (windowCross - capsuleCross) / 2 too high — far enough to push it off the top of
-        // the screen, which is exactly what the first live run showed.
-        var windowCross = vertical ? Width : Height;
-        var capsuleCentre = windowCross / 2;
-        var cross = capsuleCentre + _blobDragCross + _blobBreathe;
-        // travel 0 starts the ball at the capsule's own centre, so it grows out of the island
-        // rather than sliding in from the side; travel 1 is the home spot plus the drag.
-        var along = (capsuleLong / 2) * (1.0 - travel) + (homeAlong + _blobDragAlong) * travel;
-
-        var x = vertical ? cross : along;
-        var y = vertical ? along : cross;
-        Blob.Margin = new Thickness(x - OverlayTokens.BlobD / 2, y - OverlayTokens.BlobD / 2, 0, 0);
-        Blob.Opacity = opacity;
-        // 1.13: the count badge tracks the ball's TOP-RIGHT corner: 4 DIP inside, so it sits on
-        // the ball's rim like the UnreadBadge on the capsule does. The badge is visible only
-        // when ApplyBallCountBadge turned it on (>1 history rows). Vertical mirrors across axes.
-        var badgeOffsetX = vertical
-            ? x - OverlayTokens.BlobD / 2 + 4   // cross axis top-left in window coords
-            : x + OverlayTokens.BlobD / 2 - 4 - 18; // 18 = badge approx width
-        var badgeOffsetY = vertical
-            ? y + OverlayTokens.BlobD / 2 - 4 - 18
-            : y - OverlayTokens.BlobD / 2 + 4;
-        BallCountBadge.Margin = new Thickness(badgeOffsetX, badgeOffsetY, 0, 0);
-        // 1.13 drag-to-pin visual cue: a hairline accent ring around the ball when pinned.
-        // The BorderBrush / BorderThickness swap is the cheapest way to make the pin visible;
-        // a separate decorative ellipse would be cleaner but it would need its own hit-test
-        // island and the ball's existing border already lives on the same element.
-        ApplyPinHalo();
-        UpdateBlobBridge(vertical, capsuleLong, capsuleCross, along, cross, opacity);
+        var c = ClipboardDrawer.CapsuleRadiiFor(
+            capsuleRadius, joined: true, DrawerCrossDirection, SplitIsVertical);
+        return new CornerRadius(c.TopLeft, c.TopRight, c.BottomRight, c.BottomLeft);
     }
 
-    /// <summary>
-    /// Rebuild the rope outline between the capsule's leading edge and the ball's centre.
-    ///
-    /// Continuity is structural, not animated: one end sits 2 DIP INSIDE the capsule and the
-    /// other end is the ball's centre, and both are drawn under the capsule and the ball, so
-    /// there is no frame on which either end can be seen. The half-widths come from
-    /// <see cref="ClipboardBlob.BridgeHalfAt"/> (3→2.5 DIP: thin at both ends, since the user
-    /// asked for a rope) and stay positive at both ends, which is what makes the two read as
-    /// one structure rather than a gap with a bar in it. Rebuilt from code, not declared in
-    /// XAML, because the endpoints are the same numbers the ball is placed from.
-    /// </summary>
-    private void UpdateBlobBridge(
-        bool vertical, double capsuleLong, double capsuleCross, double along, double cross, double opacity)
-    {
-        const double inset = 2.0;
-        // Both endpoints are window coordinates: the long axis starts at the capsule's own
-        // leading edge (the window only grows towards the ball), the cross axis is the
-        // window's centre line, where the centred capsule sits. Measuring the cross end
-        // from the capsule height instead would start the neck above the ball and the two
-        // would visibly come apart at the top of the screen.
-        var sx = capsuleLong - inset;
-        var sy = (vertical ? Width : Height) / 2;
-        var dx = along - sx;
-        var dy = cross - sy;
-        var len = Math.Sqrt(dx * dx + dy * dy);
-        if (len < 0.5 || opacity <= 0.01)
-        {
-            // Degenerate: the ball is still inside the capsule, so there is no neck to draw.
-            BlobBridge.Data = null;
-            BlobBridge.IsVisible = false;
-            return;
-        }
-
-        // 1.12.4: a ROPE, not a bar. The centreline sags by BridgeSagAt(t) along the CROSS
-        // axis — downwards on a horizontal island, outwards on a vertical one — and the sag
-        // itself comes from SagPxFor(len), so it is 0 while the ball is still inside the
-        // capsule and maximal by the time the ball reaches home. A rope that snapped from
-        // straight to drooping at the moment of arrival would be the "jerk" the spec forbids.
-        var sagPx = ClipboardBlob.SagPxFor(len);
-        // Cross axis points the same way as the window's cross axis, so adding to it is
-        // "down" on a Top/Bottom island; the geometry is identical on Left/Right.
-        var dySag = sagPx;
-
-        // Sample the sagging centreline and build a strip around it: two rails, each point
-        // offset by its own half-width along the normal of the LOCAL tangent. Using the local
-        // tangent rather than one global perpendicular is what keeps the rope a constant
-        // thickness where it curves — a global perpendicular would visibly thin it at the
-        // bottom of the droop.
-        const int segments = 12;
-
-        // One sample of the rope: the sagging centreline point at t, plus the unit normal of
-        // the local tangent there, offset by the rope's half-width at that t.
-        Point Rail(double tt, double side)
-        {
-            var cx = sx + dx * tt;
-            var cy = sy + dy * tt + dySag * ClipboardBlob.BridgeSagAt(tt, sagPx);
-            // Local tangent by a forward difference, normalised. Using the local tangent rather
-            // than one global perpendicular is what keeps the rope a constant thickness where
-            // it curves; a global perpendicular visibly thins it at the bottom of the droop.
-            var ahead = Math.Min(1.0, tt + 1.0 / segments);
-            var ax = sx + dx * ahead;
-            var ay = sy + dy * ahead + dySag * ClipboardBlob.BridgeSagAt(ahead, sagPx);
-            var tx = ax - cx;
-            var ty = ay - cy;
-            var tl = Math.Sqrt(tx * tx + ty * ty);
-            // 1.13 rope pulse: multiply the baseline half-width by the active stroke factor so
-            // a 200 ms capture pulse bumps the rope from 1 DIP to 1.6 DIP and back. The factor
-            // rests at 1.0 between captures (see TickBridgePulse).
-            var hw = ClipboardBlob.BridgeHalfAt(tt) * _bridgeStrokeWidthDip;
-            if (tl <= 0) return ToWindow(vertical, cx, cy);
-            return ToWindow(vertical, cx - (ty / tl) * hw * side, cy + (tx / tl) * hw * side);
-        }
-
-        var geo = new StreamGeometry();
-        using (var ctx = geo.Open())
-        {
-            ctx.BeginFigure(Rail(0, 1), isFilled: true);
-            for (var i = 1; i <= segments; i++) ctx.LineTo(Rail((double)i / segments, 1));
-            for (var i = segments; i >= 0; i--) ctx.LineTo(Rail((double)i / segments, -1));
-            ctx.EndFigure(isClosed: true);
-        }
-        BlobBridge.Data = geo;
-        BlobBridge.Opacity = opacity;
-        BlobBridge.IsVisible = true;
-    }
-
-    /// <summary>Along/cross coordinates to window X/Y, swapping on a vertical island.</summary>
-    private static Point ToWindow(bool vertical, double along, double cross) =>
-        vertical ? new Point(cross, along) : new Point(along, cross);
 
     /// <summary>
     /// 1.12.4: the per-frame aux channel of one morph. <paramref name="auxT"/> is the size
@@ -2811,14 +2491,21 @@ public partial class OverlayWindow : Window
     /// </summary>
     private void ApplyMorphAux(double auxT, double rawT)
     {
-        // 1.12.3: the ball's own motion, driven from the same morph <c>t</c> as the capsule and
-        // the window so the island growing and the ball leaving it are one movement. Runs before
-        // the notify-style branch because a blob morph is not a notify morph — the ball must
-        // animate for both, and the early return below would otherwise skip it.
-        ApplyBlobMorph(rawT);
-        // 1.12.3 history panel. Same tick, same progress: the window around the panel is already
-        // morphing, so the panel's slide and fade ride that t rather than a timer of their own.
-        if (_historyDir != 0) ApplyHistoryPanelAnim(rawT);
+        // 1.14: the clipboard SECTION's own motion, driven from the same morph <c>t</c> as the
+        // capsule and the window so the island growing and the clipboard appearing are one
+        // movement. Runs before the notify-style branch because a clipboard morph is not a
+        // notify morph — the section has to animate for both, and the early return below would
+        // otherwise skip it.
+        ApplyClipboardSectionMorph(rawT);
+        // 1.14 clipboard history drawer. Same tick, same progress: the window around the drawer
+        // is already morphing, so the drawer's slide and fade ride that t rather than a timer
+        // of their own. The seam's corner radii move with it — they are part of the same
+        // "joined" state, not a separate effect.
+        if (_historyDir != 0)
+        {
+            ApplyDrawerAnim(rawT);
+            ApplySeamRadii();
+        }
         if (!_morphUsesNotifyStyle)
         {
             Pill.Opacity = 1;
@@ -2907,87 +2594,51 @@ public partial class OverlayWindow : Window
         if (screen is null) return;
         var wa = screen.WorkingArea;
         var scale = RenderScaling <= 0 ? 1 : RenderScaling;
-        // 1.12.3: with a blob the WINDOW is much larger than the capsule, but everything the
-        // island is — the edge anchor, the user's offsets, the click zones, the hit region — is
-        // defined against the CAPSULE. So Place() is still given the capsule's pixel size, and
-        // the window is then re-seated around that spot by BlobWindowFor. Doing it the other
-        // way round (placing the window and letting the capsule ride along) is what would make
-        // the island jump sideways every time the ball attached. This runs on every morph
-        // frame, so the capsule holds its screen position during the morph too, not just at
-        // rest.
-        // The PEEK-FREE capsule size, as a (w, h) pair: phase A makes the capsule longer, and
-        // feeding that longer length to IslandLayout.Place would move the window — and with it
-        // the island — 55 DIP for the duration of the preview. The spec's "the island does not
-        // move" has to be measured against the settled length, not the temporary one.
+        // 1.14: the window is the capsule on the long axis and capsule+drawer on the cross
+        // axis — nothing more. Everything the island is — the edge anchor, the user's offsets,
+        // the click zones, the hit region — is defined against the CAPSULE, so Place() is still
+        // given the capsule's pixel size and the window is then re-seated around that spot.
+        // Doing it the other way round (placing the window and letting the capsule ride along)
+        // is what would make the island jump sideways every time the drawer opened. This runs
+        // on every morph frame, so the capsule holds its screen position during the morph too,
+        // not just at rest.
+        // The SECTION-FREE capsule size, as a (w, h) pair: the clipboard section makes the
+        // capsule longer, and feeding that longer length to IslandLayout.Place would move the
+        // window — and with it the island — 55 DIP for the duration of the preview. The spec's
+        // "the island does not move" has to be measured against the settled length, not the
+        // temporary one.
         var (homeW, homeH) = IslandCapsuleSize();
         var homePw = (int)Math.Round(homeW * scale);
         var homePh = (int)Math.Round(homeH * scale);
         var (x, y) = IslandLayout.Place(
             wa.X, wa.Y, wa.Width, wa.Height, homePw, homePh,
             _settings.Edge, _settings.OffsetX, _settings.OffsetY);
-        if (_splitApplied || _blobDir != 0)
+        // 1.14: NO CLAMP, and that is the fix rather than an omission.
+        //
+        // 1.13 had to clamp here, because the window was then inflated by BlobDragMaxPx of
+        // invisible drag room on every side plus a whole detached ball — and because Place
+        // clamps the CAPSULE while that oversized window was re-seated around it, the visible
+        // content could walk past the screen edge. The user reported exactly that: the clipboard
+        // panel and the ball running off-screen, and a clamp that "fixed" it by moving the
+        // island, which the spec forbids.
+        //
+        // With the ball and its drag there is no slack to allow and nothing to clamp: the window
+        // is exactly the capsule, or the capsule plus the drawer it is actually showing, and the
+        // drawer only ever grows TOWARDS the screen interior (see ClipboardDrawer.CrossDirectionFor).
+        // So Place() clamping the capsule already guarantees the whole window is on screen, and
+        // the island keeps its position. Adding a clamp back here would reintroduce exactly the
+        // jump this workstream is fixing.
+        if (_splitApplied || _sectionDir != 0)
         {
-            var winPw = (int)Math.Round(Width * scale);
-            var winPh = (int)Math.Round(Height * scale);
-            (x, y) = HistoryWindowSeatFor(x, y, homePw, homePh, winPw, winPh);
-            // 1.13.1: the seat above is pure slack arithmetic and clamps to NOTHING. IslandLayout
-            // .Place clamps the CAPSULE, then BlobWindowFor re-seats a much larger window around
-            // that spot — the window carries the ball, its bridge and BlobDragMaxPx (100 DIP) of
-            // drag room on every side, so a capsule parked near an edge dragged half the window
-            // past the screen. The user saw the clipboard panel and the ball walk off-screen.
-            //
-            // The clamp must not touch the capsule: the spec is explicit that the island holds
-            // its position. So the allowance is the invisible drag slack — letting THAT overhang
-            // the screen is free, and it keeps the visible content (capsule, bridge, ball, panel)
-            // on screen. Clamping the window to the working area outright would move the island
-            // on every ball attach, which is the thing this code exists to prevent.
-            // 1.13.1 (second pass): the history panel is real, readable content — not invisible
-            // drag room — and with the panel open the user reported the text window still running
-            // off the edge. The 100 DIP slack was the reason: it was free for the ball, but the
-            // panel rides in the same oversized window. So when the panel is open the window is
-            // clamped flat to the working area with no allowance. Losing a little of the ball's
-            // off-screen drag range while the panel is up is the right trade.
-            var slackPx = _historyOpen
-                ? 0
-                : (int)Math.Round(OverlayTokens.BlobDragMaxPx * scale);
-            x = Math.Clamp(x, wa.X - slackPx, Math.Max(wa.X - slackPx, wa.X + wa.Width + slackPx - winPw));
-            y = Math.Clamp(y, wa.Y - slackPx, Math.Max(wa.Y - slackPx, wa.Y + wa.Height + slackPx - winPh));
+            // The window's cross origin sits from the capsule's by the drawer's own extent; the
+            // long axis is copied verbatim, so the capsule cannot move on the axis it is anchored to.
+            var crossShift = _historyOpen && _historyRowCount > 0
+                ? ClipboardDrawer.CrossShiftDipFor(_settings.Edge, _historyRowCount) * scale
+                : 0.0;
+            (x, y) = IslandLayout.DrawerWindowFor(SplitIsVertical, x, y, crossShift, scale);
         }
         Position = new PixelPoint(x, y);
         Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
-    }
-
-    /// <summary>
-    /// Seat the enlarged window around the capsule, honouring the panel's asymmetry.
-    /// <para>
-    /// With the panel folded this is exactly <see cref="IslandLayout.BlobWindowFor"/> — the
-    /// resting blob window is symmetric, so the capsule stays centred in it. With the panel open
-    /// it is NOT: the window grew to <see cref="ClipboardHistoryPanel.BallSideExtent"/> on the
-    /// ball's side and <see cref="ClipboardHistoryPanel.PanelSideExtent"/> on the panel's, so
-    /// splitting the slack evenly (what BlobWindowFor does) would shift the capsule by half the
-    /// difference — the island visibly jumping on a click, which is precisely what the spec
-    /// forbids. The panel's own seat is used instead.
-    /// </para>
-    /// </summary>
-    private (int X, int Y) HistoryWindowSeatFor(int x, int y, int homePw, int homePh, int winPw, int winPh)
-    {
-        if (!_historyOpen || _historyRowCount <= 0)
-            return IslandLayout.BlobWindowFor(SplitIsVertical, x, y, homePw, homePh, winPw, winPh);
-
-        // The panel's geometry is expressed against the CAPSULE, in DIP; only the resulting
-        // window offset is converted to pixels. Measuring in pixels here would put the panel
-        // half a pixel out at 150 % scaling, which is a visible seam on the ball side.
-        var scale = RenderScaling <= 0 ? 1 : RenderScaling;
-        var capsuleCross = (SplitIsVertical ? homePw : homePh) / scale;
-        var (_, panelCross) = ClipboardHistoryPanel.SizeFor(_historyRowCount);
-        var crossOrigin = ClipboardHistoryPanel.CrossOriginFor(
-            _settings.Edge, capsuleCross / 2, panelCross) * scale;
-
-        // The LONG axis keeps BlobWindowFor's answer verbatim: the capsule is Leading-anchored
-        // there, so however far the window reaches past the ball, the capsule does not move.
-        return SplitIsVertical
-            ? ((int)Math.Round(x + crossOrigin), y)
-            : (x, (int)Math.Round(y + crossOrigin));
     }
 
     private void Paint()
@@ -3002,18 +2653,19 @@ public partial class OverlayWindow : Window
         OverlayPanel.IsVisible = overlayOn && kind != OverlayKind.SystemStats;
         CollapsedRow.IsVisible = !overlayOn;
 
-        // 1.12.3 goo blob. The ball's visibility is owned by the blob transition (SettleBlob /
-        // ApplyBlobMorph), not by this paint: the window is already growing while the ball is
-        // still held back, so flipping it here would pop it in one frame early. All Paint does
-        // is refill the ball's content on the same UI turn as the capture that produced it.
-        // The island itself needs no compensation any more: the capsule never grew, so
-        // CollapsedRow and SecondsStrip just centre themselves in it.
-        if (snap.IsSplitClipboard) ApplyBlobContent(snap.SplitClipboard);
+        // 1.14: the clipboard SECTION. Its visibility is owned by the section transition
+        // (SettleClipboardSection / ApplyClipboardSectionMorph), not by this paint: the capsule
+        // is already growing while the section is still held back, so flipping it here would pop
+        // it in one frame early. All Paint does is refill the section's content on the same UI
+        // turn as the capture that produced it.
+        // The island itself needs no compensation any more: the capsule only ever grows on its
+        // trailing end, so CollapsedRow and SecondsStrip just centre themselves in it.
+        if (snap.IsSplitClipboard) ApplyClipboardSectionContent(snap.SplitClipboard);
         // 1.12.4: only claim these margins at rest. During phase A the morph owns them — it
         // holds the island's rows in the original 170 DIP box while the capsule is longer, and a
         // Paint landing mid-morph (Paint runs on every kind change) would otherwise yank the
-        // rows 55 DIP outwards for a frame. At rest _blobPeek is 0, so this is the old margin.
-        if (_blobPeek <= 0)
+        // rows 55 DIP outwards for a frame. At rest _sectionPeek is 0, so this is the old margin.
+        if (_sectionPeek <= 0)
         {
             CollapsedRow.Margin = new Thickness(0);
             SecondsStrip.Margin = new Thickness(10, 0, 10, 2);
@@ -3146,30 +2798,26 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// 1.12.3: fill the ball from the payload BuildPayload already produced — format icon per
-    /// <see cref="ClipboardItemKind"/> plus the preview text. Both the icon key and the
+    /// 1.14: fill the clipboard SECTION from the payload BuildPayload already produced — format
+    /// icon per <see cref="ClipboardItemKind"/> plus the preview text. Both the icon key and the
     /// wording/truncation/empty-fallback rules live in
     /// <see cref="ClipboardHalfPreview"/> and are unit-tested there, so this stays a pure
     /// "put it on screen" step. The plural («5 файлов») is BuildPayload's, not ours.
+    /// <para>
+    /// 1.14: this writes the section only. The ball and the in-capsule peek that used to be
+    /// filled here alongside it are gone, and the wheel cycle's
+    /// <see cref="ApplyBallPreviewFromEntry"/> writes the same two fields from a different
+    /// source — which is why they are named apart rather than sharing one method.
+    /// </para>
     /// </summary>
-    private void ApplyBlobContent(OverlayPayload cp)
+    private void ApplyClipboardSectionContent(OverlayPayload cp)
     {
         var brush = new SolidColorBrush(Colors.White);
-        BlobIcon.Child = IconPackService.Create(
+        ClipboardSectionIcon.Child = IconPackService.Create(
             _settings.IconPack, ClipboardHalfPreview.IconKeyFor(cp.ClipboardItemKind),
             CurrentIconCollapsed(), brush);
-
-        BlobText.Text = ClipboardHalfPreview.TextFor(cp);
-        // 1.12.4 phase A shows the SAME preview inside the capsule, so the text/icon rules stay
-        // in one tested place. Refilled here rather than per frame: the morph only changes how
-        // wide and how opaque the row is, never what it says. The icon is built TWICE on
-        // purpose — a Viewbox has a single Child and handing the ball's to the preview would
-        // reparent it, so the ball would lose its icon mid-peek.
-        BlobPeekIcon.Child = IconPackService.Create(
-            _settings.IconPack, ClipboardHalfPreview.IconKeyFor(cp.ClipboardItemKind),
-            CurrentIconCollapsed(), brush);
-        BlobPeekText.Text = ClipboardHalfPreview.TextFor(cp);
-        ToolTip.SetTip(Blob, cp.ClipboardItemKind switch
+        ClipboardSectionText.Text = ClipboardHalfPreview.TextFor(cp);
+        ToolTip.SetTip(ClipboardSection, cp.ClipboardItemKind switch
         {
             ClipboardItemKind.Text => "Скопирован текст",
             ClipboardItemKind.File => "Скопирован файл",
@@ -3291,8 +2939,8 @@ public partial class OverlayWindow : Window
     /// 1.08 forever.
     ///
     /// The curve is <c>clickPop</c> from <see cref="AnimEase"/> — the same one
-    /// <see cref="ApplyBlobMorph"/> already uses for the ball, reached through the dictionary so
-    /// the shape has exactly one implementation and cannot drift between the two call sites.
+    /// <see cref="ApplyClipboardSectionMorph"/> already uses for the section, reached through the
+    /// dictionary so the shape has exactly one implementation and cannot drift between call sites.
     /// </summary>
     private void PlayClickPop()
     {
@@ -3513,15 +3161,14 @@ public partial class OverlayWindow : Window
         if (!snap.IsSplitClipboard) return;
         // Refresh the Idle-pill cycle previews so prev/next zones show the latest history.
         RefreshIdleClipboardCycle();
-        // 1.13: ball-preview cycle reset. A new capture always shows the freshly-copied value
-        // first; the user can then wheel down to revisit older entries. Spec §«Колесо на шарике».
+        // 1.14: clipboard-section preview cycle reset. A new capture always shows the
+        // freshly-copied value first; the user can then wheel down to revisit older entries.
+        // Spec §«Колесо на секции буфера».
         _ballPreviewIndex = 0;
-        ApplyBallCountBadge();
-        // 1.13: rope pulse on new capture. The pulse drives the bridge stroke width from 1 to
-        // 1.6 DIP and back over 200 ms via the existing 200 ms tick — no new timer. A second
-        // capture within 200 ms just REPLACES the start time, the spec explicitly forbids
-        // stacking. Spec §«Пульс верёвки».
-        StartBridgePulse();
+        // 1.14: the rope pulse and the ball count badge are GONE with the ball — a pulse on a
+        // rope that no longer exists, and a count on a ball that no longer exists. What a new
+        // capture does instead is run the section's own growth, which ApplySize above already
+        // started.
         // Beep-on-copy is opt-in via Notify volume slider; v1 stays silent for MultiFile.
         if (_settings.SoundEnabled
             && _settings.SoundVolNotify > 0
@@ -3531,90 +3178,6 @@ public partial class OverlayWindow : Window
         }
     }
 
-    /// <summary>
-    /// Stamp the pulse start time. The 200 ms tick reads <see cref="_bridgePulseStartedAtMs"/>
-    /// and computes the bridge stroke-width bump; the pulse self-clears after 200 ms. A
-    /// second capture within the window replaces the timestamp — the spec calls this out as
-    /// "the second replaces the first, no stacking" — and that is exactly what
-    /// overwriting the nullable gives us.
-    /// </summary>
-    private void StartBridgePulse()
-    {
-        _bridgePulseStartedAtMs = Environment.TickCount64;
-    }
-
-    /// <summary>
-    /// Ball count badge (spec §«Бейджик со счётом»). Visible only when the history holds
-    /// &gt; 1 items, mirroring the spec's "hide when count ≤ 1". Position follows the ball
-    /// via the same Margin-driven layout the ball uses (recomputed every Paint), so the
-    /// badge stays in the top-right corner of the ball through all drag and pin states.
-    /// </summary>
-    private void ApplyBallCountBadge()
-    {
-        var count = _clipboardHistory.Count;
-        if (count <= 1)
-        {
-            BallCountBadge.IsVisible = false;
-            return;
-        }
-        BallCountText.Text = count > 99 ? "99+" : count.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        // The badge sits 4 DIP inside the ball's top-right corner. Position is recomputed in
-        // Paint() alongside the ball margin; the initial placement here is a no-op until then.
-        BallCountBadge.IsVisible = true;
-    }
-
-    /// <summary>
-    /// Honour the persisted pinned offset on startup. Both halves of the pin must be set,
-    /// otherwise we leave the ball unpinned and let ApplyBlobRest drive it to the home spot.
-    /// </summary>
-    private void ApplyPinnedOffsetFromSettings()
-    {
-        if (!_settings.IsBlobPinned)
-        {
-            _blobIsPinned = false;
-            return;
-        }
-        var (x, y) = ClipboardBlob.ClampOffset(
-            _settings.ClipboardBlobPinnedOffsetX!.Value,
-            _settings.ClipboardBlobPinnedOffsetY!.Value,
-            OverlayTokens.BlobDragMaxPx);
-        _blobDragAlong = x;
-        _blobDragCross = y;
-        _blobIsPinned = true;
-    }
-
-    /// <summary>
-    /// Toggle the pin on release. Spec §«Закрепление шарика»: drag-then-release without
-    /// modifiers pins the ball at its release position; with Ctrl held, the pin is cleared
-    /// and the ball returns home. The decision is made here so a short click that does not
-    /// actually drag still calls HandleBlobClick (the existing branch).
-    /// </summary>
-    private void ApplyBallPinOnRelease(bool ctrlHeld)
-    {
-        if (ctrlHeld && _blobIsPinned)
-        {
-            _settings.ClearBlobPin();
-            _settings.Save();
-            _blobDragAlong = 0;
-            _blobDragCross = 0;
-            _blobIsPinned = false;
-            AppLog.Info("Ball pin cleared (Ctrl on release)");
-        }
-        else if (!_blobIsPinned)
-        {
-            // Save the current drag offset as the pinned position. If the user barely moved the
-            // ball (drag < a few DIP), pin it at (0,0) — the home spot — which is a no-op pin.
-            _settings.ClipboardBlobPinnedOffsetX = _blobDragAlong;
-            _settings.ClipboardBlobPinnedOffsetY = _blobDragCross;
-            _settings.Save();
-            _blobIsPinned = true;
-            AppLog.Info($"Ball pinned at ({_blobDragAlong:F1}, {_blobDragCross:F1})");
-        }
-        // The pin state changed; the halo and the rest position are both downstream of this,
-        // so refresh the visual in either branch (and the no-op branch where neither side
-        // changed — harmless).
-        ApplyPinHalo();
-    }
 
     /// <summary>Push the current ring-buffer previews into FSM so the Idle pill can cycle.</summary>
     private void RefreshIdleClipboardCycle()
@@ -4341,7 +3904,6 @@ public partial class OverlayWindow : Window
         // (Expand, Collapse, Escape, etc.). Idempotent.
         if (_hoverPin.IsPinned)
             Pill.BorderBrush = new SolidColorBrush(Color.Parse("#88FFFFFF"));
-            SyncBlobFill();
     }
 
     /// <summary>
