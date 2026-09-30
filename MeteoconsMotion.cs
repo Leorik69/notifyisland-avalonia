@@ -29,6 +29,15 @@ namespace NotifyIsland;
 public static class MeteoconsMotion
 {
     /// <summary>
+    /// Reduced-motion gate. When <c>true</c> every live tick is suppressed and every visible
+    /// host lands on its neutral pose (no rotation, no bob, full opacity). <see cref="OverlayWindow.ApplyAnimationSettings"/>
+    /// pushes this every time settings or the OS switch change, and a single static flag is
+    /// enough because the weather surface keeps at most two of these hosts alive.
+    /// </summary>
+    private static bool _reduced;
+    private static readonly HashSet<Motion> _live = new();
+
+    /// <summary>
     /// Put a Meteocons icon inside a host border that carries the mirrored movement.
     ///
     /// The host owns the transform (its origin is already pinned to the centre) and the tick
@@ -63,6 +72,18 @@ public static class MeteoconsMotion
         }
 
         return host;
+    }
+
+    /// <summary>
+    /// Push the reduced-motion flag. Called from <see cref="OverlayWindow.ApplyAnimationSettings"/>
+    /// on settings change so a live icon host can stop or restart without rebuilding the icon.
+    /// </summary>
+    public static void SetReducedMotion(bool reduced)
+    {
+        if (_reduced == reduced) return;
+        _reduced = reduced;
+        foreach (var motion in _live)
+            motion.ApplyReducedMotion(reduced);
     }
 
     /// <summary>
@@ -105,28 +126,48 @@ public static class MeteoconsMotion
         {
             if (_running) return;
             _running = true;
+            _live.Add(this);
             // Restart at 0 on every attach rather than resuming: a host that was off the tree for
             // a minute must come back at the start of a cycle, not at whatever phase it was
             // frozen in — that freeze is the visible "stuck icon" the infinite Animation used to
             // produce.
             _watch.Restart();
-            _timer.Start();
             // Apply frame 0 straight away, otherwise the icon shows its pre-motion pose for one
             // whole interval (33 ms of visible "no animation") on every attach.
             Apply(MeteoconsMotionTrack.FrameAt(_kind, _key, _periodMs, 0));
+            if (_reduced) ApplyReducedPose();
+            else _timer.Start();
         }
 
         internal void OnDetached(object? sender, EventArgs e)
         {
             if (!_running) return;
             _running = false;
+            _live.Remove(this);
             _timer.Stop();
             _watch.Reset();
-            // Neutral pose on the way out, so a re-attach cannot inherit a stale half-bob and the
-            // same host reused for a different condition never starts from a leftover angle.
-            _rotate.Angle = 0;
-            _translate.Y = 0;
-            _host.Opacity = 1;
+            ApplyNeutralPose();
+        }
+
+        /// <summary>
+        /// One-shot gate from the static <see cref="SetReducedMotion"/>. Stops the timer and
+        /// freezes the neutral pose; restart-from-zero happens on the next attach, which is what
+        /// the user expects when they flip the OS switch — the icon stops moving without
+        /// abruptly snapping through a half-finished frame.
+        /// </summary>
+        internal void ApplyReducedMotion(bool reduced)
+        {
+            if (reduced)
+            {
+                if (_timer.IsEnabled) _timer.Stop();
+                ApplyReducedPose();
+            }
+            else if (_running && !_timer.IsEnabled)
+            {
+                _watch.Restart();
+                Apply(MeteoconsMotionTrack.FrameAt(_kind, _key, _periodMs, 0));
+                _timer.Start();
+            }
         }
 
         private void OnTick(object? sender, EventArgs e) =>
@@ -148,6 +189,15 @@ public static class MeteoconsMotion
                     _host.Opacity = f.Opacity;
                     break;
             }
+        }
+
+        private void ApplyReducedPose() => ApplyNeutralPose();
+
+        private void ApplyNeutralPose()
+        {
+            _rotate.Angle = 0;
+            _translate.Y = 0;
+            _host.Opacity = 1;
         }
     }
 }

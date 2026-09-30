@@ -500,17 +500,15 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// Re-apply morph / fade / rubber durations from <see cref="AppSettings.AnimationSpeed"/>.
+    /// Re-apply morph / fade / hover durations from <see cref="AppSettings.AnimationSpeed"/>.
     /// Off → ~1 ms transitions and no pulse. Called from ctor and settings Apply.
     /// </summary>
     private void ApplyAnimationSettings()
     {
         var global = _settings.AnimationSpeed;
         var fadeSpeed = AnimationTiming.Effective(global, _settings.AnimMorphInflate);
-        var rubberSpeed = AnimationTiming.Effective(global, _settings.AnimSwipeRubber);
         var hoverSpeed = AnimationTiming.Effective(global, _settings.AnimHover);
         var fade = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(OverlayTokens.IconCrossfadeMs, fadeSpeed));
-        var rubber = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(OverlayTokens.SwipeRubberMs, rubberSpeed));
         var hover = TimeSpan.FromMilliseconds(AnimationTiming.ScaleMs(AnimationTiming.HoverMs, hoverSpeed));
         var softOut = new CubicEaseOut();
         var softInOut = new CubicEaseInOut();
@@ -535,12 +533,19 @@ public partial class OverlayWindow : Window
         {
             new DoubleTransition { Property = OpacityProperty, Duration = fade, Easing = softOut },
         };
-        _pillTranslate.Transitions = new Transitions
-        {
-            new DoubleTransition { Property = TranslateTransform.XProperty, Duration = rubber, Easing = softOut },
-            new DoubleTransition { Property = TranslateTransform.YProperty, Duration = rubber, Easing = softOut },
-        };
+        // _pillTranslate is owned by the morph per frame (ApplyMorphAux writes X/Y up to ~35 ms
+        // apart during Glitch). An Avalonia transition here would race the morph's own write:
+        // every step lands 180 ms late and the capsule visibly lags the jitter. Translate
+        // easing is owned by the morph layer (AnimEase) and the spring in ApplyMorphAux; we
+        // only need to make sure no other transition fights it.
+        _pillTranslate.Transitions = null;
         _pillScale.Transitions = null;
+
+        // Reduced motion: stop the weather cycles (spin/bob/pulse). The icon hosts register
+        // themselves with MeteoconsMotion on attach, so a single push reaches every live host
+        // and lands it on the neutral pose without rebuilding the icon.
+        MeteoconsMotion.SetReducedMotion(
+            AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion));
 
         if (!AnimationTiming.IsEnabled(global))
         {
@@ -3229,6 +3234,13 @@ public partial class OverlayWindow : Window
         var speed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimClickPop);
         if (!AnimationTiming.IsEnabled(speed)) return;
 
+        // The morph owns _pillScale for its whole run — ApplyMorphAux writes the same transform
+        // every frame, and PrepareMorphVisualStart seeds it. Two writers on one transform is a
+        // visible fight: one of them loses its first or last frame, and starting a pop while a
+        // morph is already in flight pays the cost of an extra tick for nothing. The morph wins
+        // outright, here and again in TickClickPop.
+        if (_morphActive) return;
+
         // Reduced motion: land on the end state, do not show a faster pop. See
         // AnimEase.WithReducedMotion — a quicker version of the same movement is exactly what a
         // user who cannot tolerate animation did not ask for.
@@ -3236,9 +3248,7 @@ public partial class OverlayWindow : Window
         {
             _clickPopActive = false;
             _clickPopWatch.Reset();
-            // Same guard as TickClickPop: a morph owns the scale for its whole run, so "already
-            // at rest" means doing nothing rather than writing 1.0 over a morph's frame.
-            if (!_morphActive) _pillScale.ScaleX = _pillScale.ScaleY = 1.0;
+            _pillScale.ScaleX = _pillScale.ScaleY = 1.0;
             return;
         }
 
