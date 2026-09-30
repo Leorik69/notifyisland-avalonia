@@ -45,7 +45,8 @@
                   Orientation="Horizontal"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
-                  Spacing="6">
+                  Spacing="6"
+                  Margin="20,0,20,0">
         <Button x:Name="CyclePrevButton"
                 Classes="cycleChevron"
                 VerticalAlignment="Center"
@@ -166,7 +167,7 @@
 
       <!-- Expanded single-row: icon | title/subtitle | badge | (system-stats expanded when SystemStats kind) -->
       <DockPanel x:Name="OverlayPanel"
-                 Margin="10,0,10,0"
+                 Margin="22,0,22,0"
                  IsVisible="False"
                  VerticalAlignment="Center">
         <Border x:Name="AppIcon"
@@ -247,7 +248,7 @@
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     IsVisible="False"
-                    Margin="12,6,12,6" />
+                    Margin="22,6,22,6" />
 
         <!-- 1.13 running caption: the name of whatever the capsule is currently talking about
              (clipboard item, track, timer), in small type, scrolling only if it does not fit.
