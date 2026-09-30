@@ -96,6 +96,44 @@ public partial class OverlayWindow : Window
     /// <summary>The pill's own border brush, captured so the flash can put it back EXACTLY.</summary>
     private IBrush? _pillBorderBeforeFlash;
     /// <summary>
+    /// The three hairlines of the theme, resolved once per palette: idle, hover, pinned.
+    /// <para>
+    /// They used to be the constants #16FFFFFF / #38FFFFFF / #60FFFFFF. A white hairline is only
+    /// correct on a dark capsule: on a white Custom wall it disappeared completely, and on Ocean it
+    /// competed with the accent it was supposed to sit under. Taking the alpha from the primary
+    /// text instead makes one rule right on every surface — the border can never be brighter than
+    /// the ink it frames, and it inverts with the theme instead of fighting it.
+    /// </para>
+    /// </summary>
+    private IBrush _borderIdle = Avalonia.Media.Brushes.Transparent;
+    private IBrush _borderHover = Avalonia.Media.Brushes.Transparent;
+    private IBrush _borderPinned = Avalonia.Media.Brushes.Transparent;
+    /// <summary>Hairline of the clipboard section's seam, the same ink at the idle weight.</summary>
+    private IBrush _borderSeam = Avalonia.Media.Brushes.Transparent;
+    /// <summary>Per-theme surface weight — see <see cref="ThemePresets.SurfaceMaterial"/>.</summary>
+    private ThemePresets.SurfaceMaterial _material;
+    /// <summary>
+    /// The palette's ink AFTER the readability guard. Icons read this instead of
+    /// <see cref="Colors.White"/>: a white glyph is invisible on a light Custom capsule, which is
+    /// the same failure as a white hairline, and the spec asks for both to survive every theme
+    /// (spec §10). One field, so the badge, the kind glyph and the weather glyph can never drift
+    /// apart from the text they sit next to.
+    /// </summary>
+    private Color _inkPrimary = Colors.White;
+    private Color _inkSecondary = Color.Parse(OverlayTokens.TextSecondaryHex);
+    /// <summary>Hex form of <see cref="_inkSecondary"/>, for the Core-side guards that speak hex.</summary>
+    private string _inkSecondaryHex = OverlayTokens.TextSecondaryHex;
+
+    /// <summary>
+    /// Tint for a clipboard format icon. The per-format colours stay as long as they are readable
+    /// on the current surface; on a light Custom wall they would vanish (spec §10) and the icon
+    /// drops to the capsule's own secondary ink. The format is still legible from the shape.
+    /// </summary>
+    private Color ClipboardIconTint(ClipboardItemKind kind) =>
+        ParseColor(ThemePresets.GuardedIconInk(
+            _settings.ColorCapsuleFill, ClipboardHalfPreview.IconTintHexFor(kind), _inkSecondaryHex),
+            OverlayTokens.TextHex);
+    /// <summary>
     /// The pill's transitions, captured for the same reason. The pill has a hover
     /// <c>BrushTransition</c> on the very property the flash animates, and a transition that is
     /// still live turns a per-frame flash into a smear.
@@ -513,8 +551,10 @@ public partial class OverlayWindow : Window
 
     private void PillEnterVisuals()
     {
-        Pill.BorderBrush = new SolidColorBrush(Color.Parse(
-            _hoverPin.IsPinned ? "#60FFFFFF" : "#38FFFFFF"));
+        // Hover raises the hairline by using the theme's hover weight, not by making a white
+        // border whiter: the edge is already the theme's ink, and a hover must not be the moment
+        // the border outshines the text (spec §7).
+        Pill.BorderBrush = _hoverPin.IsPinned ? _borderPinned : _borderHover;
         Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, Math.Min(1.0, _idleFillA + 0.06)));
         IslandSounds.Play(IslandSoundKind.Hover, _settings);
     }
@@ -523,7 +563,7 @@ public partial class OverlayWindow : Window
     {
         if (!_hoverPin.IsPinned)
         {
-            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#16FFFFFF"));
+            Pill.BorderBrush = _borderIdle;
             ApplyOpacity();
         }
     }
@@ -822,7 +862,13 @@ public partial class OverlayWindow : Window
 
     private void ApplyOpacity()
     {
-        _idleFillA = Math.Clamp(_settings.Opacity, 0.35, 1.0);
+        // The theme scales the surface, not the slider: _settings.Opacity keeps its documented
+        // 0.35–1.0 meaning and stays monotonic, AppleQuiet just renders its wall a little lighter
+        // so the theme reads as a translucent object. Only the FILL is scaled — ink, hairline and
+        // the unread dot are painted on top at full strength, which is what keeps text and the
+        // capsule edge readable at the bottom of the opacity range (spec §8).
+        var scaled = _settings.Opacity * _material.FillAlphaScale;
+        _idleFillA = Math.Clamp(scaled <= 0 ? 1.0 : scaled, 0.30, 1.0);
         Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, _idleFillA));
         // 1.18: the drawer is the SAME surface, not a second card next to the capsule. Its
         // fill is written from the same parsed ColorCapsuleFill and the same alpha as the
@@ -835,16 +881,37 @@ public partial class OverlayWindow : Window
     private void ApplyPalette()
     {
         _pillFill = ParseColor(_settings.ColorCapsuleFill, OverlayTokens.FillHex);
-        var text = ParseColor(_settings.ColorTextPrimary, OverlayTokens.TextHex);
-        var textSec = ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex);
+        // Custom can hand us ink the same colour as its own wall. One guard, applied to both
+        // texts, keeps the capsule readable without touching the user's colours in any other way.
+        var primaryHex = ThemePresets.GuardedPrimaryInk(_settings.ColorCapsuleFill, _settings.ColorTextPrimary);
+        var secondaryHex = ThemePresets.GuardedSecondaryInk(
+            _settings.ColorCapsuleFill, _settings.ColorTextSecondary, primaryHex);
+        var text = ParseColor(primaryHex, OverlayTokens.TextHex);
+        var textSec = ParseColor(secondaryHex, OverlayTokens.TextSecondaryHex);
         var accent = ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex);
+        _inkPrimary = text;
+        _inkSecondary = textSec;
+        _inkSecondaryHex = secondaryHex;
+
+        _material = ThemePresets.MaterialFor(_settings.ThemePreset);
+        _borderIdle = new SolidColorBrush(WithAlpha(text, _material.BorderAlpha));
+        _borderHover = new SolidColorBrush(WithAlpha(text, _material.BorderHoverAlpha));
+        _borderPinned = new SolidColorBrush(WithAlpha(text, _material.BorderPinnedAlpha));
+        _borderSeam = new SolidColorBrush(WithAlpha(text, _material.BorderAlpha * 0.85));
+        Pill.BorderBrush = _borderIdle;
+        HistoryPanel.BorderBrush = _borderIdle;
+        ClipboardSectionSeam.Background = _borderSeam;
 
         _clockBrush = new SolidColorBrush(text);
         ClockText.Foreground = _clockBrush;
         DateText.Foreground = new SolidColorBrush(textSec);
         WeatherTempText.Foreground = new SolidColorBrush(textSec);
         OverlayTitle.Foreground = new SolidColorBrush(text);
-        BadgeText.Foreground = new SolidColorBrush(Colors.White);
+        // The badge sits ON the accent, so its ink is chosen against the accent rather than the
+        // capsule: a pale custom accent would otherwise leave a white number on a white chip.
+        BadgeText.Foreground = new SolidColorBrush(ParseColor(
+            ThemePresets.GuardedPrimaryInk(_settings.ColorAccent, OverlayTokens.TextHex),
+            OverlayTokens.TextHex));
         UnreadDot.Background = new SolidColorBrush(accent);
         // 1.15: no permanent BoxShadow. A steady halo around a 6 DIP dot read as an alert lamp
         // rather than an unread mark; the pulse already carries the attention. Keep the dot
@@ -1173,7 +1240,7 @@ public partial class OverlayWindow : Window
     private void ApplyBallPreviewFromEntry(ClipboardEntry entry)
     {
         var payload = ClipboardHistory.BuildPayload(entry, entry.CapturedAt == default ? DateTimeOffset.UtcNow : entry.CapturedAt);
-        var tint = new SolidColorBrush(Color.Parse(ClipboardHalfPreview.IconTintHexFor(entry.Kind)));
+        var tint = new SolidColorBrush(ClipboardIconTint(entry.Kind));
         ClipboardSectionIcon.Child = IconPackService.Create(
             _settings.IconPack, ClipboardHalfPreview.IconKeyFor(entry.Kind),
             CurrentIconCollapsed(), tint);
@@ -1421,7 +1488,7 @@ public partial class OverlayWindow : Window
         _historyHover = -1;
         _historyPress = -1;
 
-        var brush = new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex));
+        var brush = new SolidColorBrush(_inkSecondary);
         // 1.18: row reactions ride the user's ColorAccent instead of a hardcoded white lift —
         // a neutral grey fill says "this is a row", an accent tint says "this is the action",
         // which is what the spec asks for. Both sit far below the accent's own opacity, so the
@@ -1438,8 +1505,7 @@ public partial class OverlayWindow : Window
             // #C8C8CC / multi-file #7AA8FF). The header colour still drives the title text so
             // the panel reads as one consistent typography, but the icon differentiates the
             // formats at a glance.
-            var iconBrush = new SolidColorBrush(
-                Color.Parse(ClipboardHalfPreview.IconTintHexFor(row.Entry.Kind)));
+            var iconBrush = new SolidColorBrush(ClipboardIconTint(row.Entry.Kind));
             var icon = new Viewbox
             {
                 // 1.18: 16 DIP inside a 24 DIP row — still a small anchor rather than a
@@ -1479,7 +1545,7 @@ public partial class OverlayWindow : Window
                 FontSize = 10,
                 // 1.18: the muted metadata colour is the same parsed secondary the rest of
                 // the island uses, so a custom palette reaches the drawer too.
-                Foreground = new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex)),
+                Foreground = new SolidColorBrush(_inkSecondary),
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
                 IsHitTestVisible = false,
@@ -3112,7 +3178,7 @@ public partial class OverlayWindow : Window
             var pct = _lastPower!.Percent;
             BatteryPercentText.Text = $"{pct}%";
             var batKey = _lastPower.IsCharging || _lastPower.OnAc ? "bolt" : "battery";
-            var batBrush = new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex));
+            var batBrush = new SolidColorBrush(_inkSecondary);
             BatteryIconHost.Child = IconPackService.Create(_settings.IconPack, batKey, CurrentIconCollapsed(), batBrush);
             ToolTip.SetTip(MinimalBattery,
                 _lastPower.IsCharging || _lastPower.OnAc ? $"Зарядка · {pct}%" : $"Батарея · {pct}%");
@@ -3297,7 +3363,7 @@ public partial class OverlayWindow : Window
     /// </summary>
     private void ApplyClipboardSectionContent(OverlayPayload cp)
     {
-        var brush = new SolidColorBrush(Colors.White);
+        var brush = new SolidColorBrush(ClipboardIconTint(cp.ClipboardItemKind));
         ClipboardSectionIcon.Child = IconPackService.Create(
             _settings.IconPack, ClipboardHalfPreview.IconKeyFor(cp.ClipboardItemKind),
             CurrentIconCollapsed(), brush);
@@ -3314,14 +3380,14 @@ public partial class OverlayWindow : Window
     private void SetKindIcon(OverlayKind kind)
     {
         var key = IslandIcons.KindKey(kind);
-        var brush = new SolidColorBrush(Colors.White);
+        var brush = new SolidColorBrush(_inkPrimary);
         AppIconHost.Child = IconPackService.Create(_settings.IconPack, key, CurrentIconKind(), brush, 1.5);
     }
 
     private void SetKindIconWeather(int code)
     {
         var key = WeatherCodes.IconKey(code);
-        var brush = new SolidColorBrush(Colors.White);
+        var brush = new SolidColorBrush(_inkPrimary);
         AppIconHost.Child = IconPackService.Create(_settings.IconPack, key, CurrentIconKind(), brush, 1.5);
     }
 
@@ -3330,7 +3396,7 @@ public partial class OverlayWindow : Window
         if (string.Equals(key, _lastWeatherIconKey, StringComparison.OrdinalIgnoreCase) && WeatherIconA.Child is not null)
             return;
 
-        var brush = new SolidColorBrush(ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex));
+        var brush = new SolidColorBrush(_inkSecondary);
         var path = IconPackService.Create(_settings.IconPack, key, CurrentIconCollapsed(), brush);
 
         if (!animate || WeatherIconA.Child is null)
@@ -4423,10 +4489,21 @@ public partial class OverlayWindow : Window
 
     private void ApplyPinnedBorderVisual()
     {
-        // Pinned state gets a brighter outline. Run after any hover-pin transition
-        // (Expand, Collapse, Escape, etc.). Idempotent.
+        // Pinned is the one state with no pointer to explain it, so its hairline has to carry the
+        // meaning on its own — as the theme's strongest ink, not as a hardcoded white that only
+        // reads on a dark wall. Run after any hover-pin transition (Expand, Collapse, Escape,
+        // etc.). Idempotent.
         if (_hoverPin.IsPinned)
-            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#60FFFFFF"));
+        {
+            Pill.BorderBrush = _borderPinned;
+        }
+        else if (!_hoverPin.IsContentExpanded)
+        {
+            // Unpinning while the pointer is still on the capsule used to leave the strong hairline
+            // behind until the next hover cycle — nothing ever put the idle brush back. IsContentExpanded
+            // is false only when the machine is at rest, so this cannot fight a live hover.
+            Pill.BorderBrush = _borderIdle;
+        }
     }
 
     /// <summary>

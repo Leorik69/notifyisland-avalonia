@@ -369,11 +369,25 @@ public partial class SettingsWindow : Window
         {
             var fill = ColorFillPicker.Color;
             var accent = ColorAccentPicker.Color;
-            var primary = ColorTextPrimaryPicker.Color;
-            var secondary = ColorTextSecondaryPicker.Color;
-            var alpha = Math.Clamp(OpacitySlider.Value / 100.0, 0.35, 1.0);
+            // Превью повторяет ровно тот же safeguard, что и островок: если пользователь подобрал
+            // цвет текста в цвет своей же заливки, капсула обязана остаться читаемой — и превью
+            // не должно показывать то, чего на островке не будет.
+            var primaryHex = ThemePresets.GuardedPrimaryInk(ColorToHex(fill), ColorToHex(ColorTextPrimaryPicker.Color));
+            var secondaryHex = ThemePresets.GuardedSecondaryInk(
+                ColorToHex(fill), ColorToHex(ColorTextSecondaryPicker.Color), primaryHex);
+            var primary = Color.Parse(primaryHex);
+            var secondary = Color.Parse(secondaryHex);
+            // Материал темы (прозрачность стенки и вес волосяной линии) — тот же, что применит
+            // оверлей. Раньше превью показывало только заливку, а граница оставалась белой
+            // константой из XAML, то есть на светлой капсуле превью врало.
+            var material = ThemePresets.MaterialFor(PreviewTheme());
+            var alpha = Math.Clamp(OpacitySlider.Value / 100.0 * material.FillAlphaScale, 0.30, 1.0);
 
             PreviewPill.Background = new SolidColorBrush(WithAlpha(fill, alpha));
+            var previewBorder = new SolidColorBrush(WithAlpha(primary, material.BorderAlpha));
+            PreviewPill.BorderBrush = previewBorder;
+            AnimPreviewCapsule.Background = new SolidColorBrush(WithAlpha(fill, alpha));
+            AnimPreviewCapsule.BorderBrush = previewBorder;
             PreviewDot.Background = new SolidColorBrush(accent);
             PreviewPrimary.Foreground = new SolidColorBrush(primary);
             PreviewSecondary.Foreground = new SolidColorBrush(secondary);
@@ -420,6 +434,29 @@ public partial class SettingsWindow : Window
         {
             // design-time / partial init
         }
+    }
+
+    /// <summary>
+    /// Which theme's material the preview should render with.
+    /// <para>
+    /// The combo still says "AppleQuiet" for a moment after the user hand-tunes a swatch — the
+    /// switch to Custom only happens when the draft is saved. Painting AppleQuiet's lighter wall
+    /// for a palette the user already changed is exactly the kind of lie a preview must not tell,
+    /// so the stock material is used only while the capsule fill is still that preset's own fill.
+    /// Everything else is Custom, which is the neutral rule.
+    /// </para>
+    /// </summary>
+    private ThemePreset PreviewTheme()
+    {
+        if (!Enum.TryParse<ThemePreset>(SelectedTag(ThemePresetBox), true, out var sel) || sel == ThemePreset.Custom)
+            return ThemePreset.Custom;
+        var stock = new AppSettings();
+        ThemePresets.Apply(sel, stock);
+        var same = string.Equals(
+            AppSettings.NormalizeHex(ColorToHex(ColorFillPicker.Color), ""),
+            AppSettings.NormalizeHex(stock.ColorCapsuleFill, ""),
+            StringComparison.OrdinalIgnoreCase);
+        return same ? sel : ThemePreset.Custom;
     }
 
     /// <summary>
