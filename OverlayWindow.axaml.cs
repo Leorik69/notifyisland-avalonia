@@ -188,7 +188,6 @@ public partial class OverlayWindow : Window
         // so the XAML's <TranslateTransform x:Name="MarqueeShift"/> would compile without a
         // matching code-side field. Wire it onto the TextBlock here instead.
         MarqueeText.RenderTransform = _marqueeShift;
-        ApplySectionRest(attached: false);
         _settings = AppSettings.Load();
         _settings.Normalize();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
@@ -215,6 +214,12 @@ public partial class OverlayWindow : Window
         }
         _pillFill = ParseColor(_settings.ColorCapsuleFill, OverlayTokens.FillHex);
         _idleFillA = _settings.Opacity;
+        // 1.14: settle the clipboard section into its detached resting frame. This has to run
+        // AFTER _settings exists — ApplySectionRest reaches ApplySeamRadii, which asks
+        // SplitIsVertical, and that reads _settings.Orientation. Calling it above the settings
+        // load crashed the app on every start with a NullReferenceException, so the section's
+        // initial state has to be written here instead of at the top of the constructor.
+        ApplySectionRest(attached: false);
         _statsMachine = new SystemMonitorMachine(
             new WindowsSystemMonitorSource(
                 TimeSpan.FromMilliseconds(_settings.SystemStatsRefreshMs)))
