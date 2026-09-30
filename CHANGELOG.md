@@ -2,6 +2,19 @@
 
 ## Unreleased — буфер стал частью капсулы (1.14)
 
+### Changed — рантайм переведён с .NET 8 на .NET 10 LTS
+Все три проекта (`NotifyIsland.Av`, `NotifyIsland.Core`, `NotifyIsland.Tests`) переведены с `net8.0` на `net10.0`, а приложение — с `net8.0-windows10.0.19041.0` на `net10.0-windows10.0.26100.0` с `SupportedOSPlatformVersion` = 10.0.19041.0. Причина практическая: поддержка .NET 8 истекает 10 ноября 2026, а .NET 9 уже вне поддержки (12 мая 2026) — целиться было не во что. Платформенная версия Windows поднята с 19041 до 26100 (Windows 11 24H2), потому что именно версия TFM определяет, какая WinRT-проекция подключается.
+
+`Microsoft.Windows.SDK.NET.Ref` вручную добавлять не пришлось: при TFM вида `net10.0-windows10.0.26100.0` SDK сам подтягивает нужный Windows SDK-таргетинг (проверено пробой — сборка разрешает `Microsoft.Windows.SDK.NET, Version=10.0.26100.86`). Явный `PackageReference` на него отбивается `NU1213: тип DotnetPlatform не совместим с этим проектом` и `NU1102`, то есть ручной путь нерабочий в принципе.
+
+Добавлен `global.json`, закрепляющий SDK `10.0.401`: без него `dotnet build` подхватывал 11.0.100-rc.1 и печатал `NETSDK1057` (сборка предварительной версией), а для релизной сборки это не годится.
+
+Побочный эффект смены TFM — проекция Windows SDK стала богаче, и пришлось снять две неоднозначности имён, которых не было на `net8.0`: `MenuItem` и `ContextMenu`/`Separator` в `OverlayWindow.axaml.cs` теперь пишутся с полным именем `Avalonia.Controls.*` (проект глобально импортирует WinForms, где есть одноимённые типы). На поведение окна это не влияет, на совместимость сборки — да.
+
+Пути вывода меняются: `bin\Debug\net8.0-windows10.0.19041.0\` → `bin\Debug\net10.0-windows10.0.26100.0\`, Release соответственно. Inno Setup публикует через `dist\win-x64`, зашитый путь TFM в нём не было, поэтому установщик править не пришлось.
+
+Проверено: Debug и Release собираются без предупреждений, 785/785 тестов зелёные, exe живёт 10 с после старта.
+
 ### Removed — goo-шар, верёвка и всё, что на них держалось
 «Какое-то глючное поведение этого шарика… давай уберём это всё». Удалены целиком: шар `Blob` (`BlobD = 64 DIP`), верёвочная перемычка `BlobBridge`, drag шарика вместе с круговым клампом `BlobDragMaxPx`, дыхание `_blobBreathe`, peek-фаза `BlobPeek`, бейджик со счётом `BallCountBadge`, кольцо закрепления `ApplyPinHalo`, пульс верёвки, класс `ClipboardBlob` и вся геометрия `BlobWindowFor` / `HistoryWindowSeatFor` / `BallSideExtent` / `PanelSideExtent` / `CrossOriginFor`. Настройки `isBlobPinned` и `clipboardBlobPinnedOffsetX/Y` тоже ушли — закреплять было нечего. `ClipboardPrivacyPauseUntilUtc` **остался**: это переключатель уровня слушателя, к шару отношения не имевший.
 

@@ -1911,7 +1911,7 @@ public partial class OverlayWindow : Window
     /// </summary>
     private void OpenContextMenu(bool isBallContext)
     {
-        var menu = new ContextMenu();
+        var menu = new Avalonia.Controls.ContextMenu();
         menu.Items.Add(Menu("Центр уведомлений", TrayService.OpenActionCenter));
         if (_settings.TimerEnabled)
         {
@@ -1965,7 +1965,7 @@ public partial class OverlayWindow : Window
                 () => HandleClipboardSectionClick()));
         }
         menu.Items.Add(Menu("Настроить монитор…", () => OpenSettings("system")));
-        menu.Items.Add(new Separator());
+        menu.Items.Add(new Avalonia.Controls.Separator());
         menu.Items.Add(Menu("Свернуть", () =>
         {
             CollapseFromUi();
@@ -3527,9 +3527,9 @@ public partial class OverlayWindow : Window
         _ => ""
     };
 
-    private static MenuItem Menu(string header, Action act)
+    private static Avalonia.Controls.MenuItem Menu(string header, Action act)
     {
-        var item = new MenuItem { Header = header };
+        var item = new Avalonia.Controls.MenuItem { Header = header };
         item.Click += (_, _) => act();
         return item;
     }

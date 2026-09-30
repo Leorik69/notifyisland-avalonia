@@ -348,7 +348,7 @@ Tray, Settings window, WeatherSide, Edge+Offset (no drag), Orientation, Z-order�
 - Правый клик → меню: «Открыть настройки», «Показать/скрыть островок», «Погода вкл/выкл», «Выход». Пункта «Демо» больше нет (удалён в 1.13.0).
 - Двойной клик → центр уведомлений Windows (`ms-actioncenter:`).
 - Unread > 0 → `tray-unread.png` (точка-индикатор) + tooltip с числом.
-- TargetFramework: `net8.0-windows` + `UseWindowsForms` (см. `Directory.Build.props` / `EnableWindowsTargeting`).
+- TargetFramework: `net10.0-windows10.0.26100.0` (`SupportedOSPlatformVersion` = 10.0.19041.0) + `UseWindowsForms`. `Directory.Build.props` в репозитории нет — TFM задан прямо в `NotifyIsland.Av.csproj`, `NotifyIsland.Core.csproj` и `NotifyIsland.Tests.csproj` (Core и Tests — `net10.0-windows`). SDK закреплён `global.json` на 10.0.401.
 
 ### Окно настроек (отдельный Avalonia `Window`)
 - Открытие: трей «Настройки…» **и** ПКМ по островку «Настройки…».
