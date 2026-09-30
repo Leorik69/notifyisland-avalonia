@@ -2149,16 +2149,34 @@ public partial class OverlayWindow : Window
     /// section state being identical to the closed state is the point: the clipboard no longer
     /// needs any room of its own, which is what removed the drag-slack window.
     /// </para>
+    /// <para>
+    /// FIX: "still the capsule alone" has to mean the capsule's FULL length. The long axis
+    /// used to come from <see cref="IslandCapsuleSizeFor"/>, which subtracts
+    /// <c>_sectionPeek</c> — correct for its own question ("how long is the island ITSELF,
+    /// for placement and hit zones"), wrong here. With a section up the pill is
+    /// <c>_sectionBase + _sectionPeek</c> (404) while the window came out at
+    /// <c>base - _sectionPeek</c> (184), so the window clipped the section AND 110 DIP of the
+    /// capsule's own trailing end: the clock was pushed out of the window and the section
+    /// rendered as a bare seam with its content off-screen.
+    /// </para>
+    /// <para>
+    /// The target takes the larger of the growth the section has already shown and the growth
+    /// it is about to show, so the window is already the right length on the first frame of an
+    /// attach (the pill catches up over the morph) and stays the right length through a
+    /// retract until the last frame of it. The cross axis is never touched — the section does
+    /// not grow it, and the drawer is accounted for separately as window space.
+    /// </para>
     /// </summary>
     private (double Width, double Height) WindowFor(bool withSection, double w, double h)
     {
-        var (capsuleLong, capsuleCross) = IslandCapsuleSize(w, h);
-        return ClipboardDrawer.WindowFor(SplitIsVertical, capsuleLong, capsuleCross,
+        var (baseLong, baseCross) = IslandCapsuleSizeFor(w, h);
+        var sectionForWindow = Math.Max(
+            _sectionPeek,
+            _splitApplied || _sectionDir > 0 ? ClipboardSectionTrack.Width : 0);
+        var capsuleLong = baseLong + sectionForWindow;
+        return ClipboardDrawer.WindowFor(SplitIsVertical, capsuleLong, baseCross,
             withSection ? _historyRowCount : 0, withSection && _historyOpen);
     }
-
-    private (double Long, double Cross) IslandCapsuleSize(double w, double h) =>
-        IslandCapsuleSizeFor(w, h);
 
     private void SetSizeImmediate(double w, double h)
     {
