@@ -78,6 +78,10 @@ public partial class OverlayWindow : Window
     private int _clickPopMs;
     /// <summary>Wall clock of the pop in flight — see Motion for why not an accumulator.</summary>
     private readonly Stopwatch _clickPopWatch = new();
+    // 1.13 (implementing the 1.12.0 token): first-appear wobble. A non-null start means a wobble
+    // is in flight; it rides the shared 16 ms frame tick via TickFirstAppearWobble.
+    private long? _firstAppearWobbleStartedAtMs;
+    private int _firstAppearWobbleMs;
     private bool _hoverWired;
     private readonly HoverPinMachine _hoverPin = new();
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromMilliseconds(OverlayTokens.FullscreenPollMs) };
@@ -614,6 +618,7 @@ public partial class OverlayWindow : Window
     {
         var busy = TickUnreadPulse();
         if (TickClickPop()) busy = true;
+        if (TickFirstAppearWobble()) busy = true;
         if (busy) return;
         _frameTimer.Stop();
         _frameTimer.Tick -= OnFrameTick;
@@ -1841,6 +1846,8 @@ public partial class OverlayWindow : Window
             Win32Overlay.ApplyNoActivate(this);
             Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
             PlaceIsland();
+            // Coming back from the tray toggle is the other "first appear" the spec names.
+            PlayFirstAppearWobble();
         }
         else
         {
@@ -3268,6 +3275,46 @@ public partial class OverlayWindow : Window
         _clickPopWatch.Reset();
     }
 
+    /// <summary>
+    /// Play the first-appear wobble: the small horizontal settle when the capsule comes back
+    /// after being hidden. Implements the 1.12.0 tokens that shipped without an implementation.
+    /// </summary>
+    private void PlayFirstAppearWobble()
+    {
+        var speed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimFirstAppearWobble);
+        if (!AnimationTiming.IsEnabled(speed)) return;
+        // Reduced motion: no settle. Same rule as the click pop — a quicker version of the same
+        // movement is not what a user who cannot tolerate animation asked for.
+        if (AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion)) return;
+        // The morph owns the translate for its whole run; a wobble on top would fight it.
+        if (_morphActive) return;
+
+        _firstAppearWobbleMs = AnimationTiming.ScaleMs(OverlayTokens.FirstAppearWobbleMs, speed);
+        _firstAppearWobbleStartedAtMs = Environment.TickCount64;
+        EnsureFrameTick();
+    }
+
+    /// <summary>One wobble frame; false once the wobble is over.</summary>
+    private bool TickFirstAppearWobble()
+    {
+        if (_firstAppearWobbleStartedAtMs is not { } start) return false;
+        // A morph took over the translate — drop the wobble rather than write over its frames.
+        if (_morphActive)
+        {
+            _firstAppearWobbleStartedAtMs = null;
+            return false;
+        }
+
+        var elapsed = Environment.TickCount64 - start;
+        var offset = FirstAppearWobble.OffsetX(elapsed, _firstAppearWobbleMs, OverlayTokens.FirstAppearWobblePx);
+        _pillTranslate.X = offset;
+        if (elapsed < _firstAppearWobbleMs) return true;
+
+        _firstAppearWobbleStartedAtMs = null;
+        _pillTranslate.X = 0;
+        return false;
+    }
+
     /// <summary>One pop frame; false once the pop is done or has been taken over.</summary>
     private bool TickClickPop()
     {
@@ -4403,6 +4450,7 @@ public partial class OverlayWindow : Window
                         Win32Overlay.ApplyNoActivate(this);
                         Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
                         PlaceIsland();
+                        PlayFirstAppearWobble();
                     }
                 }
             }
@@ -4418,6 +4466,7 @@ public partial class OverlayWindow : Window
                     Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
                     PlaceIsland();
                     AppLog.Info("Left fullscreen — island restored");
+                    PlayFirstAppearWobble();
                 }
                 if (_clickThroughActive)
                 {
