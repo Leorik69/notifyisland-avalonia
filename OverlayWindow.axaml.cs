@@ -87,6 +87,48 @@ public partial class OverlayWindow : Window
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromMilliseconds(OverlayTokens.FullscreenPollMs) };
     private bool _hiddenByFullscreen;
     private bool _clickThroughActive;
+    /// <summary>Staggered reveal in flight, if any — see <see cref="RevealRun"/>.</summary>
+    private RevealRun? _reveal;
+    /// <summary>One-shot accent flash, if in flight. Rides the shared frame clock.</summary>
+    private long? _accentFlashStartedAtMs;
+    private int _accentFlashMs;
+    private Color _accentFlashColor = Colors.Transparent;
+    /// <summary>The pill's own border brush, captured so the flash can put it back EXACTLY.</summary>
+    private IBrush? _pillBorderBeforeFlash;
+    /// <summary>
+    /// The pill's transitions, captured for the same reason. The pill has a hover
+    /// <c>BrushTransition</c> on the very property the flash animates, and a transition that is
+    /// still live turns a per-frame flash into a smear.
+    /// </summary>
+    private Transitions? _pillTransitionsBeforeFlash;
+    /// <summary>
+    /// The frame clock's own elapsed milliseconds. One monotonic stopwatch for the whole window
+    /// rather than one per animation: several short animations can overlap (a caption revealing
+    /// while a flash runs), and a per-animation stopwatch restarts when its own animation starts,
+    /// which would make an overlap silently rewind the older one.
+    /// </summary>
+    private readonly Stopwatch _frameClock = new();
+    private long _frameClockMs;
+    /// <summary>
+    /// The kind the capsule was showing when the last arrival was staged. <see cref="_lastKind"/>
+    /// cannot serve here: it is updated in the chrome pass BEFORE Paint runs, so by the time
+    /// Paint asks "did something just arrive?" the answer has already been overwritten.
+    /// </summary>
+    private OverlayKind _lastArrivalKind = OverlayKind.Idle;
+    /// <summary>Whether the SystemStats panel is currently on screen — gates its reveal.</summary>
+    private bool _statsWasVisible;
+    /// <summary>Whether an SMTC session was on screen at the last <c>ApplyMediaRow</c>.</summary>
+    private bool _mediaWasActive;
+    /// <summary>Whether a timer was running at the last <c>ApplyTimerRow</c>.</summary>
+    private bool _timerWasActive;
+    /// <summary>Whether the "время вышло" accent flash has already fired for this completion.</summary>
+    private bool _timerSignalledDone;
+    /// <summary>
+    /// Intensity for the arrival currently being dispatched, when the kind alone does not say.
+    /// Set by the site that KNOWS (the low-battery alert) and consumed by
+    /// <see cref="StageArrival"/>; null means "use the kind's default".
+    /// </summary>
+    private ReactionLevel? _arrivalLevelOverride;
     private bool _pointerOverUi;                                  // aggregate over Pill, ClipboardSection, HistoryPanel
     private int _uiHoverCount;                                    // refcount so an enter/exit pair across two controls cancels cleanly
     private DateTime _lastPillClickUtc = DateTime.MinValue;
@@ -587,6 +629,8 @@ public partial class OverlayWindow : Window
     private void EnsureFrameTick()
     {
         if (_frameActive) return;
+        if (!_frameClock.IsRunning) _frameClock.Start();
+        _frameClockMs = _frameClock.ElapsedMilliseconds;
         _frameActive = true;
         _frameTimer.Tick -= OnFrameTick;
         _frameTimer.Tick += OnFrameTick;
@@ -599,13 +643,137 @@ public partial class OverlayWindow : Window
     /// </summary>
     private void OnFrameTick(object? sender, EventArgs e)
     {
+        _frameClockMs = _frameClock.ElapsedMilliseconds;
         var busy = TickUnreadPulse();
         if (TickClickPop()) busy = true;
         if (TickFirstAppearWobble()) busy = true;
+        if (TickReveal()) busy = true;
+        if (TickAccentFlash()) busy = true;
         if (busy) return;
         _frameTimer.Stop();
         _frameTimer.Tick -= OnFrameTick;
         _frameActive = false;
+    }
+
+    /// <summary>
+    /// One frame of the staged reveal in flight, if any. Rides the shared clock like every other
+    /// short animation, so a caption arriving costs no timer of its own and the window is back to
+    /// zero timers the moment the last element lands.
+    /// </summary>
+    private bool TickReveal()
+    {
+        if (_reveal is not { } run) return false;
+        if (run.Tick()) return true;
+        _reveal = null;
+        return false;
+    }
+
+    /// <summary>
+    /// A single short accent tint along the capsule's own edge — the reaction to something the
+    /// user was waiting for (spec Этап 5, §1, "сильные реакции").
+    /// <para>
+    /// It is ONE flash with a start and an end, not a lamp: the whole point of the tier is that
+    /// an important event is briefly conspicuous and then the island goes quiet again, so a
+    /// longer or repeating version of this is a different (and wrong) design.
+    /// </para>
+    /// <para>
+    /// It is drawn on the pill's own <c>BorderBrush</c> rather than on an overlay shape. An
+    /// overlay would have to re-derive the capsule's corner radius on every morph frame to avoid
+    /// spilling past the rounded edge, and a hairline that sometimes overflows is worse than no
+    /// flash at all. The border already has the exact geometry, the exact radius and the exact
+    /// clipping, so raising its alpha is the accent that is guaranteed to stay inside the shape.
+    /// The brush is captured first and restored verbatim, so a user's palette can never be
+    /// repainted by a reaction.
+    /// </para>
+    /// </summary>
+    private void PlayAccentFlash(string hex)
+    {
+        var speed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimMorphInflate);
+        var reduced = AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion);
+        if (reduced || !AnimationTiming.IsEnabled(speed))
+        {
+            // Reduced motion removes the effect, it does not shorten it: the arrival is still
+            // announced by the size change and the content, which is the information the flash
+            // was only emphasising.
+            _accentFlashStartedAtMs = null;
+            return;
+        }
+
+        _pillBorderBeforeFlash ??= Pill.BorderBrush;
+        // The pill carries a hover BrushTransition on exactly this property (see
+        // ApplyAnimationSettings). Writing the flash 30 times a second against a 160 ms
+        // transition means the brush never reaches any of the frames it is given: the result
+        // is a slow smear that lags the flash by its whole duration and then unwinds after
+        // it. The transition is lifted for the duration of the flash and put back verbatim
+        // when it lands, so hover still eases the moment the island is quiet again.
+        _pillTransitionsBeforeFlash ??= Pill.Transitions;
+        Pill.Transitions = null;
+
+        _accentFlashColor = ParseColor(hex, OverlayTokens.AccentHex);
+        _accentFlashMs = Reaction.AccentMs(speed);
+        _accentFlashStartedAtMs = _frameClockMs;
+        EnsureFrameTick();
+    }
+
+    /// <summary>One frame of the accent flash; false when it has finished or none is in flight.</summary>
+    private bool TickAccentFlash()
+    {
+        if (_accentFlashStartedAtMs is not { } started) return false;
+        var p = Math.Clamp((_frameClockMs - started) / (double)Math.Max(1, _accentFlashMs), 0.0, 1.0);
+        // Up fast, down slower: the eye catches the onset, and the tail is what makes it read as
+        // a flash rather than a flicker.
+        var a = p < 0.25
+            ? Reaction.AccentPeak * (p / 0.25)
+            : Reaction.AccentPeak * (1.0 - (p - 0.25) / 0.75);
+        Pill.BorderBrush = new SolidColorBrush(WithAlpha(_accentFlashColor, a));
+        if (p < 1.0) return true;
+        Pill.BorderBrush = _pillBorderBeforeFlash ?? Pill.BorderBrush;
+        Pill.Transitions = _pillTransitionsBeforeFlash;
+        _pillTransitionsBeforeFlash = null;
+        _pillBorderBeforeFlash = null;
+        _accentFlashStartedAtMs = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Stage a reveal for the given elements, in the given order, at the given intensity.
+    /// <para>
+    /// Replaces whatever was in flight rather than queuing behind it: a second notification
+    /// arriving mid-reveal must be able to take the surface, and letting the old run finish would
+    /// leave it writing opacity over content that has already changed.
+    /// </para>
+    /// </summary>
+    private void PlayReveal(ReactionLevel level, params (Avalonia.Controls.Control Target, int Order)[] ordered)
+    {
+        if (ordered.Length == 0) return;
+
+        // Land whatever was in flight BEFORE reading any opacity. The resting value of each
+        // element is read from its current opacity, so a run that was cut off mid-fade would
+        // otherwise have its half-faded value (0.3, 0.6) adopted as the NEW resting value — and
+        // the element would stay permanently dimmed, growing dimmer on every interrupted
+        // notification. Finishing first restores the previous run's resting values, which are
+        // the design ones.
+        _reveal?.Finish();
+        _reveal = null;
+
+        var speed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimMorphInflate);
+        var reduced = AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion);
+        var rise = Reaction.RiseDip(level);
+        var items = ordered
+            .Where(o => o.Target is not null)
+            .Select((o, i) => new RevealItem(o.Target, o.Order, o.Target.Opacity) { RiseDip = rise })
+            .ToList();
+
+        if (reduced || !AnimationTiming.IsEnabled(speed)) return;
+
+        _reveal = new RevealRun(
+            items,
+            Reaction.RevealMs(level, speed),
+            Reaction.StaggerShare(level),
+            () => _frameClockMs);
+        _reveal.Start();
+        _reveal.Tick();
+        EnsureFrameTick();
     }
 
     /// <summary>
@@ -2899,6 +3067,7 @@ public partial class OverlayWindow : Window
         SystemStatsPanel.IsVisible = statsVisible;
         if (statsVisible && _lastStats is { } known)
             ApplyStatsValues(known);
+        StageStatsReveal(statsVisible, kind);
         // The running caption lives inside the monitor, so its visibility follows the panel's —
         // decided here because this is the only place the panel's own visibility is set.
         SyncMarqueeVisibility();
@@ -3012,6 +3181,80 @@ public partial class OverlayWindow : Window
 
         // PinnedBadge only makes sense on Idle/Collapsed — overlays already have their own affordances.
         PinnedBadge.IsVisible = kind is OverlayKind.Idle or OverlayKind.Collapsed && _hoverPin.IsPinned;
+
+        StageArrival(kind, overlayOn);
+    }
+
+    /// <summary>
+    /// Stage the arrival reaction for whatever just took the surface (spec Этап 5, §8).
+    /// <para>
+    /// A notification arrives in the order the eye reads it — the icon identifies WHO, the title
+    /// says WHAT, and only then is there anything left to say — so those two are staged. The
+    /// badge is a count, not a caption: it arrives with the title rather than after it, because a
+    /// badge that lands last reads as a separate event that the user did not cause.
+    /// </para>
+    /// <para>
+    /// Keyed on the kind CHANGING, not on Paint running: Paint also runs on every system-monitor
+    /// sample and every clipboard capture, and re-staging on those would make a notification
+    /// restart its arrival animation while the user is reading it.
+    /// </para>
+    /// </summary>
+    private void StageStatsReveal(bool statsVisible, OverlayKind kind)
+    {
+        if (!statsVisible)
+        {
+            if (_statsWasVisible)
+            {
+                _reveal?.Finish();
+                _reveal = null;
+            }
+            _statsWasVisible = false;
+            return;
+        }
+
+        if (kind != OverlayKind.SystemStats || _statsWasVisible) return;
+        _statsWasVisible = true;
+        if (_statsRows.Count == 0) return;
+
+        // Quiet, not Medium: nothing in a list of readings is an event. With StaggerShare 0 at
+        // the quiet level this is ONE soft fade over the whole panel, which is the honest read of
+        // "the monitor opened" — a cascade here would imply the rows are arriving one after
+        // another, and they are not, they were all already there.
+        PlayReveal(ReactionLevel.Quiet, [.. _statsRows.Select((r, i) => ((Avalonia.Controls.Control)r, i))]);
+    }
+
+    private void StageArrival(OverlayKind kind, bool overlayOn)
+    {
+        if (!overlayOn)
+        {
+            if (_lastArrivalKind != kind)
+            {
+                // Leaving an overlay must not leave half a reveal holding the surface at 0.3.
+                _reveal?.Finish();
+                _reveal = null;
+            }
+            _lastArrivalKind = kind;
+            return;
+        }
+
+        if (kind == _lastArrivalKind) return;
+        var isNew = _lastArrivalKind is OverlayKind.Idle or OverlayKind.Collapsed;
+        _lastArrivalKind = kind;
+        if (!isNew) return;
+
+        // 1.19 (spec Этап 5, §1, §10). A notification, a failure and a low-battery alert are
+        // strong: they are the things the user must not miss. The charge pill is only MEDIUM —
+        // plugging in the charger is good news, but it is not an event worth a flash, and the
+        // spec asks for a "soft accent near the battery" there, not a strong reaction.
+        var level = kind switch
+        {
+            OverlayKind.Battery => ReactionLevel.Medium,
+            _ => _arrivalLevelOverride ?? ReactionLevel.Strong,
+        };
+        _arrivalLevelOverride = null;
+
+        PlayReveal(level, (AppIcon, 0), (OverlayTitle, 1), (OverlaySubtitle, 2));
+        if (level == ReactionLevel.Strong) PlayAccentFlash(OverlayTokens.AccentHex);
     }
 
     /// <summary>
@@ -3678,6 +3921,15 @@ public partial class OverlayWindow : Window
         view.ShowRowProgress = CapsuleProgressBand.OwnerOf(_machine.BandState()) != ProgressBandOwner.Media;
         // Media changes the marquee source, so the panel's height grows and shrinks with it.
         SyncMarqueeState();
+
+        // 1.19 (spec Этап 5, §5): a row that GAINS the player is a change of layer and gets a
+        // medium reaction. A track change inside an already-playing session does not, and pause
+        // does not: in both cases the row was already on screen, and re-revealing it would
+        // restart the monitor for a change the user did not cause. The trigger is the
+        // session's arrival, so it is the false→true edge and nothing else.
+        if (active && !_mediaWasActive)
+            PlayReveal(ReactionLevel.Medium, (view, 0));
+        _mediaWasActive = active;
     }
 
     /// <summary>
@@ -3832,6 +4084,9 @@ public partial class OverlayWindow : Window
 
     private void ShowLowBattery(int percent)
     {
+        // The low-battery alert arrives as a Notification, so the kind alone cannot tell it from
+        // an ordinary one — it is declared here instead, at the one site that knows.
+        _arrivalLevelOverride = ReactionLevel.Strong;
         var before = _machine.Snapshot().Kind;
         _machine.Dispatch(OverlayCommand.Notify, BatteryAlertLogic.LowBatteryPayload(percent));
         var after = _machine.Snapshot().Kind;
@@ -3924,7 +4179,26 @@ public partial class OverlayWindow : Window
         // 1.17: same arbitration as the media row — one activity, one bar. The timer keeps
         // its digits either way; the bar is the part that was duplicated.
         if (_timerRowView is { } tv)
+        {
             tv.ShowRowProgress = CapsuleProgressBand.OwnerOf(_machine.BandState()) != ProgressBandOwner.Timer;
+            // 1.19 (spec Этап 5, §6): a row that GAINS the timer is a change of layer and gets a
+            // medium reaction, same rule as the media row. Pause and resume keep the row on
+            // screen and stay quiet — the digits changing is data, not an arrival, and a reveal
+            // on every tick would make the row impossible to read.
+            if (active && !_timerWasActive) PlayReveal(ReactionLevel.Medium, (tv, 0));
+
+            // 1.19 (spec Этап 5, §6, "при завершении"): a finished countdown is the strongest
+            // thing that can happen to a row the user was watching, so it earns the strong
+            // tier's accent flash. Detected from the payload rather than from a new machine
+            // signal, because the FSM is off limits: a completion is the one case where the
+            // timer STOPS playing AND has no time left, which separates it from both a pause
+            // (stopped, time left) and a cancel (stopped, and the row goes away entirely).
+            var finished = t.Playing == false && t.RemainingSeconds <= 0 && t.Body.Length > 0;
+            if (finished && !_timerSignalledDone)
+                PlayAccentFlash(OverlayTokens.AccentHex);
+            _timerSignalledDone = finished;
+        }
+        _timerWasActive = active;
         SyncMarqueeState();
     }
 
@@ -4344,6 +4618,192 @@ public partial class OverlayWindow : Window
         {
             AppLog.Warn("PollFullscreen failed", ex);
         }
+    }
+}
+
+/// <summary>
+/// How loudly the island answers an event (spec Этап 5, §1).
+/// <para>
+/// Three levels, and the level is chosen by what CHANGED — not by how the event arrived. A
+/// CPU reading and a timer completing both arrive through the same clipboard-shaped path, but
+/// one is a background fact and the other is something the user was waiting for.
+/// </para>
+/// <para>
+/// This is a window-layer type on purpose. <see cref="AnimationTiming"/> and <see cref="AnimEase"/>
+/// already own durations and curves, and a level here only says which of those existing values
+/// to use — it introduces no new timing of its own, so nothing here can drift away from the
+/// speed setting or from reduced motion.
+/// </para>
+/// </summary>
+internal enum ReactionLevel
+{
+    /// <summary>Background facts: time, weather, CPU/RAM, network, progress, the passing second.</summary>
+    Quiet,
+    /// <summary>The island gaining or losing a layer: media, timer, clipboard, stats, drawer.</summary>
+    Medium,
+    /// <summary>Something the user was waiting for, or must not miss: a notification, a finished
+    /// timer, a low battery, a failure.</summary>
+    Strong,
+}
+
+/// <summary>
+/// The reaction a given level is allowed to make, resolved against the user's speed setting.
+/// <para>
+/// The numbers below are expressed as FRACTIONS of an existing duration rather than as new
+/// millisecond constants, so a level automatically follows <see cref="AnimationTiming"/>'s
+/// Fast/Normal/Slow multipliers and the reduced-motion path instead of becoming a fourth,
+/// parallel set of timings nobody scales.
+/// </para>
+/// </summary>
+internal static class Reaction
+{
+    /// <summary>How long one element's fade takes, as a share of the morph it rides.</summary>
+    public static int RevealMs(ReactionLevel level, AnimationSpeed speed) => level switch
+    {
+        // A quiet change is a crossfade, not a movement: it must be over before the next data
+        // point arrives, or the numbers would never be readable.
+        ReactionLevel.Quiet => AnimationTiming.ScaleMs(OverlayTokens.MorphMs / 3, speed),
+        ReactionLevel.Medium => AnimationTiming.ScaleMs(OverlayTokens.MorphMs / 2, speed),
+        _ => AnimationTiming.ScaleMs(OverlayTokens.MorphMs / 2, speed),
+    };
+
+    /// <summary>
+    /// Delay between consecutive elements on the shared timeline, as a share of the level's
+    /// own duration. <see cref="ReactionLevel.Quiet"/> is zero: a quiet change never staggers,
+    /// because a stagger reads as a sequence and a CPU tick is not a sequence.
+    /// </summary>
+    public static double StaggerShare(ReactionLevel level) => level switch
+    {
+        ReactionLevel.Quiet => 0.0,
+        // 1.12.4's spec asks for a stagger that is "barely noticeable" on the stats rows; 0.18
+        // of a ~210 ms fade is ~38 ms, which reads as a soft cascade and not as a queue.
+        _ => 0.18,
+    };
+
+    /// <summary>
+    /// How far an element rises as it fades in (DIP). Zero for quiet — a background refresh
+    /// must not move the surface, or the capsule appears to twitch once a second.
+    /// </summary>
+    public static double RiseDip(ReactionLevel level) => level switch
+    {
+        ReactionLevel.Quiet => 0.0,
+        ReactionLevel.Medium => 2.0,
+        _ => 3.0,
+    };
+
+    /// <summary>Accent flash length for a strong reaction (ms), as a share of the morph.</summary>
+    public static int AccentMs(AnimationSpeed speed) =>
+        AnimationTiming.ScaleMs(OverlayTokens.MorphMs / 2, speed);
+
+    /// <summary>Peak extra opacity of the accent flash. Kept low: it is a tint, not a lamp.</summary>
+    public const double AccentPeak = 0.28;
+}
+
+/// <summary>One element in a staged reveal.</summary>
+internal readonly record struct RevealItem(
+    Avalonia.Controls.Control Target,
+    /// <summary>Position in the order, 0 = first. Ties keep the caller's order.</summary>
+    int Order,
+    /// <summary>Opacity the element rests at once the reveal is over.</summary>
+    double RestOpacity)
+{
+    /// <summary>How far this element rises, from the reaction level that scheduled it.</summary>
+    public double RiseDip { get; init; }
+}
+
+/// <summary>
+/// A staged reveal: several elements fading in one after another on the shared frame clock.
+/// <para>
+/// The ordering lives in ONE list rather than in a timer per element, which is the point — a
+/// per-element timer would let an icon arrive after its own title (they are written in the same
+/// paint pass, and their timers start a frame apart), and the spec's "icon first, title second,
+/// body third" is a property of the schedule, not of who happens to be scheduled first.
+/// </para>
+/// <para>
+/// Reduced motion does not shorten this: it removes it. <see cref="Start"/> writes the end state
+/// immediately and the run never ticks, so a user who asked for less motion gets a caption that
+/// is simply already there, with the reveal's information — that something arrived — kept by the
+/// size change and the content itself.
+/// </para>
+/// </summary>
+internal sealed class RevealRun
+{
+    private readonly RevealItem[] _items;
+    private readonly int _durationMs;
+    private readonly Func<long> _now;
+    private long _startedAtMs;
+    private readonly double _staggerShare;
+
+    /// <summary>Translate applied per element, parallel to <see cref="_items"/>.</summary>
+    private readonly TranslateTransform?[] _moves;
+
+    public RevealRun(
+        IReadOnlyList<RevealItem> items,
+        int durationMs,
+        double staggerShare,
+        Func<long> now)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        ArgumentNullException.ThrowIfNull(now);
+        _items = items.OrderBy(i => i.Order).ToArray();
+        _durationMs = Math.Max(1, durationMs);
+        _staggerShare = Math.Max(0, staggerShare);
+        _now = now;
+        _moves = new TranslateTransform?[_items.Length];
+        for (var i = 0; i < _items.Length; i++)
+        {
+            var t = _items[i].Target;
+            // Only animate position where nothing else owns the transform. The chevrons, the
+            // marquee text and the pill all carry transforms that are written every frame by
+            // their own animation; putting a second transform on one of them would have the two
+            // overwrite each other, and the reveal would show as a jitter instead of a rise.
+            if (t.RenderTransform is null && _items[i].RiseDip > 0)
+            {
+                var tr = new TranslateTransform();
+                t.RenderTransform = tr;
+                _moves[i] = tr;
+            }
+        }
+    }
+
+    /// <summary>Total wall time including the stagger tail.</summary>
+    private int TotalMs => _durationMs + (int)Math.Round(_staggerShare * _durationMs * (_items.Length - 1));
+
+    /// <summary>Begin the run. Called once, immediately after construction.</summary>
+    public void Start() => _startedAtMs = _now();
+
+    /// <summary>Put every element straight to its resting state — the reduced-motion path.</summary>
+    public void Finish()
+    {
+        for (var i = 0; i < _items.Length; i++)
+        {
+            _items[i].Target.Opacity = _items[i].RestOpacity;
+            if (_moves[i] is { } m) { m.Y = 0; }
+        }
+    }
+
+    /// <summary>One frame; false once every element has arrived.</summary>
+    public bool Tick()
+    {
+        var elapsed = _now() - _startedAtMs;
+        var done = true;
+        for (var i = 0; i < _items.Length; i++)
+        {
+            var item = _items[i];
+            if (item.Target is null || !item.Target.IsVisible) continue;
+
+            var start = _staggerShare * _durationMs * i;
+            var p = Math.Clamp((elapsed - start) / (double)_durationMs, 0.0, 1.0);
+            if (p < 1.0) done = false;
+
+            // power2.out: the same soft settle the island morph uses, so a caption arriving and
+            // a capsule growing feel like one system rather than two.
+            var eased = AnimEase.Ease("power2.out", p);
+            item.Target.Opacity = item.RestOpacity * eased;
+            if (_moves[i] is { } m) m.Y = item.RiseDip * (1.0 - eased);
+        }
+        if (done) Finish();
+        return !done;
     }
 }
 
