@@ -25,7 +25,7 @@
           Width="170" Height="30"
           CornerRadius="15"
           Background="#080808"
-          BorderBrush="#28FFFFFF"
+          BorderBrush="#16FFFFFF"
           BorderThickness="1"
           HorizontalAlignment="Left"
           VerticalAlignment="Center"
@@ -63,9 +63,10 @@
         <TextBlock x:Name="ClockText"
                    VerticalAlignment="Center"
                    FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                   FontSize="12"
+                   FontSize="13"
                    FontWeight="SemiBold"
                    Foreground="#FFFFFF"
+                   FontFeatures="tnum"
                    Text="00:00" />
         <TextBlock x:Name="CyclePreviewText"
                    VerticalAlignment="Center"
@@ -108,9 +109,11 @@
         <TextBlock x:Name="DateText"
                    VerticalAlignment="Center"
                    FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                   FontSize="11"
+                   FontSize="10"
                    FontWeight="Medium"
                    Foreground="#C8C8CC"
+                   TextTrimming="CharacterEllipsis"
+                   MaxWidth="120"
                    Text="24 сен" />
         <StackPanel x:Name="MinimalWeather"
                     Orientation="Horizontal"
@@ -143,14 +146,17 @@
                      Foreground="#C8C8CC"
                      Text="100%" />
         </StackPanel>
+        <!-- 1.15: unread dot stays a quiet 6 DIP square in the accent colour. The permanent
+             outer glow is gone — a steady halo around a 6 DIP dot read as an alert lamp and
+             fought the calm of the capsule. Attention comes from the existing pulse (opacity
+             0.40↔1.0), not from a constant light source. -->
         <Border x:Name="UnreadDot"
-                Width="7" Height="7"
-                CornerRadius="3.5"
-                Background="#5CB6FF"
+                Width="6" Height="6"
+                CornerRadius="2"
+                Background="#3D9CF0"
                 VerticalAlignment="Center"
                 Opacity="0"
-                IsHitTestVisible="False"
-                BoxShadow="0 0 12 4 #E05CB6FF" />
+                IsHitTestVisible="False" />
         <Border x:Name="PinnedBadge"
                 IsVisible="False"
                 CornerRadius="4"
@@ -270,7 +276,7 @@
                 ClipToBounds="True"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
-                Margin="12,0,12,10">
+                Margin="22,0,22,10">
           <TextBlock x:Name="MarqueeText"
                      FontFamily="Segoe UI Variable, Inter, Segoe UI"
                      FontSize="10"
@@ -301,7 +307,7 @@
                   Orientation="Horizontal"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Bottom"
-                  Margin="10,0,10,2"
+                  Margin="22,0,22,2"
                   Spacing="1.5"
                   Height="8"
                   IsVisible="False"
@@ -316,7 +322,7 @@
                    Foreground="#3D9CF0"
                    Background="Transparent"
                    VerticalAlignment="Bottom"
-                   Margin="12,0,12,2"
+                   Margin="22,0,22,2"
                    IsVisible="False" />
 
       <!-- 1.14: секция буфера — правая часть САМОЙ капсулы. При копировании капсула

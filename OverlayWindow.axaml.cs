@@ -372,7 +372,10 @@ public partial class OverlayWindow : Window
         ClockText.FontSize = fs;
         ClockText.FontFamily = family;
         _clockDigitSize = fs;
-        DateText.FontSize = Math.Max(10, fs - 1);
+        // 1.15: the date sits one step below the clock in the type scale, not just in colour —
+        // a 1 DIP step at 12 looked like a peer of the time rather than its caption, and a
+        // long localised date ("ср, 30 сентября") had to fight the clock for horizontal room.
+        DateText.FontSize = Math.Max(10, fs - 2);
         DateText.FontFamily = family;
         WeatherTempText.FontSize = fs;
         WeatherTempText.FontFamily = family;
@@ -464,7 +467,7 @@ public partial class OverlayWindow : Window
     private void PillEnterVisuals()
     {
         Pill.BorderBrush = new SolidColorBrush(Color.Parse(
-            _hoverPin.IsPinned ? "#88FFFFFF" : "#55FFFFFF"));
+            _hoverPin.IsPinned ? "#60FFFFFF" : "#38FFFFFF"));
         Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, Math.Min(1.0, _idleFillA + 0.06)));
         IslandSounds.Play(IslandSoundKind.Hover, _settings);
     }
@@ -473,7 +476,7 @@ public partial class OverlayWindow : Window
     {
         if (!_hoverPin.IsPinned)
         {
-            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#28FFFFFF"));
+            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#16FFFFFF"));
             ApplyOpacity();
         }
     }
@@ -642,11 +645,6 @@ public partial class OverlayWindow : Window
         var text = ParseColor(_settings.ColorTextPrimary, OverlayTokens.TextHex);
         var textSec = ParseColor(_settings.ColorTextSecondary, OverlayTokens.TextSecondaryHex);
         var accent = ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex);
-        // Brighter glow variant for unread dot
-        var glow = Color.FromArgb(0xE0,
-            (byte)Math.Min(255, accent.R + 40),
-            (byte)Math.Min(255, accent.G + 30),
-            (byte)Math.Min(255, accent.B + 20));
 
         _clockBrush = new SolidColorBrush(text);
         ClockText.Foreground = _clockBrush;
@@ -654,11 +652,10 @@ public partial class OverlayWindow : Window
         WeatherTempText.Foreground = new SolidColorBrush(textSec);
         OverlayTitle.Foreground = new SolidColorBrush(text);
         BadgeText.Foreground = new SolidColorBrush(Colors.White);
-        UnreadDot.Background = new SolidColorBrush(glow);
-        UnreadDot.BoxShadow = new BoxShadows(new BoxShadow
-        {
-            Blur = 12, Spread = 4, Color = glow
-        });
+        UnreadDot.Background = new SolidColorBrush(accent);
+        // 1.15: no permanent BoxShadow. A steady halo around a 6 DIP dot read as an alert lamp
+        // rather than an unread mark; the pulse already carries the attention. Keep the dot
+        // itself the only ink.
         UnreadBadge.Background = new SolidColorBrush(accent);
         AppIcon.Background = new SolidColorBrush(accent);
         // 1.13: the media/timer control glyphs are gone from the capsule; their accent now
@@ -3225,17 +3222,17 @@ public partial class OverlayWindow : Window
         new SolidColorBrush(Color.Parse(
             value >= crit ? OverlayTokens.ErrorHex
             : value >= warn ? OverlayTokens.AccentHex
-            : OverlayTokens.TextSecondaryHex));
+            : OverlayTokens.TextHex));
 
     /// <summary>Value colour: normal / attention / critical, low-is-bad metric (battery %).</summary>
     private static IBrush StatsBrushLow(double value, double warn, double crit) =>
         new SolidColorBrush(Color.Parse(
             value <= crit ? OverlayTokens.ErrorHex
             : value <= warn ? OverlayTokens.AccentHex
-            : OverlayTokens.TextSecondaryHex));
+            : OverlayTokens.TextHex));
 
     /// <summary>Normal (never-accented) value colour — used for placeholders such as a missing battery.</summary>
-    private static IBrush StatsBrushNormal() => new SolidColorBrush(Color.Parse(OverlayTokens.TextSecondaryHex));
+    private static IBrush StatsBrushNormal() => new SolidColorBrush(Color.Parse(OverlayTokens.TextHex));
 
     /// <summary>«↓ 21,3 МБ/с» / «↑ 812 КБ/с» — binary 1024 unit switch, current culture decimal separator.</summary>
     private static string FormatNetRate(long bytesPerSec, string arrow)
@@ -3917,7 +3914,7 @@ public partial class OverlayWindow : Window
         // Pinned state gets a brighter outline. Run after any hover-pin transition
         // (Expand, Collapse, Escape, etc.). Idempotent.
         if (_hoverPin.IsPinned)
-            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#88FFFFFF"));
+            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#60FFFFFF"));
     }
 
     /// <summary>

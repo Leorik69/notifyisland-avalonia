@@ -22,7 +22,8 @@
     <TextBlock x:Name="ValueBlock"
                Grid.Row="0" Grid.Column="1"
                FontSize="12"
-               Foreground="#C8C8CC"
+               Foreground="#FFFFFF"
+               FontFeatures="tnum"
                TextAlignment="Right"
                VerticalAlignment="Center"
                Text="—" />
