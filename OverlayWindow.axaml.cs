@@ -83,7 +83,8 @@ public partial class OverlayWindow : Window
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromMilliseconds(OverlayTokens.FullscreenPollMs) };
     private bool _hiddenByFullscreen;
     private bool _clickThroughActive;
-    private bool _pointerOverPill;
+    private bool _pointerOverUi;                                  // aggregate over Pill, Blob, HistoryPanel
+    private int _uiHoverCount;                                    // refcount so an enter/exit pair across two controls cancels cleanly
     private DateTime _lastPillClickUtc = DateTime.MinValue;
     private bool _peekSecondsActive;
     private SystemSnapshot? _lastStats;
@@ -437,26 +438,65 @@ public partial class OverlayWindow : Window
         ApplyAnimationSettings();
         if (_hoverWired) return;
         _hoverWired = true;
-        Pill.PointerEntered += (_, _) =>
+
+        // The System Stats panel must stay open while the pointer is over ANY of the
+        // surfaces the user is likely to read: the capsule (Pill, including the panel
+        // inside it), the blob (which sits OUTSIDE the pill), and the history panel
+        // (also outside). A refcount keeps a fast move from one control to another —
+        // say, pill → ball — from briefly registering as "leave all" and starting the
+        // 5-second grace prematurely.
+        WireUiHover(Pill);
+        WireUiHover(Blob);
+        WireUiHover(HistoryPanel);
+    }
+
+    /// <summary>Wire PointerEnter/Leave that feed the shared hover-refcount.</summary>
+    private void WireUiHover(Avalonia.Controls.Control control)
+    {
+        control.PointerEntered += (_, _) => OnUiHoverEntered();
+        control.PointerExited += (_, _) => OnUiHoverExited();
+    }
+
+    private void OnUiHoverEntered()
+    {
+        // Stale events from before the window hid itself must not re-open the panel.
+        if (!_settings.IslandVisible || _hiddenByFullscreen) return;
+        _uiHoverCount++;
+        if (_uiHoverCount == 1)
         {
-            _pointerOverPill = true;
-            Pill.BorderBrush = new SolidColorBrush(Color.Parse(
-                _hoverPin.IsPinned ? "#88FFFFFF" : "#55FFFFFF"));
-            Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, Math.Min(1.0, _idleFillA + 0.06)));
-            SyncBlobFill();
-            IslandSounds.Play(IslandSoundKind.Hover, _settings);
+            _pointerOverUi = true;
+            PillEnterVisuals();
             OnPillHoverEnter();
-        };
-        Pill.PointerExited += (_, _) =>
+        }
+    }
+
+    private void OnUiHoverExited()
+    {
+        if (_uiHoverCount > 0) _uiHoverCount--;
+        if (_uiHoverCount == 0)
         {
-            _pointerOverPill = false;
-            if (!_hoverPin.IsPinned)
-            {
-                Pill.BorderBrush = new SolidColorBrush(Color.Parse("#28FFFFFF"));
-                ApplyOpacity();
-            }
+            _pointerOverUi = false;
+            PillLeaveVisuals();
             OnPillHoverLeave();
-        };
+        }
+    }
+
+    private void PillEnterVisuals()
+    {
+        Pill.BorderBrush = new SolidColorBrush(Color.Parse(
+            _hoverPin.IsPinned ? "#88FFFFFF" : "#55FFFFFF"));
+        Pill.Background = new SolidColorBrush(WithAlpha(_pillFill, Math.Min(1.0, _idleFillA + 0.06)));
+        SyncBlobFill();
+        IslandSounds.Play(IslandSoundKind.Hover, _settings);
+    }
+
+    private void PillLeaveVisuals()
+    {
+        if (!_hoverPin.IsPinned)
+        {
+            Pill.BorderBrush = new SolidColorBrush(Color.Parse("#28FFFFFF"));
+            ApplyOpacity();
+        }
     }
 
     /// <summary>
@@ -4243,7 +4283,7 @@ public partial class OverlayWindow : Window
         PlayClickPop();
 
         // If we unpinned but pointer is still over, restart hover peek promptly.
-        if (!_hoverPin.IsPinned && _pointerOverPill && _settings.HoverExpandEnabled)
+        if (!_hoverPin.IsPinned && _pointerOverUi && _settings.HoverExpandEnabled)
             _hoverPin.PointerEnter();
 
         ApplySize();

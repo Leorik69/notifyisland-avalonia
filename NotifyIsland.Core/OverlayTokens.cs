@@ -87,7 +87,14 @@ public static class OverlayTokens
     /// <summary>Hover → peek delay (ms) before richer idle content.</summary>
     public const int HoverExpandDelayMs = 250;
     /// <summary>Pointer-leave grace before collapsing hover peek (ms).</summary>
-    public const int HoverCollapseGraceMs = 500;
+    /// <para>
+    /// 5 s is the lower bound of "I want to read this". The earlier 500 ms default hid the
+    /// System Stats panel before the eye could leave the cursor and reach it, especially on
+    /// a panel that grew out of nothing: the user moved to look at a row and the panel was
+    /// already gone.
+    /// </para>
+    /// </summary>
+    public const int HoverCollapseGraceMs = 5000;
     /// <summary>Extra collapsed width while hover-peek / pinned (beyond seconds).</summary>
     public const double IdlePeekExtraW = 20;
     /// <summary>Fullscreen poll interval (ms).</summary>
