@@ -2137,6 +2137,24 @@ public partial class OverlayWindow : Window
 
         var enteringNotify = inflate && snap.Kind == OverlayKind.Notification;
         var leavingNotify = !inflate && _prevKind == OverlayKind.Notification;
+
+        // 1.13.1: a morph already flying to THIS exact target must not be restarted.
+        //
+        // The 200 ms tick reaches ApplySize twice for one hover change: once through
+        // TickHoverPin → ApplyHoverExpandedState (which calls ApplySize itself), and again
+        // through the tick's own `if (hoverChanged) ApplySize()`. The second call re-entered
+        // StartMorph a millisecond later, which re-ran PrepareMorphVisualStart and
+        // _morphWatch.Restart() over a morph that had not ticked yet — so the track restarted
+        // from the pre-morph width, the blob's own phase was reseeded, and the result read as a
+        // stutter. The log showed it plainly: every hover morph logged twice, 1 ms apart.
+        //
+        // Guarding inside StartMorph rather than at the call sites is deliberate: ApplySize has
+        // 28 callers and any of them can be the second one. Comparing targets catches the whole
+        // class, not just the pair that exists today.
+        if (MorphRestart.WouldRestartSameTarget(
+                _morphActive, _morphToW, _morphToH, _winToW, _winToH, w, h, winToW, winToH))
+            return;
+
         StartMorph(fromW, fromH, w, h, winFromW, winFromH, winToW, winToH,
             morphSpeed, inflate, enteringNotify, leavingNotify);
     }
@@ -2900,6 +2918,20 @@ public partial class OverlayWindow : Window
             var winPw = (int)Math.Round(Width * scale);
             var winPh = (int)Math.Round(Height * scale);
             (x, y) = HistoryWindowSeatFor(x, y, homePw, homePh, winPw, winPh);
+            // 1.13.1: the seat above is pure slack arithmetic and clamps to NOTHING. IslandLayout
+            // .Place clamps the CAPSULE, then BlobWindowFor re-seats a much larger window around
+            // that spot — the window carries the ball, its bridge and BlobDragMaxPx (100 DIP) of
+            // drag room on every side, so a capsule parked near an edge dragged half the window
+            // past the screen. The user saw the clipboard panel and the ball walk off-screen.
+            //
+            // The clamp must not touch the capsule: the spec is explicit that the island holds
+            // its position. So the allowance is the invisible drag slack — letting THAT overhang
+            // the screen is free, and it keeps the visible content (capsule, bridge, ball, panel)
+            // on screen. Clamping the window to the working area outright would move the island
+            // on every ball attach, which is the thing this code exists to prevent.
+            var slackPx = (int)Math.Round(OverlayTokens.BlobDragMaxPx * scale);
+            x = Math.Clamp(x, wa.X - slackPx, Math.Max(wa.X - slackPx, wa.X + wa.Width + slackPx - winPw));
+            y = Math.Clamp(y, wa.Y - slackPx, Math.Max(wa.Y - slackPx, wa.Y + wa.Height + slackPx - winPh));
         }
         Position = new PixelPoint(x, y);
         Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
