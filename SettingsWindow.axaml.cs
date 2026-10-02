@@ -1523,56 +1523,82 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void OnExportSettings(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    // Export / import run on the UI thread with real awaits. They used to hop onto a pool thread
+    // via ContinueWith, read _draft from there, block on GetResult() and drop any I/O error on the
+    // floor — so a locked or read-only target looked exactly like a successful export. They also
+    // used System.Text.Json defaults (PascalCase, numeric enums), a different format from
+    // settings.json, and the case-sensitive import then silently reset a real settings.json to
+    // defaults. Both directions now go through AppSettings.ToJson / TryImport.
+    private async void OnExportSettings(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        var window = GetTopLevel(this);
-        if (window is null) return;
-        var path = new Avalonia.Platform.Storage.FilePickerSaveOptions
+        var top = GetTopLevel(this);
+        if (top is null) return;
+        try
         {
-            SuggestedFileName = "notifyisland-settings.json",
-            DefaultExtension = "json"
-        };
-        window.StorageProvider.SaveFilePickerAsync(path).ContinueWith(t =>
+            var file = await top.StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+            {
+                SuggestedFileName = "notifyisland-settings.json",
+                DefaultExtension = "json",
+                FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("JSON") { Patterns = new[] { "*.json" } } }
+            });
+            if (file is null) return;
+            var json = _draft.ToJson();
+            await using (var stream = await file.OpenWriteAsync())
+            {
+                stream.SetLength(0);
+                await using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false));
+                await writer.WriteAsync(json);
+            }
+            ShowTransferStatus($"Настройки сохранены: {file.Name}", error: false);
+        }
+        catch (Exception ex)
         {
-            if (t.Status != TaskStatus.RanToCompletion || t.Result is null) return;
-            using var stream = t.Result.OpenWriteAsync().GetAwaiter().GetResult();
-            using var writer = new StreamWriter(stream);
-            writer.Write(System.Text.Json.JsonSerializer.Serialize(_draft,
-                new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-        });
+            AppLog.Warn("settings export failed", ex);
+            ShowTransferStatus($"Не удалось сохранить файл: {ex.Message}", error: true);
+        }
     }
 
-    private void OnImportSettings(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private async void OnImportSettings(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        var window = GetTopLevel(this);
-        if (window is null) return;
-        window.StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+        var top = GetTopLevel(this);
+        if (top is null) return;
+        try
         {
-            AllowMultiple = false,
-            FileTypeFilter = new[] { new Avalonia.Platform.Storage.FilePickerFileType("JSON")
-                { Patterns = new[] { "*.json" } } }
-        }).ContinueWith(t =>
+            var files = await top.StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+            {
+                AllowMultiple = false,
+                FileTypeFilter = new[] { new Avalonia.Platform.Storage.FilePickerFileType("JSON") { Patterns = new[] { "*.json" } } }
+            });
+            if (files is null || files.Count == 0) return;
+            string json;
+            await using (var stream = await files[0].OpenReadAsync())
+            using (var reader = new StreamReader(stream))
+                json = await reader.ReadToEndAsync();
+            var loaded = AppSettings.TryImport(json, out var error);
+            if (loaded is null)
+            {
+                ShowTransferStatus($"Импорт не выполнен: {error}.", error: true);
+                return;
+            }
+            // Into the draft only: the user still reviews and presses Save, same as any other edit.
+            loaded.CopyTo(_draft);
+            LoadUi();
+            ShowTransferStatus($"Загружено из {files[0].Name}. Нажмите «Сохранить», чтобы применить.", error: false);
+        }
+        catch (Exception ex)
         {
-            if (t.Status != TaskStatus.RanToCompletion || t.Result is null || t.Result.Count == 0) return;
-            using var stream = t.Result[0].OpenReadAsync().GetAwaiter().GetResult();
-            using var reader = new StreamReader(stream);
-            var json = reader.ReadToEnd();
-            try
-            {
-                var loaded = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json);
-                if (loaded is null) return;
-                loaded.Normalize();
-                Dispatcher.UIThread.Post(() =>
-                {
-                    loaded.CopyTo(_draft);
-                    LoadUi();
-                });
-            }
-            catch (Exception ex)
-            {
-                AppLog.Warn("settings import failed", ex);
-            }
-        });
+            AppLog.Warn("settings import failed", ex);
+            ShowTransferStatus($"Не удалось прочитать файл: {ex.Message}", error: true);
+        }
+    }
+
+    private void ShowTransferStatus(string text, bool error)
+    {
+        AboutTransferStatus.Text = text;
+        AboutTransferStatus.Foreground = error
+            ? new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(OverlayTokens.ErrorHex))
+            : null;
+        AboutTransferStatus.IsVisible = true;
     }
 
 }

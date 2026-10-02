@@ -341,6 +341,9 @@ public sealed class AppSettings
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,
+        // Reading is case-insensitive so a hand-edited file or an export from a build that wrote
+        // PascalCase names still loads instead of silently falling back to defaults.
+        PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
@@ -375,7 +378,7 @@ public sealed class AppSettings
         try
         {
             Directory.CreateDirectory(SettingsDirectory);
-            File.WriteAllText(SettingsPath, ToJson());
+            WriteAtomically(SettingsPath, ToJson());
         }
         catch
         {
@@ -384,6 +387,36 @@ public sealed class AppSettings
     }
 
     public string ToJson() => JsonSerializer.Serialize(this, JsonOpts);
+
+    /// <summary>
+    /// Write through a temp file and swap it in, so a crash or a full disk mid-write leaves the
+    /// previous settings intact instead of a truncated file that Load would discard as corrupt.
+    /// </summary>
+    public static void WriteAtomically(string path, string contents)
+    {
+        var tmp = path + ".tmp";
+        File.WriteAllText(tmp, contents);
+        if (File.Exists(path)) File.Replace(tmp, path, null);
+        else File.Move(tmp, path);
+    }
+
+    /// <summary>
+    /// Parse a settings file chosen by the user. Unlike <see cref="Load"/> this reports why it
+    /// failed, because the user is waiting on the answer: null result plus a short reason.
+    /// </summary>
+    public static AppSettings? TryImport(string json, out string error)
+    {
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(json)) { error = "файл пуст"; return null; }
+        try
+        {
+            var s = FromJson(json);
+            if (s is null) error = "в файле нет настроек";
+            return s;
+        }
+        catch (JsonException) { error = "файл не является настройками NotifyIsland"; return null; }
+        catch (NotSupportedException) { error = "неподдерживаемый формат файла"; return null; }
+    }
 
     public static AppSettings? FromJson(string json)
     {

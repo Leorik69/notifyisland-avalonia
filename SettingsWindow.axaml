@@ -1012,6 +1012,7 @@
                   <Button x:Name="AboutImportButton" Content="Импорт настроек" Click="OnImportSettings"/>
                   <Button x:Name="AboutUpdateButton" Content="Проверить обновления" IsEnabled="False"/>
                 </StackPanel>
+                <TextBlock x:Name="AboutTransferStatus" Classes="mutedNote" IsVisible="False" TextWrapping="Wrap"/>
                 <TextBlock Classes="mutedNote" Text="Импорт перезапишет настройки: сначала сохраните копию."/>
               </StackPanel>
             </Border>
