@@ -25,9 +25,9 @@ public class ClipboardSplitTests
     [Fact]
     public void SplitWidthFor_Vertical_AddsToTheLongAxisNotTheShortOne()
     {
-        // Vertical: the long axis is the height, so the width stays the thin capsule and the
-        // clipboard half shows up as height instead. Spec "Известные ограничения".
-        Assert.Equal(OverlayTokens.CollapsedH,
+        // Vertical: the long axis is the height, so the width stays the capsule's cross axis and
+        // the clipboard half shows up as height instead. Spec "Известные ограничения".
+        Assert.Equal(OverlayTokens.CollapsedCrossAxisVertical,
             ClipboardSplit.SplitWidthFor(isVertical: true, OverlayTokens.CollapsedW));
 
         var flat = IslandLayout.SizeFor(OverlayKind.Idle, false,
@@ -35,7 +35,7 @@ public class ClipboardSplitTests
         var vert = IslandLayout.SizeFor(OverlayKind.Idle, false,
             IslandOrientation.Vertical, IslandEdge.Left, splitClipboard: true);
 
-        Assert.Equal(OverlayTokens.CollapsedH, vert.Width);  // short axis unchanged
+        Assert.Equal(OverlayTokens.CollapsedCrossAxisVertical, vert.Width);  // cross axis, unchanged by the split
         Assert.Equal(flat.Width, vert.Height);               // same long-axis total, other axis
     }
 
@@ -484,10 +484,15 @@ public class ClipboardSplitTests
         // The half occupies exactly [start, pillLong] on the long axis…
         Assert.Equal(OverlayTokens.CollapsedW, start);
         Assert.Equal(OverlayTokens.ClipboardHalfW, pillLong - start);
-        // …and nothing at all on the cross axis: the cross axis is still the thin capsule,
-        // which is what keeps the 200-DIP half from drawing outside it.
-        Assert.Equal(OverlayTokens.CollapsedH, vertical ? w : h);
-        Assert.True(OverlayTokens.ClipboardHalfW > OverlayTokens.CollapsedH,
+        // …and nothing at all on the cross axis: the half is attached along the long axis only,
+        // which is what keeps the 200-DIP half from drawing outside the capsule.
+        var crossAxis = vertical
+            ? OverlayTokens.CollapsedCrossAxisVertical
+            : OverlayTokens.CollapsedH;
+        Assert.Equal(crossAxis, vertical ? w : h);
+        // True on both orientations — and the vertical cross axis is now wide enough to hold the
+        // clock, so this has to be checked against the value that orientation actually uses.
+        Assert.True(OverlayTokens.ClipboardHalfW > crossAxis,
             "the half must be attached along the long axis only — the cross axis is far too short");
     }
 

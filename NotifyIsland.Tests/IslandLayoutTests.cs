@@ -33,13 +33,39 @@ public class IslandLayoutTests
     {
         var (w, h) = IslandLayout.SizeFor(OverlayKind.Idle, weatherEnabled: true,
             IslandOrientation.Vertical, IslandEdge.Left);
-        Assert.Equal(OverlayTokens.CollapsedH, w);
+        // The cross axis is the island's WIDTH here, and it is sized to the digital clock's digit
+        // strip rather than to the horizontal capsule's 30 DIP height.
+        Assert.Equal(OverlayTokens.CollapsedCrossAxisVertical, w);
         Assert.Equal(OverlayTokens.CollapsedWeatherW, h);
 
+        // Auto + Right is vertical too: IsVertical treats Left/Right as vertical under Auto, so
+        // this is the same cross axis, not the horizontal 30.
         var (nw, nh) = IslandLayout.SizeFor(OverlayKind.Media, false,
             IslandOrientation.Auto, IslandEdge.Right);
-        Assert.Equal(OverlayTokens.CollapsedH, nw);
+        Assert.Equal(OverlayTokens.CollapsedCrossAxisVertical, nw);
         Assert.True(nh >= OverlayTokens.ExpandedMinW);
+    }
+
+    [Fact]
+    public void TheVerticalCrossAxisIsWideEnoughForTheDigitalClock()
+    {
+        // The reason the vertical cross axis is not simply CollapsedH: the digit strip is not
+        // rotated with the row, so it runs across the island's width. "HH:mm" at the maximum
+        // FontSize of 18 is FOUR digits (0,2,4,3) plus a colon, not two digits: 18×4 + 9 = 81.
+        // The earlier 45 was two digits and a colon, and 48 against it still cut the minutes off.
+        var maxFont = 18.0;
+        // WidthFactor is 1.0 for a digit and 0.5 for the colon, so the colon is 9 DIP — applying
+        // the factor a second time to an already-factored number was the first wrong attempt here.
+        var clockAtMaxFont = 4 * maxFont * 1.0 + maxFont * 0.5;
+        Assert.Equal(81.0, clockAtMaxFont);
+        Assert.True(OverlayTokens.CollapsedCrossAxisVertical >= clockAtMaxFont,
+            $"cross axis {OverlayTokens.CollapsedCrossAxisVertical} cannot hold a clock needing {clockAtMaxFont}");
+
+        // The horizontal capsule must keep the height its design was built around.
+        var (hw, hh) = IslandLayout.SizeFor(OverlayKind.Idle, false,
+            IslandOrientation.Horizontal, IslandEdge.Bottom);
+        Assert.Equal(OverlayTokens.CollapsedH, hh);
+        Assert.Equal(OverlayTokens.CollapsedW, hw);
     }
 
     [Fact]

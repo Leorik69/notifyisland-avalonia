@@ -163,7 +163,9 @@ public class IslandWidthTests
         var isVertical = IslandLayout.IsVertical(orientation, edge);
         if (isVertical)
         {
-            Assert.Equal(OverlayTokens.CollapsedH, wide.Width, 6);   // cross axis fixed
+            // "Cross axis fixed" still holds, but the cross axis is no longer the same constant on
+            // both orientations: as a width it is sized to the digital clock.
+            Assert.Equal(OverlayTokens.CollapsedCrossAxisVertical, wide.Width, 6);
             Assert.Equal(narrow.Height * 1.5, wide.Height, 6);
         }
         else

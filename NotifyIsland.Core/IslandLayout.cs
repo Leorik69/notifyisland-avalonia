@@ -50,7 +50,12 @@ public static class IslandLayout
 
         var longAxis = OverlayMachine.WidthFor(kind, weatherEnabled, batteryChip, statsMetricCount,
                                                splitClipboard, collapsedScale);
-        var shortAxis = OverlayTokens.CollapsedH;
+        // The cross axis is orientation-dependent: on a horizontal capsule it is the height that
+        // CollapsedH was designed around, and on a vertical one it is the width, which has to hold
+        // the digital clock's digit strip. See OverlayTokens.CollapsedCrossAxisVertical.
+        var shortAxis = IsVertical(orientation, edge)
+            ? OverlayTokens.CollapsedCrossAxisVertical
+            : OverlayTokens.CollapsedH;
         if (IsVertical(orientation, edge))
             return (shortAxis, longAxis);
         return (longAxis, shortAxis);

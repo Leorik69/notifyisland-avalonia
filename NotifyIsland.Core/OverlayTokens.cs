@@ -18,6 +18,25 @@ public static class OverlayTokens
     public const double CollapsedBatteryExtraW = 36;
     /// <summary>Fixed capsule height for every kind — width-only morph.</summary>
     public const double CollapsedH = 30;
+
+    /// <summary>
+    /// The cross axis of a VERTICAL island, i.e. its width.
+    /// <para>
+    /// 30 is the right height for a horizontal capsule — the progress band is sized to it — but
+    /// as a width it is narrower than the content. The digital clock is not rotated with the row:
+    /// the row stacks, and the digit strip stays horizontal across the island's width. "HH:mm" at
+    /// the maximum FontSize of 18 is FOUR digits plus a colon — 18×4 + 9 = 81 DIP — so a 30 DIP
+    /// island showed roughly one digit and a half.
+    /// </para>
+    /// <para>
+    /// 88 clears that with a little air. It is a separate constant rather than a raise of
+    /// <see cref="CollapsedH"/> so the horizontal capsule keeps the height its design was built
+    /// around — widening that one would be a change nobody asked for, on a layout it does not
+    /// affect.
+    /// </para>
+    /// </summary>
+    public const double CollapsedCrossAxisVertical = 88;
+
     public const double ExpandedMinW = 280;
     public const double ExpandedMaxW = 460;
     /// <summary>Soft-Out morph base duration (ms) at Normal. Raised in 1.5.8 for smoother/slower feel.</summary>

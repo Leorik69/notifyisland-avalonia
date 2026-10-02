@@ -13,12 +13,12 @@ public static class ClipboardSplit
     /// Total pill width when split, in window coordinates.
     /// Horizontal: the clipboard half grows the width — <paramref name="collapsedW"/> +
     /// <see cref="OverlayTokens.ClipboardHalfW"/>.
-    /// Vertical (Left/Right): the long axis is the height, so the pill stays a thin
-    /// <see cref="OverlayTokens.CollapsedH"/> capsule and the clipboard half grows the height
-    /// instead — <see cref="IslandLayout.SizeFor"/> owns that axis swap.
+    /// Vertical (Left/Right): the long axis is the height, so the pill keeps its cross-axis
+    /// thickness — <see cref="OverlayTokens.CollapsedCrossAxisVertical"/> — and the clipboard half
+    /// grows the height instead. <see cref="IslandLayout.SizeFor"/> owns that axis swap.
     /// </summary>
     public static double SplitWidthFor(bool isVertical, double collapsedW) =>
-        isVertical ? OverlayTokens.CollapsedH : collapsedW + OverlayTokens.ClipboardHalfW;
+        isVertical ? OverlayTokens.CollapsedCrossAxisVertical : collapsedW + OverlayTokens.ClipboardHalfW;
 
     /// <summary>Long-axis (morph length) of a split pill: the normal length plus the half.</summary>
     public static double SplitLongAxisFor(double longAxisW) => longAxisW + OverlayTokens.ClipboardHalfW;
