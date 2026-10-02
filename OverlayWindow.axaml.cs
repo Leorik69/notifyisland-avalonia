@@ -3381,6 +3381,9 @@ public partial class OverlayWindow : Window
 
         OverlayTitle.Text = titleText;
         _titleBudget = titleW;
+        // The action cluster was visible or not in this same frame, and SplitWidths below has to
+        // be told the same thing. See ClampTitleToColumn.
+        _notifActionsShown = notifActions;
         OverlayTitle.MaxWidth = titleW;
         OverlaySubtitle.Text = bodyText;
         // The body sits in the text grid's star column, so the layout gives it exactly the room
@@ -3410,7 +3413,17 @@ public partial class OverlayWindow : Window
         UnreadBadge.Background = CachedBrush(accent);
         // The action is destructive, so it wears the existing error colour — but on the LABEL,
         // not as a filled red chip, which at this size would read as the primary control.
-        NotifActionClearText.Foreground = CachedBrush(errorInk);
+        //
+        // 2026-10-02: it wore the raw error hex, which bypasses the contrast guard Stage 7 put
+        // on every other ink in the capsule. #E8A0A0 on the light theme's #F5F5F7 wall is about
+        // 1.9:1 — the cancel glyph was technically present and practically unreadable, and the
+        // Stage 7 palette held #23232A only for the PRIMARY, so the rule was satisfied on paper
+        // while this label stayed outside it. GuardedIconInk keeps the destructive red wherever
+        // it is actually readable and drops to the capsule's own ink where it is not.
+        NotifActionClearText.Foreground = CachedBrush(ParseColor(
+            ThemePresets.GuardedIconInk(
+                _settings.ColorCapsuleFill, OverlayTokens.ErrorHex, _inkSecondaryHex),
+            OverlayTokens.ErrorHex));
         NotifActionClear.IsVisible = notifActions;
         NotifActionClear.IsHitTestVisible = notifActions;
 
@@ -3990,12 +4003,19 @@ public partial class OverlayWindow : Window
     {
         var w = OverlayTextColumn.Bounds.Width;
         if (w <= 0) return;
-        var (share, _) = NotificationLayout.SplitWidths(w, false, OverlaySubtitle.IsVisible);
+        // 2026-10-02: this passed a hardcoded `false` for the action cluster, while Paint passed
+        // the real one. On a real toast the cluster takes 86 of 277 px, so Paint budgeted 191 px
+        // for the title and this instantly clamped it to 191 against a column that only has 205 —
+        // the gap varied with the body text, and on a wide window the title was measured 23 px
+        // narrow and ellipsised early while space sat empty beside it. Both calls now use the same
+        // value, recorded by Paint in the frame it was computed for.
+        var (share, _) = NotificationLayout.SplitWidths(w, _notifActionsShown, OverlaySubtitle.IsVisible);
         var cap = Math.Min(share, _titleBudget);
         if (Math.Abs(OverlayTitle.MaxWidth - cap) > 0.5) OverlayTitle.MaxWidth = cap;
     }
 
     private double _titleBudget = double.PositiveInfinity;
+    private bool _notifActionsShown;
 
     private static string OneLine(string? text) =>
         (text ?? string.Empty).Replace("\r", " ").Replace("\n", " ⏎ ").Trim();

@@ -672,7 +672,13 @@ public partial class SettingsWindow : Window
         AnimPulseEnabledBox.IsChecked = _draft.AnimPulseEnabled;
         ReducedMotionBox.IsChecked = _draft.ReducedMotion;
         SelectByTag(IconPackBox, _draft.IconPack);
-        RefreshIconsPreview();
+        // 2026-10-02: this used to run here, twenty lines ABOVE SetPicker(ColorTextSecondaryPicker).
+        // Every glyph in the preview is outlined with that picker's colour, so on the first open
+        // of a session it drew the XAML default (#C8C8CC) instead of the user's real secondary —
+        // a preview showing a colour that is not the app's, which is the one thing a preview must
+        // not do. RefreshIconsPreview is not called again by UpdatePreview, so it stayed wrong
+        // until the user changed the icon pack themselves. Moved below the pickers, where the
+        // value it reads actually exists.
         SelectByTag(FontFamilyBox, _draft.FontFamily);
         SelectByTag(DateFormatBox, _draft.DateFormat.ToString());
         DigitalClockBox.IsChecked = _draft.DigitalClockEnabled;
@@ -695,6 +701,7 @@ public partial class SettingsWindow : Window
         SetPicker(ColorAccentPicker, _draft.ColorAccent, "#3D9CF0");
         SetPicker(ColorTextPrimaryPicker, _draft.ColorTextPrimary, "#FFFFFF");
         SetPicker(ColorTextSecondaryPicker, _draft.ColorTextSecondary, "#C8C8CC");
+        RefreshIconsPreview();
         FontFamilyBox.SelectionChanged += (_, _) => UpdatePreview();
         UpdatePreview();
         UpdateDependencyStates();
@@ -1269,14 +1276,20 @@ public partial class SettingsWindow : Window
         var hold = 320;
         var elapsed = Environment.TickCount64 - _animPreviewStartMs;
 
-        if (elapsed <= appear)
-        {
-            var p = appear <= 0 ? 1.0 : elapsed / (double)appear;
-            ApplyAnimPreviewFrame(SelectedTag(AppearStyleBox), p, leaving: false);
-            return;
-        }
+        // 2026-10-02: the "appear" branch used to be tested BEFORE the phase, so every phase
+        // transition — which resets _animPreviewStartMs — dropped the next tick back into it
+        // with elapsed ~= one timer period. The pill therefore replayed its arrival three times
+        // (240 -> ~176 -> 240 DIP) and the hold lasted twice as long: the user pressed "Проверить"
+        // to see how the arrival will look and saw a sequence the island never produces. The
+        // phase is now consulted first, so "appear" can only run in phase 1.
         if (_animPreviewPhase == 1)
         {
+            if (elapsed <= appear)
+            {
+                var p = appear <= 0 ? 1.0 : elapsed / (double)appear;
+                ApplyAnimPreviewFrame(SelectedTag(AppearStyleBox), p, leaving: false);
+                return;
+            }
             _animPreviewPhase = 2;
             _animPreviewStartMs = Environment.TickCount64;
             ApplyAnimPreviewFrame(SelectedTag(AppearStyleBox), 1.0, leaving: false);
