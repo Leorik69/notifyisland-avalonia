@@ -70,7 +70,15 @@ public sealed class WindowsSystemMonitorSource : ISystemMonitorSource
 
         var processSetRebuilt = RefreshProcessCacheIfStale(now);
 
-        var totalCpuTicks = TrySample(SampleTotalCpuTicks, (long?)null);
+        // Walking every process for its CPU time was the single most expensive step here (8% of
+        // the process's CPU in a measured 40 s trace), and the reading it produces is a slow
+        // percentage that StatsDebounce smooths anyway. So it runs on its own, longer cadence; on
+        // the ticks in between, totalCpuTicks stays null and the existing carry-forward path
+        // below keeps the previous percentage and, importantly, does not advance the baseline.
+        var readCpu = _lastCpuReadUtc == default
+            || (now - _lastCpuReadUtc).TotalMilliseconds >= OverlayTokens.StatsCpuSampleIntervalMs;
+        var totalCpuTicks = readCpu ? TrySample(SampleTotalCpuTicks, (long?)null) : (long?)null;
+        if (readCpu) _lastCpuReadUtc = now;
         // Both network counters now come from one pass, so they succeed or fail together —
         // which is the honest reading anyway: there is no meaningful "up without down" sample.
         var net = TrySample(SampleNetBytes, ((long Received, long Sent)?)null);
@@ -331,6 +339,7 @@ public sealed class WindowsSystemMonitorSource : ISystemMonitorSource
     // own baseline, so a failed sample cannot pair a stale counter delta with a
     // shorter elapsed time and inflate the rate for one tick.
     private DateTime _lastCpuBaselineUtc;
+    private DateTime _lastCpuReadUtc;
     private DateTime _lastNetDownUtc;
     private DateTime _lastNetUpUtc;
     private long _lastTotalCpuTicks;

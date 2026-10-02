@@ -120,6 +120,23 @@ public static class OverlayTokens
     public const int    StatsRefreshMaxMs        = 2000;
     /// <summary>Ignore timer ticks closer together than this (ms).</summary>
     public const int    StatsMinSampleIntervalMs  = 100;
+    /// <summary>
+    /// Minimum gap between two reads of every process's CPU time (ms).
+    /// <para>
+    /// 2026-10-02, measured: this is the most expensive thing the sampler does — reading
+    /// <c>TotalProcessorTime</c> for every process was 8% of the whole process's CPU, on a
+    /// machine with ~250 processes. A trace also showed <c>GetAllNetworkInterfaces</c> taking
+    /// 2.8 s of wall time per 40 s — which looks alarming but is only 3.6 ms of CPU, because it
+    /// is mostly blocked in a system call. So the network read stays at the sample period and
+    /// only the process walk is slowed down.
+    /// </para>
+    /// <para>
+    /// Three seconds is well inside what the number means: the reading is a percentage of total
+    /// capacity over the window, and it is then smoothed by <c>StatsDebouncePercent</c> anyway, so
+    /// sampling it faster only produced jitter the hysteresis would have hidden.
+    /// </para>
+    /// </summary>
+    public const int    StatsCpuSampleIntervalMs   = 3_000;
     /// <summary>Rebuild the Process[] cache on this cadence (ms).</summary>
     public const int    StatsProcessCacheMs       = 30_000;
     /// <summary>Percent-change floor below which a CPU reading is reused.</summary>
