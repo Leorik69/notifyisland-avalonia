@@ -71,6 +71,13 @@ public sealed class WindowsNotificationSource : IDisposable
     private bool _firstPollReported;   // say the first successful read once, not every second
     private bool _senderNameReported;  // ditto: a nameless sender is re-read on every poll
 
+    /// <summary>
+    /// Ids already converted on a previous poll. Replaced wholesale (not added to) on every poll
+    /// from the notifications currently in the action centre, so a dismissed toast stops being
+    /// remembered and this cannot grow without bound.
+    /// </summary>
+    private HashSet<uint> _seenIds = new();
+
     /// <summary>One-shot logger. A toast stays in the centre for minutes, so the same missing
     /// name would otherwise be reported once per second for as long as it sits there.</summary>
     private void LogSenderNameOnce(string message)
@@ -250,9 +257,22 @@ public sealed class WindowsNotificationSource : IDisposable
         var notifications = Await(listener.GetNotificationsAsync(NotificationKinds.Toast), PollTimeout);
         if (notifications is null) return;
 
+        // 2026-10-02 perf pass: only notifications we have never seen are converted. The listener
+        // hands back the whole action centre, not a delta — measured at 71 toasts carrying text on
+        // the very first poll — and every one of them used to be walked through GetTextElements()
+        // and DisplayInfo() once per second, forever, only for the feed to drop it as a duplicate.
+        // The guard is by Guid, so the common "nothing is new" poll allocates nothing at all here.
+        // Seen is rebuilt from the current listing each poll, which is also the bound: when a
+        // toast is dismissed it leaves the centre, its id is forgotten, and memory cannot grow.
+        var seenNow = new HashSet<uint>();
         var fresh = new List<IncomingToast>();
         foreach (var userNotification in notifications)
         {
+            var id = userNotification.Id;
+            seenNow.Add(id);
+            if (_seenIds.Contains(id))
+                continue;
+
             IncomingToast toast;
             try
             {
@@ -283,6 +303,7 @@ public sealed class WindowsNotificationSource : IDisposable
             if (Feed.Accept(toast) == FeedVerdict.Accepted) fresh.Add(toast);
         }
 
+        _seenIds = seenNow;
         if (notifications.Count > 0) _primed = true;
         if (fresh.Count == 0) return;
 

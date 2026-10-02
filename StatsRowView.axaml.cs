@@ -18,7 +18,23 @@ public partial class StatsRowView : Avalonia.Controls.UserControl
     public StatsRowView()
     {
         InitializeComponent();
+
+        // 2026-10-02 perf pass: each action button's TextBlock is built once, here. SetStatus
+        // used to construct a fresh TextBlock for all three buttons on every call, and
+        // SetStatus runs on the 200 ms tick — 15 throwaway controls a second, each of which
+        // forced the row to re-measure, to display a glyph that usually had not changed.
+        foreach (var b in new[] { ActionA, ActionB, ActionC })
+            b.Content = MakeGlyph(b);
     }
+
+    // The cancel glyph is red; the glyph text inherits the button's Foreground otherwise, so the
+    // danger style would not show.
+    private static Avalonia.Controls.TextBlock MakeGlyph(Avalonia.Controls.Button b) => new()
+    {
+        FontSize = 11,
+        Foreground = (Avalonia.Media.IBrush?)b.Foreground,
+        VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+    };
 
     /// <summary>Caption text of a caption row (the Date row). Ignored on pair rows.</summary>
     public string Caption
@@ -121,10 +137,13 @@ public partial class StatsRowView : Avalonia.Controls.UserControl
         if (model.Progress is { } f)
             StatusBar.Value = Math.Clamp(f, 0, 1);
 
+        // The two clusters are fixed (see the class note above), so their glyphs and tooltips are
+        // constants hoisted to statics rather than re-allocated per call and read back out
+        // through a LINQ ElementAtOrDefault that allocated an enumerator to reach index 0.
         var buttons = model.Kind switch
         {
-            StatusRowKind.Media => new[] { "⏮", model.Playing ? "⏸" : "▶", "⏭" },
-            StatusRowKind.Timer => new[] { model.Playing ? "⏸" : "▶", "+1", "✕" },
+            StatusRowKind.Media => MediaGlyphs(model.Playing),
+            StatusRowKind.Timer => TimerGlyphs(model.Playing),
             _ => Array.Empty<string>()
         };
         var showActions = model.Active && buttons.Length > 0;
@@ -138,33 +157,42 @@ public partial class StatsRowView : Avalonia.Controls.UserControl
 
         var tooltips = model.Kind switch
         {
-            StatusRowKind.Media => new[] { "Предыдущий трек", "Пауза / воспроизведение", "Следующий трек" },
-            StatusRowKind.Timer => new[] { "Пауза / продолжить", "Добавить минуту", "Отменить таймер" },
+            StatusRowKind.Media => MediaTips,
+            StatusRowKind.Timer => TimerTips,
             _ => Array.Empty<string>()
         };
-        SetTip(ActionA, tooltips.ElementAtOrDefault(0) ?? "");
-        SetTip(ActionB, tooltips.ElementAtOrDefault(1) ?? "");
-        SetTip(ActionC, tooltips.ElementAtOrDefault(2) ?? "");
+        SetTip(ActionA, tooltips.Length > 0 ? tooltips[0] : null);
+        SetTip(ActionB, tooltips.Length > 1 ? tooltips[1] : null);
+        SetTip(ActionC, tooltips.Length > 2 ? tooltips[2] : null);
     }
+
+    private static readonly string[] MediaTips = { "Предыдущий трек", "Пауза / воспроизведение", "Следующий трек" };
+    private static readonly string[] TimerTips = { "Пауза / продолжить", "Добавить минуту", "Отменить таймер" };
+
+    private static string[] MediaGlyphs(bool playing) =>
+        playing ? new[] { "⏮", "⏸", "⏭" } : new[] { "⏮", "▶", "⏭" };
+
+    private static string[] TimerGlyphs(bool playing) =>
+        playing ? new[] { "⏸", "+1", "✕" } : new[] { "▶", "+1", "✕" };
 
     // Avalonia.Controls.Button spelled out: the project globally imports WinForms, so the
     // bare name is ambiguous between the two Button types.
     private static void SetButton(Avalonia.Controls.Button b, string glyph)
     {
-        b.Content = new TextBlock
-        {
-            Text = glyph,
-            FontSize = 11,
-            // The cancel glyph is red; the glyph text inherits the button's Foreground
-            // otherwise, so the danger style would not show.
-            Foreground = (Avalonia.Media.IBrush?)b.Foreground,
-            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
-        };
+        // The TextBlock was built in the constructor; only its text is written now.
+        if (b.Content is Avalonia.Controls.TextBlock tb)
+            tb.Text = glyph;
         b.IsVisible = glyph.Length > 0;
     }
 
-    private static void SetTip(Avalonia.Controls.Button b, string tip) =>
-        ToolTip.SetTip(b, string.IsNullOrWhiteSpace(tip) ? null : tip);
+    private static void SetTip(Avalonia.Controls.Button b, string? tip)
+    {
+        // Only re-arm Avalonia's tooltip timer when the tip actually changed — the tooltips are
+        // constant for the life of the row, so this used to fire fifteen times a second.
+        var value = string.IsNullOrWhiteSpace(tip) ? null : tip;
+        if (!string.Equals(b.GetValue(ToolTip.TipProperty) as string, value, StringComparison.Ordinal))
+            ToolTip.SetTip(b, value);
+    }
 
     private void OnActionAClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => ActionClicked?.Invoke(0);
     private void OnActionBClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => ActionClicked?.Invoke(1);

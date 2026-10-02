@@ -42,6 +42,39 @@ public partial class OverlayWindow : Window
     private bool _pressing;
     private bool _weatherIconFlip;
     private string _lastWeatherIconKey = "";
+    // 2026-10-02 perf pass: the collapsed-state readings that Paint re-derived on every 200 ms
+    // tick. Each one only moves when its own source does, so each gets its own last-seen value
+    // and the tick stops rebuilding identical controls, strings and tooltips.
+    private string _lastWxTempText = "";
+    private string _lastWxTip = "";
+    private string _lastBatTip = "";
+    private string _lastBatIconKey = "";
+    private string _lastBatIconPack = "";
+    private double _lastBatIconSize;
+    private Color _lastBatIconInk;
+
+    // A SolidColorBrush is immutable once constructed, so handing Avalonia the SAME instance for
+    // the same colour is indistinguishable from a fresh one and costs nothing. Paint runs five
+    // times a second and used to allocate five of them per call to express four colours, plus a
+    // fresh Color.Parse of the same error hex three times. The cache is capped: a user who keeps
+    // editing the accent in Settings should not be able to grow it without bound.
+    private readonly List<(Color Color, SolidColorBrush Brush)> _brushCache = new();
+
+    private SolidColorBrush CachedBrush(Color color)
+    {
+        for (var i = 0; i < _brushCache.Count; i++)
+        {
+            if (_brushCache[i].Color.Equals(color))
+                return _brushCache[i].Brush;
+        }
+
+        if (_brushCache.Count >= 16)
+            _brushCache.Clear();
+
+        var brush = new SolidColorBrush(color);
+        _brushCache.Add((color, brush));
+        return brush;
+    }
     private readonly TranslateTransform _pillTranslate = new();
     private readonly Stopwatch _pressWatch = new();
     private OverlayKind _lastKind = OverlayKind.Idle;
@@ -3206,16 +3239,27 @@ public partial class OverlayWindow : Window
         if (showMinimalWx)
         {
             var wx = snap.LastWeather;
-            WeatherTempText.Text = WeatherCodes.FormatMinimalTemp(wx.TemperatureC ?? 18);
-            SetWeatherIcons(WeatherCodes.IconKey(wx.WeatherCode ?? 0), animate: true);
-            if (_settings.WeatherLocationMode == WeatherLocationMode.Manual
-                && !string.IsNullOrWhiteSpace(_settings.WeatherLocationName))
+            // Same story as the kind icon: the text and the tooltip only change when the reading
+            // or the location does, so re-formatting and re-setting them five times a second
+            // bought nothing. ToolTip.SetTip in particular re-arms Avalonia's tooltip timer.
+            var tempText = WeatherCodes.FormatMinimalTemp(wx.TemperatureC ?? 18);
+            if (!string.Equals(tempText, _lastWxTempText, StringComparison.Ordinal))
             {
-                ToolTip.SetTip(MinimalWeather,
-                    $"{_settings.WeatherLocationName.Trim()} · температура — из Windows; название локации — выбранное");
+                WeatherTempText.Text = tempText;
+                _lastWxTempText = tempText;
             }
-            else
-                ToolTip.SetTip(MinimalWeather, "Погода Windows");
+
+            SetWeatherIcons(WeatherCodes.IconKey(wx.WeatherCode ?? 0), animate: true);
+
+            var wxTip = _settings.WeatherLocationMode == WeatherLocationMode.Manual
+                && !string.IsNullOrWhiteSpace(_settings.WeatherLocationName)
+                    ? $"{_settings.WeatherLocationName.Trim()} · температура — из Windows; название локации — выбранное"
+                    : "Погода Windows";
+            if (!string.Equals(wxTip, _lastWxTip, StringComparison.Ordinal))
+            {
+                ToolTip.SetTip(MinimalWeather, wxTip);
+                _lastWxTip = wxTip;
+            }
         }
 
         var showBat = !overlayOn && _settings.ShowBatteryInCollapsed
@@ -3224,12 +3268,32 @@ public partial class OverlayWindow : Window
         if (showBat)
         {
             var pct = _lastPower!.Percent;
-            BatteryPercentText.Text = $"{pct}%";
-            var batKey = _lastPower.IsCharging || _lastPower.OnAc ? "bolt" : "battery";
-            var batBrush = new SolidColorBrush(_inkSecondary);
-            BatteryIconHost.Child = IconPackService.Create(_settings.IconPack, batKey, CurrentIconCollapsed(), batBrush);
-            ToolTip.SetTip(MinimalBattery,
-                _lastPower.IsCharging || _lastPower.OnAc ? $"Зарядка · {pct}%" : $"Батарея · {pct}%");
+            if (BatteryPercentText.Text != $"{pct}%")
+                BatteryPercentText.Text = $"{pct}%";
+
+            var charging = _lastPower.IsCharging || _lastPower.OnAc;
+            var batKey = charging ? "bolt" : "battery";
+            var batSize = CurrentIconCollapsed();
+            if (BatteryIconHost.Child is null
+                || !string.Equals(batKey, _lastBatIconKey, StringComparison.Ordinal)
+                || !string.Equals(_settings.IconPack, _lastBatIconPack, StringComparison.Ordinal)
+                || !batSize.Equals(_lastBatIconSize)
+                || !_inkSecondary.Equals(_lastBatIconInk))
+            {
+                var batBrush = new SolidColorBrush(_inkSecondary);
+                BatteryIconHost.Child = IconPackService.Create(_settings.IconPack, batKey, batSize, batBrush);
+                _lastBatIconKey = batKey;
+                _lastBatIconPack = _settings.IconPack;
+                _lastBatIconSize = batSize;
+                _lastBatIconInk = _inkSecondary;
+            }
+
+            var batTip = charging ? $"Зарядка · {pct}%" : $"Батарея · {pct}%";
+            if (!string.Equals(batTip, _lastBatTip, StringComparison.Ordinal))
+            {
+                ToolTip.SetTip(MinimalBattery, batTip);
+                _lastBatTip = batTip;
+            }
         }
 
         // Stage 8: title and body are two texts with two inks, not one "title · body" string.
@@ -3279,17 +3343,18 @@ public partial class OverlayWindow : Window
 
         var textPrimary = ParseColor(_settings.ColorTextPrimary, OverlayTokens.TextHex);
         var accent = ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex);
-        OverlayTitle.Foreground = new SolidColorBrush(kind == OverlayKind.Error ? Color.Parse(OverlayTokens.ErrorHex) : textPrimary);
+        var errorInk = ParseColor(OverlayTokens.ErrorHex, OverlayTokens.ErrorHex);
+        OverlayTitle.Foreground = CachedBrush(kind == OverlayKind.Error ? errorInk : textPrimary);
         // Stage 8: the body is the same information the title used to carry in the title's own
         // weight. Dropping it to the secondary ink is what creates the hierarchy inside a 30 DIP
         // row: the eye reads the name first and the detail second, without a second line and
         // without a second card.
-        OverlaySubtitle.Foreground = new SolidColorBrush(_inkSecondary);
-        AppIcon.Background = new SolidColorBrush(kind == OverlayKind.Error ? Color.Parse(OverlayTokens.ErrorHex) : accent);
-        UnreadBadge.Background = new SolidColorBrush(accent);
+        OverlaySubtitle.Foreground = CachedBrush(_inkSecondary);
+        AppIcon.Background = CachedBrush(kind == OverlayKind.Error ? errorInk : accent);
+        UnreadBadge.Background = CachedBrush(accent);
         // The action is destructive, so it wears the existing error colour — but on the LABEL,
         // not as a filled red chip, which at this size would read as the primary control.
-        NotifActionClearText.Foreground = new SolidColorBrush(Color.Parse(OverlayTokens.ErrorHex));
+        NotifActionClearText.Foreground = CachedBrush(errorInk);
         NotifActionClear.IsVisible = notifActions;
         NotifActionClear.IsHitTestVisible = notifActions;
 
@@ -3469,18 +3534,37 @@ public partial class OverlayWindow : Window
         });
     }
 
-    private void SetKindIcon(OverlayKind kind)
-    {
-        var key = IslandIcons.KindKey(kind);
-        var brush = new SolidColorBrush(_inkPrimary);
-        AppIconHost.Child = IconPackService.Create(_settings.IconPack, key, CurrentIconKind(), brush, 1.5);
-    }
+    // The capsule's kind icon used to be rebuilt from scratch on every Paint, and Paint runs on
+    // the 200 ms tick — so five times a second the icon control was replaced (which re-measures
+    // the capsule), a brush was allocated and the icon was re-resolved, all to draw the same
+    // picture. These four fields are the "did anything that matters actually change" check for
+    // that one call. The ink is part of the check on purpose: a theme change MUST rebuild the
+    // icon, which the weather icon's key-only guard (SetWeatherIcons) does not handle.
+    private string _lastKindIconKey = "";
+    private string _lastKindIconPack = "";
+    private double _lastKindIconSize;
+    private Color _lastKindIconInk;
 
-    private void SetKindIconWeather(int code)
+    private void SetKindIcon(OverlayKind kind) => ApplyKindIcon(IslandIcons.KindKey(kind));
+
+    private void SetKindIconWeather(int code) => ApplyKindIcon(WeatherCodes.IconKey(code));
+
+    private void ApplyKindIcon(string key)
     {
-        var key = WeatherCodes.IconKey(code);
+        var size = CurrentIconKind();
+        if (AppIconHost.Child is not null
+            && string.Equals(key, _lastKindIconKey, StringComparison.Ordinal)
+            && string.Equals(_settings.IconPack, _lastKindIconPack, StringComparison.Ordinal)
+            && size.Equals(_lastKindIconSize)
+            && _inkPrimary.Equals(_lastKindIconInk))
+            return;
+
         var brush = new SolidColorBrush(_inkPrimary);
-        AppIconHost.Child = IconPackService.Create(_settings.IconPack, key, CurrentIconKind(), brush, 1.5);
+        AppIconHost.Child = IconPackService.Create(_settings.IconPack, key, size, brush, 1.5);
+        _lastKindIconKey = key;
+        _lastKindIconPack = _settings.IconPack;
+        _lastKindIconSize = size;
+        _lastKindIconInk = _inkPrimary;
     }
 
     private void SetWeatherIcons(string key, bool animate)
@@ -3744,9 +3828,15 @@ public partial class OverlayWindow : Window
             AppIconHost.IsVisible = true;
             return;
         }
+        // 2026-10-02 perf pass: this used to memcmp the whole artwork on every call (five times
+        // a second, from Paint) and then Clone it into _lastArtworkBytes. The media source
+        // publishes one fresh array per thumbnail and reuses the same instance afterwards, so
+        // reference equality answers "did the artwork change?" for free in the common case;
+        // SequenceEqual stays as the fallback for a new-but-identical array. The reference is
+        // only ever compared, never written through.
         if (_lastArtworkBytes is not null
-            && _lastArtworkBytes.Length == bytes.Length
-            && bytes.AsSpan().SequenceEqual(_lastArtworkBytes))
+            && (ReferenceEquals(_lastArtworkBytes, bytes)
+                || bytes.AsSpan().SequenceEqual(_lastArtworkBytes)))
         {
             MediaArtwork.IsVisible = true;
             AppIconHost.IsVisible = false;
@@ -3759,7 +3849,7 @@ public partial class OverlayWindow : Window
             MediaArtwork.Source = bmp;
             MediaArtwork.IsVisible = true;
             AppIconHost.IsVisible = false;
-            _lastArtworkBytes = (byte[])bytes.Clone();
+            _lastArtworkBytes = bytes;
         }
         catch (Exception ex)
         {

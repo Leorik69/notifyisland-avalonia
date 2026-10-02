@@ -20,6 +20,7 @@ internal sealed class WinFormsTray : IDisposable
     private readonly ToolStripMenuItem _toggleIsland;
     private readonly ToolStripMenuItem _toggleWeather;
     private DateTime _lastClickUtc = DateTime.MinValue;
+    private bool _trayUnread;         // which of the two icons the shell currently holds
     private bool _disposed;
 
     public WinFormsTray(OverlayWindow overlay, ClipboardHistory clipboard)
@@ -90,8 +91,20 @@ internal sealed class WinFormsTray : IDisposable
     {
         try
         {
+            // There are two icons and the unread state is a bool, so most calls land here with
+            // nothing to change. Reassigning re-arms the shell's icon and tooltip machinery for
+            // no reason, and used to also pay the file read and PNG decode.
+            if (_notify.Icon is not null && _trayUnread == (unread > 0))
+            {
+                _notify.Text = unread > 0
+                    ? $"NotifyIsland ({Math.Min(unread, 99)})"
+                    : "NotifyIsland";
+                return;
+            }
+
             var old = _notify.Icon;
             _notify.Icon = LoadIcon(unread > 0);
+            _trayUnread = unread > 0;
             old?.Dispose();
             _notify.Text = unread > 0
                 ? $"NotifyIsland ({Math.Min(unread, 99)})"
@@ -239,17 +252,55 @@ internal sealed class WinFormsTray : IDisposable
         return label;
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool DestroyIcon(IntPtr handle);
+
+    /// <summary>
+    /// 2026-10-02 perf pass, two fixes in one method.
+    /// <para>
+    /// The leak: <c>Bitmap.GetHicon()</c> hands back a GDI handle the CALLER owns and must
+    /// release with <c>DestroyIcon</c>. <c>Icon.FromHandle</c> does not take ownership and
+    /// disposing it does not free the handle, so every single call leaked one HICON — and
+    /// RefreshIcon runs on every unread change and every settings apply, for as long as the
+    /// island is up.
+    /// </para>
+    /// <para>
+    /// The cost: there are only two possible icons, but each call re-read the PNG from disk and
+    /// re-decoded it. They are decoded once now and handed out as clones, which is a memory copy
+    /// rather than a file read plus a decode.
+    /// </para>
+    /// </summary>
+    private static Icon? _iconPlain;
+    private static Icon? _iconUnread;
+
     private static Icon LoadIcon(bool unread)
     {
+        var cached = unread ? _iconUnread : _iconPlain;
+        if (cached is not null)
+            return (Icon)cached.Clone();
+
         var name = unread ? "tray-unread.png" : "tray.png";
         var path = Path.Combine(AppContext.BaseDirectory, "Assets", name);
         if (!File.Exists(path))
             return SystemIcons.Application;
+
         using var bmp = new Bitmap(path);
         var hIcon = bmp.GetHicon();
-        // Copy so disposing Bitmap does not invalidate the tray icon handle.
-        using var tmp = Icon.FromHandle(hIcon);
-        return (Icon)tmp.Clone();
+        try
+        {
+            // Copy so disposing Bitmap does not invalidate the tray icon handle.
+            using var tmp = Icon.FromHandle(hIcon);
+            var icon = (Icon)tmp.Clone();
+            if (unread) _iconUnread = icon; else _iconPlain = icon;
+            return (Icon)icon.Clone();
+        }
+        finally
+        {
+            // The GetHicon handle is ours and nothing else took it — it must be destroyed or it
+            // stays in the process's GDI table until exit.
+            DestroyIcon(hIcon);
+        }
     }
 
     public void Dispose()

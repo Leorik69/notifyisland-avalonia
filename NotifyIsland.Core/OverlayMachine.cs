@@ -841,13 +841,22 @@ public sealed class OverlayMachine
         };
     }
 
+    // 2026-10-02 perf pass: the artwork array is shared by reference, not deep-copied. Nothing
+    // in the project ever writes into ArtworkBytes — the media source publishes a fresh array
+    // per thumbnail and everything else only assigns the whole reference — and WindowsMedia
+    // SessionSource already shared it between two payloads. Clone is the body of every row
+    // accessor, and MediaRow is read five times a second from Paint, so each of those copies
+    // was a memcpy of 100-500 KB (straight onto the large object heap above 85 KB) to
+    // reproduce an array nobody could change anyway. A defensive copy of the SCALAR fields is
+    // still made: OverlayPayload is a mutable class, and that is what actually protects the
+    // machine's state from a consumer.
     private static OverlayPayload Clone(OverlayPayload p) => new()
     {
         Title = p.Title, Subtitle = p.Subtitle, Body = p.Body,
         Progress = p.Progress, Playing = p.Playing, RemainingSeconds = p.RemainingSeconds,
         CountUp = p.CountUp,
         TemperatureC = p.TemperatureC, WeatherCode = p.WeatherCode, PrecipProb = p.PrecipProb,
-        ArtworkBytes = p.ArtworkBytes is null ? null : (byte[])p.ArtworkBytes.Clone(),
+        ArtworkBytes = p.ArtworkBytes,
         ClipboardItemKind = p.ClipboardItemKind,
         ClipboardPaths = p.ClipboardPaths,
         ClipboardCapturedAt = p.ClipboardCapturedAt,

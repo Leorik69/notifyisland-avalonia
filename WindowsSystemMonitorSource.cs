@@ -71,8 +71,11 @@ public sealed class WindowsSystemMonitorSource : ISystemMonitorSource
         var processSetRebuilt = RefreshProcessCacheIfStale(now);
 
         var totalCpuTicks = TrySample(SampleTotalCpuTicks, (long?)null);
-        var netDown = TrySample(SampleNetBytesReceived, (long?)null);
-        var netUp = TrySample(SampleNetBytesSent, (long?)null);
+        // Both network counters now come from one pass, so they succeed or fail together —
+        // which is the honest reading anyway: there is no meaningful "up without down" sample.
+        var net = TrySample(SampleNetBytes, ((long Received, long Sent)?)null);
+        var netDown = net?.Received;
+        var netUp = net?.Sent;
         var (ramUsed, ramTotal) = TrySample(SamplePhysicalRam, (0L, 0L));
 
         // Process.TotalProcessorTime.Ticks are 100 ns units
@@ -159,56 +162,61 @@ public sealed class WindowsSystemMonitorSource : ISystemMonitorSource
     }
 
     // -- Per-metric samplers ------------------------------------------------
+    // 2026-10-02 perf pass: a process that exits between refreshes used to make every sample
+    // throw InvalidOperationException for the whole 30 s cache window, because the cache is only
+    // rebuilt that often. An exception here is ~20-50 microseconds of stack capture each, and it
+    // is thrown to learn something the caller already knows: the process is gone. The dead entry
+    // is now removed and disposed the first time it fails, so it costs one throw, not thirty.
+    private void ReapDeadProcesses(ref int index)
+    {
+        var dead = _cachedProcesses[index];
+        try { dead.Dispose(); } catch { }
+        _cachedProcesses[index] = _cachedProcesses[^1];
+        _cachedProcesses = _cachedProcesses[..^1];
+        index--;
+    }
+
     private long? SampleTotalCpuTicks()
     {
         long sum = 0;
-        foreach (var p in _cachedProcesses)
+        for (var i = 0; i < _cachedProcesses.Length; i++)
         {
-            try { sum += p.TotalProcessorTime.Ticks; }
-            catch (InvalidOperationException) { /* process exited mid-read */ }
-            catch (Win32Exception) { /* access denied on a protected process */ }
+            try { sum += _cachedProcesses[i].TotalProcessorTime.Ticks; }
+            catch (InvalidOperationException) { ReapDeadProcesses(ref i); }
+            catch (Win32Exception) { ReapDeadProcesses(ref i); }
         }
         return sum;
     }
 
-    private long? SampleNetBytesReceived()
+    /// <summary>
+    /// Received and sent bytes in ONE pass over the adapters. These used to be two separate
+    /// samplers, each calling GetAllNetworkInterfaces() — so every 1 Hz tick enumerated and
+    /// filtered the whole adapter list twice, and read each adapter's counters twice, with the two
+    /// halves of the same reading taken at different instants. One GetIPv4Statistics() returns
+    /// both counters as a single snapshot, which is both cheaper and more consistent.
+    /// </summary>
+    private (long Received, long Sent)? SampleNetBytes()
     {
-        long sum = 0;
-        foreach (var ni in EnumerateCountedInterfaces())
+        long received = 0, sent = 0;
+        try
         {
-            try { sum += ni.GetIPv4Statistics().BytesReceived; }
-            catch (NetworkInformationException) { /* adapter went away */ }
-            catch (PlatformNotSupportedException) { }
-            catch (NotSupportedException) { }
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                if (!_includeAllInterfaces && IsVirtual(ni)) continue;
+                try
+                {
+                    var stats = ni.GetIPv4Statistics();
+                    received += stats.BytesReceived;
+                    sent += stats.BytesSent;
+                }
+                catch (NetworkInformationException) { /* adapter went away */ }
+                catch (PlatformNotSupportedException) { }
+                catch (NotSupportedException) { }
+            }
         }
-        return sum;
-    }
-
-    private long? SampleNetBytesSent()
-    {
-        long sum = 0;
-        foreach (var ni in EnumerateCountedInterfaces())
-        {
-            try { sum += ni.GetIPv4Statistics().BytesSent; }
-            catch (NetworkInformationException) { }
-            catch (PlatformNotSupportedException) { }
-            catch (NotSupportedException) { }
-        }
-        return sum;
-    }
-
-    private IEnumerable<NetworkInterface> EnumerateCountedInterfaces()
-    {
-        NetworkInterface[] all;
-        try { all = NetworkInterface.GetAllNetworkInterfaces(); }
-        catch { yield break; }
-
-        foreach (var ni in all)
-        {
-            if (ni.OperationalStatus != OperationalStatus.Up) continue;
-            if (!_includeAllInterfaces && IsVirtual(ni)) continue;
-            yield return ni;
-        }
+        catch { return null; }
+        return (received, sent);
     }
 
     private static bool IsVirtual(NetworkInterface ni)
