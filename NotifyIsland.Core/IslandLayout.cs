@@ -57,6 +57,15 @@ public static class IslandLayout
     }
 
     /// <summary>
+    /// Screen-space width/height of a capsule given its long and cross extents. On a vertical
+    /// island the long axis is the HEIGHT. <see cref="Place"/> takes width/height, and feeding
+    /// it (long, cross) unrotated put a Right-edge island 354 px off the edge and centred its
+    /// TOP rather than its middle on Left/Right.
+    /// </summary>
+    public static (double Width, double Height) ScreenSizeFor(double longExtent, double crossExtent, bool vertical) =>
+        vertical ? (crossExtent, longExtent) : (longExtent, crossExtent);
+
+    /// <summary>
     /// Place island in working-area pixel coords.
     /// OffsetX/OffsetY are pixels from the edge anchor:
     /// Top: X = center + OffsetX, Y = top + inset + OffsetY

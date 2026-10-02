@@ -2923,7 +2923,7 @@ public partial class OverlayWindow : Window
     /// added to the far end of the capsule is different.
     /// </para>
     /// </summary>
-    private (double Width, double Height) IslandCapsuleSize() =>
+    private (double Long, double Cross) IslandCapsuleSize() =>
         IslandCapsuleSizeFor(Pill.Width, Pill.Height);
 
     /// <summary>
@@ -3163,7 +3163,13 @@ public partial class OverlayWindow : Window
         // window — and with it the island — 55 DIP for the duration of the preview. The spec's
         // "the island does not move" has to be measured against the settled length, not the
         // temporary one.
-        var (homeW, homeH) = IslandCapsuleSize();
+        //
+        // IslandCapsuleSize() answers in LONG/CROSS, which is not the same as width/height once
+        // the island is vertical: there the long axis is the height. ScreenSizeFor does that one
+        // rotation, so Place() always gets a real (w, h) and the Right/Left edges seat the island
+        // against the edge by its 30 DIP thickness instead of by its 384 DIP length.
+        var (homeLong, homeCross) = IslandCapsuleSize();
+        var (homeW, homeH) = IslandLayout.ScreenSizeFor(homeLong, homeCross, SplitIsVertical);
         var homePw = (int)Math.Round(homeW * scale);
         var homePh = (int)Math.Round(homeH * scale);
         var (x, y) = IslandLayout.Place(

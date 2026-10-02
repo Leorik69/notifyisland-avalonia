@@ -137,4 +137,23 @@ public class IslandLayoutTests
         var (x, y) = IslandLayout.DrawerWindowFor(false, 10, 20, 0, 1);
         Assert.Equal((10, 20), (x, y));
     }
+
+    [Fact]
+    public void ScreenSizeFor_RotatesOnlyVerticalIslands()
+    {
+        Assert.Equal((384.0, 30.0), IslandLayout.ScreenSizeFor(384, 30, vertical: false));
+        Assert.Equal((30.0, 384.0), IslandLayout.ScreenSizeFor(384, 30, vertical: true));
+    }
+
+    [Fact]
+    public void RightEdgeVerticalIsland_HugsTheEdgeAndIsCentred()
+    {
+        // The user's real primary screen: 2560x1440 with the taskbar on the left, so the work
+        // area is 2474x1408 starting at x = 86.
+        var (w, h) = IslandLayout.ScreenSizeFor(384, 30, vertical: true);
+        var (x, y) = IslandLayout.Place(86, 0, 2474, 1408, (int)w, (int)h, IslandEdge.Right, 0, 0);
+        var rightGap = 2560 - (x + (int)w);
+        Assert.InRange(rightGap, 0, 40);
+        Assert.InRange(y + h / 2, 704 - 2, 704 + 2);
+    }
 }
