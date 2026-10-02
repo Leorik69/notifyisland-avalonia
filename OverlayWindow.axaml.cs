@@ -309,6 +309,12 @@ public partial class OverlayWindow : Window
         MarqueeText.RenderTransform = _marqueeShift;
         OverlayTextColumn.SizeChanged += (_, _) => ClampTitleToColumn();
         _settings = AppSettings.Load();
+        // If the settings file was unreadable, Load moved it aside and fell back to defaults. Say
+        // so in the app's own log: without it, a user whose settings reset has no way to tell a
+        // corrupt file from a preference they never made, and no way to find the kept copy.
+        if (AppSettings.LastLoadError is { } loadError)
+            AppLog.Warn($"Settings could not be read ({loadError}) — defaults are in use and the " +
+                        "old file was kept next to settings.json as settings.corrupt-<timestamp>.json");
         _settings.Normalize();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
         _machine.CollapsedWidthScale = _settings.IslandWidthScale;

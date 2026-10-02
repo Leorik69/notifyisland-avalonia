@@ -608,4 +608,111 @@ public class AppSettingsTests
         s.Normalize();
         Assert.Equal(5000, s.HoverCollapseGraceMs);
     }
+
+    // --- an unreadable settings file must not be destroyed by the next Save ---------
+
+    private static string NewSettingsDir()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "notifyisland-load-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    [Fact]
+    public void TryLoadFrom_MissingFile_IsNotAFailure()
+    {
+        // First run. An absent file must be indistinguishable from a clean start, otherwise the
+        // app would warn about a problem the user cannot have.
+        var dir = NewSettingsDir();
+        try
+        {
+            var ok = AppSettings.TryLoadFrom(Path.Combine(dir, "settings.json"), out var s, out var error);
+            Assert.False(ok);
+            Assert.Null(s);
+            Assert.Equal(string.Empty, error);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void TryLoadFrom_ValidFile_LoadsIt()
+    {
+        var dir = NewSettingsDir();
+        try
+        {
+            var path = Path.Combine(dir, "settings.json");
+            File.WriteAllText(path, new AppSettings { FontSize = 17 }.ToJson());
+
+            var ok = AppSettings.TryLoadFrom(path, out var s, out var error);
+            Assert.True(ok);
+            Assert.Equal(string.Empty, error);
+            Assert.NotNull(s);
+            Assert.Equal(17, s!.FontSize);
+            Assert.True(File.Exists(path));           // a good file is left exactly where it was
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void TryLoadFrom_CorruptFile_KeepsTheOriginalAsideAndSaysWhy()
+    {
+        // The whole point: Load falls back to defaults, and the very next Save writes over
+        // settings.json. Without the quarantine the user's file is gone, silently.
+        var dir = NewSettingsDir();
+        try
+        {
+            var path = Path.Combine(dir, "settings.json");
+            const string broken = "{ this is not json at all";
+            File.WriteAllText(path, broken);
+
+            var ok = AppSettings.TryLoadFrom(path, out var s, out var error);
+            Assert.False(ok);
+            Assert.Null(s);
+            Assert.NotEqual(string.Empty, error);
+
+            Assert.False(File.Exists(path));          // moved out of the way
+            var kept = Directory.GetFiles(dir, "settings.corrupt-*.json");
+            Assert.Single(kept);
+            Assert.Equal(broken, File.ReadAllText(kept[0]));   // content intact, not just deleted
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void TryLoadFrom_ValidJsonThatIsNotSettings_IsAlsoQuarantined()
+    {
+        // A JSON document of the wrong shape must not sit where Save will overwrite it either.
+        var dir = NewSettingsDir();
+        try
+        {
+            var path = Path.Combine(dir, "settings.json");
+            File.WriteAllText(path, "[1, 2, 3]");
+
+            var ok = AppSettings.TryLoadFrom(path, out _, out var error);
+            Assert.False(ok);
+            Assert.NotEqual(string.Empty, error);
+            Assert.False(File.Exists(path));
+            Assert.Single(Directory.GetFiles(dir, "settings.corrupt-*.json"));
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void TryLoadFrom_DoesNotTouchLastLoadError()
+    {
+        // LastLoadError belongs to Load alone. The split-out helper is also called directly (and
+        // by tests), and it must not publish a reason that Load never actually saw.
+        var dir = NewSettingsDir();
+        try
+        {
+            var before = AppSettings.LastLoadError;
+            var path = Path.Combine(dir, "settings.json");
+            File.WriteAllText(path, "{ broken");
+
+            AppSettings.TryLoadFrom(path, out _, out _);
+
+            Assert.Equal(before, AppSettings.LastLoadError);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
 }

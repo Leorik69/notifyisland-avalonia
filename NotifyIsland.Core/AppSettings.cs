@@ -357,20 +357,97 @@ public sealed class AppSettings
 
     public static AppSettings Load()
     {
+        if (TryLoadFrom(SettingsPath, out var loaded, out var error))
+        {
+            LastLoadError = null;
+            return loaded!;
+        }
+
+        // 2026-10-02: Load used to swallow this and return defaults, which was fine until the
+        // next Save — that overwrote the user's file with defaults and the original was gone
+        // for good, with nothing on screen or in the log to say why their settings had reset.
+        // TryLoadFrom has already moved the unreadable file aside. The reason is kept rather than
+        // printed because Core is a library: it cannot reach the app's own AppLog, and a
+        // Console.Error from a WinExe goes nowhere. The host reads LastLoadError at startup.
+        LastLoadError = error.Length == 0 ? null : error;
+        return new AppSettings();
+    }
+
+    /// <summary>
+    /// Why the last <see cref="Load"/> fell back to defaults, or null if it did not. Set only by
+    /// Load, and cleared on a successful read — a stale reason from a later good load must not be
+    /// reported as a current problem.
+    /// </summary>
+    public static string? LastLoadError { get; private set; }
+
+    /// <summary>
+    /// Read settings from an explicit path.
+    /// <para>
+    /// Split out of <see cref="Load"/> so the failure path is testable — Load's own path lives
+    /// under LOCALAPPDATA and must not be touched by a test.
+    /// </para>
+    /// <para>
+    /// Returns true only when a file existed and parsed. A missing file is not a failure: the
+    /// error stays empty so first run is indistinguishable from a clean start. A file that exists
+    /// but cannot be parsed IS a failure, it reports why, and it is moved to
+    /// <c>settings.corrupt-&lt;timestamp&gt;.json</c> before this returns — because the next Save
+    /// writes over the original, and a quarantined file is the difference between the user
+    /// recovering their settings and not.
+    /// </para>
+    /// </summary>
+    public static bool TryLoadFrom(string path, out AppSettings? settings, out string error)
+    {
+        settings = null;
+        error = string.Empty;
+
+        bool exists;
+        try { exists = File.Exists(path); }
+        catch { return false; }
+        if (!exists) return false;
+
         try
         {
-            if (File.Exists(SettingsPath))
+            var json = File.ReadAllText(path);
+            var parsed = FromJson(json);
+            if (parsed is not null)
             {
-                var json = File.ReadAllText(SettingsPath);
-                var s = FromJson(json);
-                if (s is not null) return s;
+                settings = parsed;
+                return true;
             }
+            error = "файл не содержит настроек";
+        }
+        catch (JsonException) { error = "файл повреждён: не является корректным JSON"; }
+        catch (IOException) { error = "файл не удалось прочитать"; }
+        catch (UnauthorizedAccessException) { error = "нет доступа к файлу"; }
+        catch
+        {
+            // Anything else is still a read failure worth reporting; the file stays where it is.
+            error = "файл не удалось разобрать";
+        }
+
+        QuarantineCorrupt(path);
+        return false;
+    }
+
+    /// <summary>
+    /// Move an unreadable settings file aside so the next Save cannot destroy it. Best effort:
+    /// a failure here must not stop the app from starting on defaults.
+    /// </summary>
+    private static void QuarantineCorrupt(string path)
+    {
+        try
+        {
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            var target = Path.Combine(
+                Path.GetDirectoryName(path) ?? string.Empty,
+                $"settings.corrupt-{stamp}.json");
+            File.Move(path, target, overwrite: true);
         }
         catch
         {
-            // ignore corrupt settings — fall back to defaults
+            // Cannot move it (locked, read-only volume). The original stays put and the message
+            // from TryLoadFrom still told the user their file was the problem.
         }
-        return new AppSettings();
     }
 
     public void Save()
