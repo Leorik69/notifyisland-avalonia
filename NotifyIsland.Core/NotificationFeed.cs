@@ -118,10 +118,13 @@ public sealed class NotificationFeed
         var app = (toast.App ?? "").Trim();
         var headline = (toast.Title ?? "").Trim();
         var body = (toast.Body ?? "").Trim();
+        // Without an app name the headline is promoted to the title line. It must then leave the
+        // subtitle, or the capsule prints the same words twice, one above the other.
+        var promoted = string.IsNullOrEmpty(app);
         return new OverlayPayload
         {
-            Title = string.IsNullOrEmpty(app) ? headline : app,
-            Subtitle = headline,
+            Title = promoted ? headline : app,
+            Subtitle = promoted ? string.Empty : headline,
             Body = body,
         };
     }

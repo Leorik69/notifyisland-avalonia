@@ -151,6 +151,15 @@ public class NotificationFeedTests
     }
 
     [Fact]
+    public void ToPayload_WithoutAppNameTheHeadlineIsNotRepeated()
+    {
+        var payload = NotificationFeed.ToPayload(Toast("1", app: "", title: "Backup finished", body: "3 files"));
+        Assert.Equal("Backup finished", payload.Title);
+        Assert.Equal("", payload.Subtitle);
+        Assert.Equal("3 files", payload.Body);
+    }
+
+    [Fact]
     public void ToPayload_TrimsSurroundingWhitespace()
     {
         var payload = NotificationFeed.ToPayload(Toast("1", app: "  Slack  ", title: " Ivan ", body: " hi "));
