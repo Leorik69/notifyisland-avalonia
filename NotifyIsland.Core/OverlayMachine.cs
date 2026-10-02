@@ -156,6 +156,14 @@ public sealed class OverlayMachine
     // as ref outside a constructor. They are still never reassigned, only mutated in place.
     private OverlayPayload _media = new();
     private bool _mediaActive;
+    // 2026-10-02: the Notification cycle slot used to Apply() a hardcoded "Сообщение /
+    // Уведомление" — leftover demo text, reachable by clicking a chevron on the idle pill. It
+    // also discarded whatever the capsule was showing, so landing on that slot destroyed the
+    // clipboard preview or the media row that was on screen. The machine now keeps the last real
+    // notification so the slot can show something true, and a slot with nothing to show is not
+    // offered for cycling at all (see EnabledSlots).
+    private OverlayPayload _lastNotify = new();
+    private bool _hasLastNotify;
     private OverlayPayload _timer = new();
     private bool _timerActive;
     private double _timerTotalSeconds;
@@ -342,6 +350,11 @@ public sealed class OverlayMachine
                 if (string.IsNullOrWhiteSpace(data.Body))
                     data.Body = _payload.Body;
                 Apply(data);
+                // Remember it so the Notification cycle slot can show the real thing. Taken
+                // AFTER Apply, because data.Title/Body have just been filled in from the payload
+                // above — a copy taken earlier would store the blanks that were corrected.
+                _lastNotify = Clone(_payload);
+                _hasLastNotify = true;
                 _notifyMs = NotifyDurationMs;
                 _unreadCount = Math.Min(_unreadCount + 1, 99);
                 break;
@@ -393,6 +406,11 @@ public sealed class OverlayMachine
                 _returnTo = OverlayKind.Idle;
                 _notifyMs = 0;
                 _unreadCount = 0;
+                // Forgets the notification too. Leaving _lastNotify behind would mean the action
+                // labelled "clear" empties the capsule and the next chevron click puts the same
+                // message back on it.
+                _lastNotify = new OverlayPayload();
+                _hasLastNotify = false;
                 Apply(new OverlayPayload());
                 ClearSplit();
                 break;
@@ -576,12 +594,21 @@ public sealed class OverlayMachine
 
     public IslandSlot CurrentSlot() => SlotFromKind(_kind);
 
+    /// <summary>
+    /// Slots the cycle may visit, and only those that have something real to show.
+    /// <para>
+    /// This list used to be fixed: Idle, Notification, Weather, Media. That guaranteed two
+    /// entries were lies — Notification had no notification to show and Media had no session, so
+    /// both rendered hardcoded placeholder text. Whether a slot can be visited is therefore a
+    /// question about state, not a constant.
+    /// </para>
+    /// </summary>
     public IReadOnlyList<IslandSlot> EnabledSlots()
     {
-        var list = new List<IslandSlot> { IslandSlot.Idle, IslandSlot.Notification };
-        if (_weatherEnabled)
-            list.Add(IslandSlot.Weather);
-        list.Add(IslandSlot.Media);
+        var list = new List<IslandSlot> { IslandSlot.Idle };
+        if (_hasLastNotify) list.Add(IslandSlot.Notification);
+        if (_weatherEnabled) list.Add(IslandSlot.Weather);
+        if (_mediaActive) list.Add(IslandSlot.Media);
         return list;
     }
 
@@ -599,10 +626,18 @@ public sealed class OverlayMachine
     {
         if (_kind is OverlayKind.Idle or OverlayKind.Collapsed)
         {
-            if (_weatherEnabled)
-                ApplySlot(IslandSlot.Weather);
-            else
-                ApplySlot(IslandSlot.Notification);
+            // The first slot that actually has something to show. With the placeholders gone
+            // there is no guaranteed one: with weather off and no notification yet, expanding has
+            // nothing to expand to, and inventing content is worse than a click that changes
+            // nothing.
+            foreach (var slot in EnabledSlots())
+            {
+                if (slot != IslandSlot.Idle)
+                {
+                    ApplySlot(slot);
+                    return;
+                }
+            }
             return;
         }
         // Already expanded widget — keep kind, refresh weather text if needed.
@@ -620,10 +655,12 @@ public sealed class OverlayMachine
                 Apply(new OverlayPayload());
                 break;
             case IslandSlot.Notification:
-                // Placeholder text without bumping unread (swipe cycle ≠ Notify): the slot
-                // only exists so there is something to look at on a real copy.
+                // The last real notification, kept by OverlayCommand.Notify. Not bumping unread
+                // is deliberate and unchanged: the user is stepping back through what already
+                // arrived, and a slot they chose by hand is not a new event. _notifyMs stays 0
+                // so it does not run out while they are reading it — same rule as Media.
                 _kind = OverlayKind.Notification;
-                Apply(new OverlayPayload { Title = "Сообщение", Body = "Уведомление" });
+                Apply(Clone(_lastNotify));
                 _notifyMs = 0;
                 break;
             case IslandSlot.Weather:
@@ -632,14 +669,9 @@ public sealed class OverlayMachine
                 _notifyMs = 0;
                 break;
             case IslandSlot.Media:
+                // The live SMTC session, not a song that never existed.
                 _kind = OverlayKind.Media;
-                Apply(new OverlayPayload
-                {
-                    Title = "Night Drive",
-                    Subtitle = "Local Radio",
-                    Progress = 0.33,
-                    Playing = true
-                });
+                Apply(Clone(_media));
                 _notifyMs = 0;
                 break;
         }

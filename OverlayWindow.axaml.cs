@@ -4925,7 +4925,7 @@ public partial class OverlayWindow : Window
                 return;
             }
 
-            var fs = Win32Overlay.IsFullscreenOrBusy();
+            var fs = Win32Overlay.IsFullscreenOrBusy(out var fsReason);
             if (fs)
             {
                 if (_settings.HideOnFullscreen)
@@ -4941,7 +4941,7 @@ public partial class OverlayWindow : Window
                         Opacity = 0;
                         IsHitTestVisible = false;
                         Hide();
-                        AppLog.Info("Fullscreen detected — island hidden");
+                        AppLog.Info($"Fullscreen detected — island hidden ({fsReason})");
                     }
                 }
                 else if (_settings.ClickThroughOnFullscreen)
@@ -4950,7 +4950,7 @@ public partial class OverlayWindow : Window
                     {
                         _clickThroughActive = true;
                         Win32Overlay.ApplyClickThrough(this, true);
-                        AppLog.Info("Fullscreen detected — click-through");
+                        AppLog.Info($"Fullscreen detected — click-through ({fsReason})");
                     }
                     if (_hiddenByFullscreen)
                     {
@@ -4967,7 +4967,16 @@ public partial class OverlayWindow : Window
             }
             else
             {
-                if (_hiddenByFullscreen)
+                // The window's ACTUAL visibility is the truth here, not _hiddenByFullscreen.
+                // That flag is cleared in places that do not call Show() — ApplySettingsFromUi
+                // clears it and then calls PollFullscreen, whose restore branch is guarded by
+                // the very flag it just cleared, so the island stayed hidden for the rest of the
+                // session with nothing left to bring it back. Observed live: a window sitting at
+                // visible=False with no "restored" line ever logged.
+                //
+                // Reconciling against IsVisible instead makes the whole class of flag/window
+                // desync self-heal on the next poll, and costs one property read.
+                if (_hiddenByFullscreen || !IsVisible)
                 {
                     _hiddenByFullscreen = false;
                     Show();

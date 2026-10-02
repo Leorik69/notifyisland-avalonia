@@ -199,27 +199,94 @@ public class OverlayMachineTests
     }
 
     [Fact]
-    public void Cycle_LeftRight_AmongEnabledSlots()
+    public void Cycle_SkipsSlotsThatHaveNothingToShow()
     {
+        // A fresh machine has no notification and no media session. The cycle must not offer
+        // either: it used to, and both rendered hardcoded placeholder text.
         var m = new OverlayMachine { WeatherEnabled = true };
         Assert.Equal(IslandSlot.Idle, m.CurrentSlot());
-
-        m.Dispatch(OverlayCommand.CycleNext);
-        Assert.Equal(IslandSlot.Notification, m.CurrentSlot());
-        // Cycle Notification seed must NOT bump unread
-        Assert.Equal(0, m.UnreadCount);
+        Assert.Equal(new[] { IslandSlot.Idle, IslandSlot.Weather }, m.EnabledSlots());
 
         m.Dispatch(OverlayCommand.CycleNext);
         Assert.Equal(IslandSlot.Weather, m.CurrentSlot());
 
         m.Dispatch(OverlayCommand.CycleNext);
-        Assert.Equal(IslandSlot.Media, m.CurrentSlot());
+        Assert.Equal(IslandSlot.Idle, m.CurrentSlot());
+    }
+
+    [Fact]
+    public void Cycle_NotificationSlot_ShowsTheRealNotification()
+    {
+        var m = new OverlayMachine { WeatherEnabled = true };
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Сборка готова", Body = "Артефакт 42" });
+        m.Dispatch(OverlayCommand.Collapse);
+
+        Assert.Contains(IslandSlot.Notification, m.EnabledSlots());
+        m.Dispatch(OverlayCommand.CycleNext);
+        Assert.Equal(IslandSlot.Notification, m.CurrentSlot());
+
+        var snap = m.Snapshot();
+        Assert.Equal("Сборка готова", snap.Payload.Title);
+        Assert.Equal("Артефакт 42", snap.Payload.Body);
+        // Stepping back through what already arrived is not a new event.
+        Assert.Equal(1, m.UnreadCount);
+    }
+
+    [Fact]
+    public void Cycle_MediaSlot_ShowsTheLiveSession()
+    {
+        // "Night Drive / Local Radio" was demo text from a mode that no longer exists.
+        var m = new OverlayMachine { WeatherEnabled = true };
+        Assert.DoesNotContain(IslandSlot.Media, m.EnabledSlots());
+
+        m.Dispatch(OverlayCommand.SetMedia, new OverlayPayload
+        {
+            Title = "真实 трек",
+            Subtitle = "Реальный исполнитель",
+            Playing = true
+        });
+        m.Dispatch(OverlayCommand.Collapse);
 
         m.Dispatch(OverlayCommand.CycleNext);
-        Assert.Equal(IslandSlot.Idle, m.CurrentSlot());
-
-        m.Dispatch(OverlayCommand.CyclePrev);
+        m.Dispatch(OverlayCommand.CycleNext);      // Idle -> ... -> Media
         Assert.Equal(IslandSlot.Media, m.CurrentSlot());
+        Assert.Equal("真实 трек", m.Snapshot().Payload.Title);
+    }
+
+    [Fact]
+    public void Clear_AlsoForgetsTheLastNotification()
+    {
+        var m = new OverlayMachine { WeatherEnabled = true };
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Сборка готова" });
+        m.Dispatch(OverlayCommand.Clear);
+
+        Assert.DoesNotContain(IslandSlot.Notification, m.EnabledSlots());
+        m.Dispatch(OverlayCommand.CycleNext);
+        Assert.NotEqual(IslandSlot.Notification, m.CurrentSlot());
+    }
+
+    [Fact]
+    public void ExpandWidget_FromIdle_OpensWeatherWhenEnabled()
+    {
+        var m = new OverlayMachine { WeatherEnabled = true };
+        m.Dispatch(OverlayCommand.ExpandWidget);
+        Assert.Equal(OverlayKind.Weather, m.Snapshot().Kind);
+
+        // Weather off, and no notification has arrived: there is nothing to expand to, so the
+        // island stays put — Collapsed is where Collapse left it. It used to expand into a
+        // "Сообщение / Уведомление" placeholder.
+        m.Dispatch(OverlayCommand.Collapse);
+        m.WeatherEnabled = false;
+        m.Dispatch(OverlayCommand.ExpandWidget);
+        Assert.Equal(OverlayKind.Collapsed, m.Snapshot().Kind);
+        Assert.Equal(0, m.UnreadCount);
+
+        // With a real notification behind it, the same click now shows that notification.
+        m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Сборка готова" });
+        m.Dispatch(OverlayCommand.Collapse);
+        m.Dispatch(OverlayCommand.ExpandWidget);
+        Assert.Equal(OverlayKind.Notification, m.Snapshot().Kind);
+        Assert.Equal("Сборка готова", m.Snapshot().Payload.Title);
     }
 
     [Fact]
@@ -242,20 +309,6 @@ public class OverlayMachineTests
         Assert.Equal(OverlayKind.Weather, m.Snapshot().Kind);
 
         m.Dispatch(OverlayCommand.Clear);
-        Assert.Equal(0, m.UnreadCount);
-    }
-
-    [Fact]
-    public void ExpandWidget_FromIdle_OpensWeatherWhenEnabled()
-    {
-        var m = new OverlayMachine { WeatherEnabled = true };
-        m.Dispatch(OverlayCommand.ExpandWidget);
-        Assert.Equal(OverlayKind.Weather, m.Snapshot().Kind);
-
-        m.Dispatch(OverlayCommand.Collapse);
-        m.WeatherEnabled = false;
-        m.Dispatch(OverlayCommand.ExpandWidget);
-        Assert.Equal(OverlayKind.Notification, m.Snapshot().Kind);
         Assert.Equal(0, m.UnreadCount);
     }
 
