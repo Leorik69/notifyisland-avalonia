@@ -307,6 +307,7 @@ public partial class OverlayWindow : Window
         // so the XAML's <TranslateTransform x:Name="MarqueeShift"/> would compile without a
         // matching code-side field. Wire it onto the TextBlock here instead.
         MarqueeText.RenderTransform = _marqueeShift;
+        OverlayTextColumn.SizeChanged += (_, _) => ClampTitleToColumn();
         _settings = AppSettings.Load();
         _settings.Normalize();
         _machine.WeatherEnabled = _settings.WeatherEnabled;
@@ -505,6 +506,11 @@ public partial class OverlayWindow : Window
         WeatherTempText.FontFamily = family;
         OverlayTitle.FontSize = fs;
         OverlayTitle.FontFamily = family;
+        // The body follows the same family and sits one step below the title (11 at the default
+        // 12, as before). It used to stay Segoe 11 whatever the user picked, so at 18 DIP the row
+        // read as two unrelated fonts glued together rather than as a title and its detail.
+        OverlaySubtitle.FontSize = Math.Max(10, fs - 1);
+        OverlaySubtitle.FontFamily = family;
         BadgeText.FontSize = Math.Max(9, fs - 2);
         BadgeText.FontFamily = family;
         // 1.13: the media/timer glyphs moved into StatsRowView, so they are no longer scaled
@@ -959,6 +965,12 @@ public partial class OverlayWindow : Window
         ClockText.Foreground = _clockBrush;
         DateText.Foreground = new SolidColorBrush(textSec);
         WeatherTempText.Foreground = new SolidColorBrush(textSec);
+        // B: the chevrons were a hard-coded light blue — a third accent next to the user's own
+        // primary (clock) and secondary (date, weather) inks. They are navigation, not content,
+        // so they take the secondary ink, a step quieter than the date.
+        var chevronInk = new SolidColorBrush(WithAlpha(textSec, OverlayTokens.ChevronInkAlpha));
+        CyclePrevButton.Foreground = chevronInk;
+        CycleNextButton.Foreground = chevronInk;
         OverlayTitle.Foreground = new SolidColorBrush(text);
         // The badge sits ON the accent, so its ink is chosen against the accent rather than the
         // capsule: a pale custom accent would otherwise leave a white number on a white chip.
@@ -1007,34 +1019,23 @@ public partial class OverlayWindow : Window
         // measured 70 DIP. A control that is not in the tree cannot be laid out, and no amount
         // of property writing brings it back.
         //
-        // The cycle group is re-added as a block, in its XAML order, on the leading side of the
-        // row: the chevrons bracket the preview they navigate, and the preview belongs where the
-        // clock was — the content the eye reads first. Reordering weather against the clock must
-        // not move the clipboard controls relative to each other.
-        var cycle = new[]
-        {
-            (Avalonia.Controls.Control)CyclePrevButton,
-            CyclePreviewText,
-            CycleNavHint,
-            (Avalonia.Controls.Control)CycleNextButton,
-        };
+        // B: the chevrons bracket the clock — "‹ 17:31 › date weather". The previous rebuild put
+        // the clock first and then the whole cycle block, so with the text clock the row read
+        // "17:31 ‹ › date", and with the digital clock (which lived in the tail) it read
+        // "‹ › 17:31": two arrows glued together on one side, pointing at nothing. Whichever
+        // clock is showing now sits between them, and the clipboard counter (1/3) joins it
+        // inside the brackets because the chevrons are what step through it.
         var pinned = PinnedBadge;
-        var tail = new Avalonia.Controls.Control[]
-        {
-            digital, dateText, weather, battery, dot,
-        };
         row.Children.Clear();
-        void AddAll(params Avalonia.Controls.Control[] head)
+        void Add(params Avalonia.Controls.Control[] items)
         {
-            foreach (var c in head) row.Children.Add(c);
-            foreach (var c in cycle) row.Children.Add(c);
-            foreach (var c in tail) row.Children.Add(c);
-            row.Children.Add(pinned);
+            foreach (var c in items) row.Children.Add(c);
         }
-        if (_settings.WeatherSide == WeatherSide.Left)
-            AddAll(weather, clockText);
-        else
-            AddAll(clockText);
+        var weatherLeft = _settings.WeatherSide == WeatherSide.Left;
+        if (weatherLeft) Add(weather);
+        Add(CyclePrevButton, clockText, digital, CyclePreviewText, CycleNavHint, CycleNextButton, dateText);
+        if (!weatherLeft) Add(weather);
+        Add(battery, dot, pinned);
     }
 
     private void ApplyOrientationLayout()
@@ -1042,6 +1043,14 @@ public partial class OverlayWindow : Window
         var vertical = IslandLayout.IsVertical(_settings.Orientation, _settings.Edge);
         CollapsedRow.Orientation = vertical ? Avalonia.Layout.Orientation.Vertical : Avalonia.Layout.Orientation.Horizontal;
         MinimalWeather.Orientation = vertical ? Avalonia.Layout.Orientation.Vertical : Avalonia.Layout.Orientation.Horizontal;
+        // B: the chevrons keep their 6 DIP side padding as hit area, but the padding is
+        // invisible, so on a horizontal row it read as an extra 6 DIP of capsule margin on the
+        // leading edge and a 12 DIP hole between the arrow and the clock (vs 6 everywhere else).
+        // Negative margins give the visible glyphs the same rhythm as the rest of the row
+        // without shrinking what the pointer can hit. Vertical rows stack, so the side padding
+        // never shows there and the margins are reset.
+        CyclePrevButton.Margin = vertical ? new Thickness(0) : new Thickness(-6, 0, -3, 0);
+        CycleNextButton.Margin = vertical ? new Thickness(0) : new Thickness(-3, 0, -6, 0);
         ApplyDrawerAnchor(vertical);
     }
 
@@ -3300,7 +3309,8 @@ public partial class OverlayWindow : Window
         // Split() keeps the payload's own Subtitle fallback in one tested place; the kind-specific
         // wording below (weather expansion, battery percentage) then overrides it exactly as
         // before, so no existing text changed meaning — only how it is laid out.
-        var (titleText, bodyText) = NotificationLayout.Split(p, Fallback(kind));
+        var (titleText, bodyText) = NotificationLayout.Split(p, Fallback(kind),
+            joinHeadline: kind is OverlayKind.Notification or OverlayKind.Expanded);
         if (kind == OverlayKind.Weather)
         {
             titleText = string.IsNullOrWhiteSpace(p.Body)
@@ -3331,10 +3341,17 @@ public partial class OverlayWindow : Window
             bodyText.Length > 0);
 
         OverlayTitle.Text = titleText;
+        _titleBudget = titleW;
         OverlayTitle.MaxWidth = titleW;
         OverlaySubtitle.Text = bodyText;
-        OverlaySubtitle.MaxWidth = bodyW;
+        // The body sits in the text grid's star column, so the layout gives it exactly the room
+        // that is left and its ellipsis engages there. The computed budget is only an upper
+        // bound: Pill.Bounds is the PREVIOUS frame's width mid-morph and includes a settled
+        // clipboard section, so trusting it alone let the body overrun the column and be cut by
+        // ClipToBounds with no ellipsis at all.
+        OverlaySubtitle.MaxWidth = bodyW > 0 ? bodyW : double.PositiveInfinity;
         OverlaySubtitle.IsVisible = bodyText.Length > 0;
+        ClampTitleToColumn();
 
         // 1.13: the capsule's bottom 8 DIP are one shared band. Whoever owns it draws, and
         // the other one yields — seconds digits and a progress bar are two readings of the
@@ -3920,6 +3937,22 @@ public partial class OverlayWindow : Window
         ApplySize();
         Paint();
     }
+
+    /// <summary>
+    /// Re-derive the title's budget from the width the text column REALLY has. Runs from
+    /// Paint and whenever the column is re-laid out (morph frames, section open/close), so the
+    /// title never claims more than its share of the visible row.
+    /// </summary>
+    private void ClampTitleToColumn()
+    {
+        var w = OverlayTextColumn.Bounds.Width;
+        if (w <= 0) return;
+        var (share, _) = NotificationLayout.SplitWidths(w, false, OverlaySubtitle.IsVisible);
+        var cap = Math.Min(share, _titleBudget);
+        if (Math.Abs(OverlayTitle.MaxWidth - cap) > 0.5) OverlayTitle.MaxWidth = cap;
+    }
+
+    private double _titleBudget = double.PositiveInfinity;
 
     private static string OneLine(string? text) =>
         (text ?? string.Empty).Replace("\r", " ").Replace("\n", " ⏎ ").Trim();

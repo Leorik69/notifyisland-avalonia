@@ -6,6 +6,8 @@ public static class OverlayTokens
     public const string FillHex = "#080808";
     public const string TextHex = "#FFFFFF";
     public const string TextSecondaryHex = "#C8C8CC";
+    /// <summary>Opacity of the idle chevrons over the secondary ink: navigation sits a step below content.</summary>
+    public const double ChevronInkAlpha = 0.72;
     public const string AccentHex = "#3D9CF0";
     public const string ErrorHex = "#E8A0A0";
     /// <summary>Collapsed capsule width (time + optional date; clock icon removed in 1.6.0).</summary>

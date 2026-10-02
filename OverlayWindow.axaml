@@ -232,11 +232,12 @@
              TextTrimming never engages and a long title would push the badge out of the pill.
              MaxWidth is what makes the ellipsis real here. -->
         <Grid x:Name="OverlayTextRow" ColumnDefinitions="*,Auto" ClipToBounds="True">
-          <StackPanel x:Name="OverlayTextColumn"
-                      Orientation="Horizontal"
-                      VerticalAlignment="Center"
-                      ClipToBounds="True">
+          <Grid x:Name="OverlayTextColumn"
+                ColumnDefinitions="Auto,*"
+                VerticalAlignment="Center"
+                ClipToBounds="True">
             <TextBlock x:Name="OverlayTitle"
+                       Grid.Column="0"
                        VerticalAlignment="Center"
                        FontFamily="Segoe UI Variable, Inter, Segoe UI"
                        FontSize="12"
@@ -245,6 +246,7 @@
                        TextTrimming="CharacterEllipsis"
                        Text="Обзор" />
             <TextBlock x:Name="OverlaySubtitle"
+                       Grid.Column="1"
                        VerticalAlignment="Center"
                        Margin="6,0,0,0"
                        FontFamily="Segoe UI Variable, Inter, Segoe UI"
@@ -253,7 +255,7 @@
                        TextTrimming="CharacterEllipsis"
                        IsVisible="False"
                        Text="" />
-          </StackPanel>
+          </Grid>
 
           <!-- Stage 8: the one action that already exists in the machine (OverlayCommand.Clear).
                It sits on the trailing edge INSIDE the pill, so revealing it cannot reflow the

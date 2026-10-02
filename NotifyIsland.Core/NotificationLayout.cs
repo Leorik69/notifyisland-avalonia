@@ -42,12 +42,29 @@ public static class NotificationLayout
     /// <c>Paint</c>.
     /// </para>
     /// </summary>
-    public static (string Title, string Body) Split(OverlayPayload payload, string fallbackTitle)
+    public static (string Title, string Body) Split(OverlayPayload payload, string fallbackTitle,
+        bool joinHeadline = false)
     {
         var title = string.IsNullOrWhiteSpace(payload.Title) ? fallbackTitle : payload.Title.Trim();
         var body = string.IsNullOrWhiteSpace(payload.Body) ? payload.Subtitle : payload.Body;
+        // A toast carries THREE texts: app (Title), headline (Subtitle) and body. The fallback
+        // above shows the headline only when the body is empty, so a normal toast lost its
+        // headline - "Windows PowerShell  Остров должен по..." with "Проверка сигнала" nowhere.
+        // For toasts the headline leads the second text instead: it is the part that says what
+        // the message is about, and the body is what gets trimmed first.
+        if (joinHeadline && !string.IsNullOrWhiteSpace(payload.Subtitle) && !string.IsNullOrWhiteSpace(payload.Body))
+        {
+            var head = Collapse(payload.Subtitle);
+            var rest = Collapse(payload.Body);
+            if (!string.Equals(head, rest, StringComparison.Ordinal)
+                && !string.Equals(head, Collapse(title), StringComparison.Ordinal))
+                return (Collapse(title), head + HeadlineJoiner + rest);
+        }
         return (Collapse(title), Collapse(body));
     }
+
+    /// <summary>Separator between a toast's headline and its body inside the second text.</summary>
+    public const string HeadlineJoiner = " · ";
 
     /// <summary>
     /// Whitespace inside a notification is never meaningful, and a stray newline in a toast body

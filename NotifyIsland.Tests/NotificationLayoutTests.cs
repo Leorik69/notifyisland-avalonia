@@ -144,4 +144,31 @@ public class NotificationLayoutTests
         Assert.Equal(ruTitle, enTitle, 3);
         Assert.Equal(ruBody, enBody, 3);
     }
+
+    [Fact]
+    public void Split_ToastHeadlineLeadsTheBody()
+    {
+        var (title, body) = NotificationLayout.Split(
+            new OverlayPayload { Title = "Windows PowerShell", Subtitle = "Проверка сигнала", Body = "Остров должен показать" },
+            "Уведомление", joinHeadline: true);
+        Assert.Equal("Windows PowerShell", title);
+        Assert.Equal("Проверка сигнала · Остров должен показать", body);
+    }
+
+    [Fact]
+    public void Split_WithoutJoinTheBodyStaysAlone()
+    {
+        var (_, body) = NotificationLayout.Split(
+            new OverlayPayload { Title = "Батарея", Subtitle = "15%", Body = "Подключите зарядку" }, "Уведомление");
+        Assert.Equal("Подключите зарядку", body);
+    }
+
+    [Fact]
+    public void Split_HeadlineEqualToBodyOrTitleIsNotRepeated()
+    {
+        var same = NotificationLayout.Split(new OverlayPayload { Title = "App", Subtitle = "Готово", Body = "Готово" }, "x", joinHeadline: true);
+        Assert.Equal("Готово", same.Body);
+        var dup = NotificationLayout.Split(new OverlayPayload { Title = "Готово", Subtitle = "Готово", Body = "3 файла" }, "x", joinHeadline: true);
+        Assert.Equal("3 файла", dup.Body);
+    }
 }
