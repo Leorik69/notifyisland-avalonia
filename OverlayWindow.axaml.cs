@@ -4640,7 +4640,8 @@ public partial class OverlayWindow : Window
             var slots = SecondsStripLogic.SlotCountForWidth(stripW, SecondsStripView.DotWidth + 1.5);
             var lit = SecondsStripLogic.LitCount(DateTime.Now, slots);
             // Prefer accent; fall back to primary text
-            var brush = new SolidColorBrush(ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex));
+            // Cached: this runs five times a second and the brush only changes with the accent.
+            var brush = CachedBrush(ParseColor(_settings.ColorAccent, OverlayTokens.AccentHex));
             var ok = SecondsStripView.Apply(SecondsStrip, slots, lit, brush);
             SecondsStrip.IsVisible = ok;
         }
