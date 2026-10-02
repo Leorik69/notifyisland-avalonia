@@ -35,9 +35,25 @@ namespace NotifyIsland;
 /// </summary>
 public sealed class WindowsNotificationSource : IDisposable
 {
-    /// <summary>How often the notification centre is read. The centre changes on user action,
-    /// not on a schedule, and 1 s is what the clipboard poller already costs.</summary>
-    public static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(1);
+    /// <summary>How often the notification centre is read.
+    /// <para>
+    /// 2026-10-02, measured: this interval was the single most expensive thing in the app. The
+    /// listener has no delta or "since" query — <c>GetNotificationsAsync</c> marshals the ENTIRE
+    /// centre into managed COM wrappers on every call, and the centre only grows while the app
+    /// runs (74 toasts after an hour here). A 40 s trace of the idle app put 88% of all CPU in
+    /// WinRT marshalling: 47% releasing those wrappers (<c>MarshalInspectable.DisposeAbi</c>),
+    /// 25% reading the collection (<c>IEnumerator.get_Current</c>), 16% creating them
+    /// (<c>DefaultComWrappers.CreateObject</c>). The per-toast conversion filter from the earlier
+    /// pass does not help here: the wrappers are built by the projection before this code ever
+    /// sees them, so skipping <c>Convert</c> skips the cheap part.
+    /// </para>
+    /// <para>
+    /// Two seconds halves that cost. The trade is honest and real: a toast can now appear up to
+    /// two seconds later than before. That is imperceptible for a toast, and unlike the clipboard
+    /// — where the user is waiting on their own Ctrl+C — a notification has no one waiting on the
+    /// capsule to react in the same instant.
+    /// </para></summary>
+    public static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(2);
 
     /// <summary>How long one poll may take before it is abandoned. The WinRT call is asynchronous
     /// and a hung shell service would otherwise stall the poll loop indefinitely.
