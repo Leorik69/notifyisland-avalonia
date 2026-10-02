@@ -118,9 +118,10 @@ internal sealed class TrayService : IDisposable
 
             _tray.Icon = icon;
             _tray.IsVisible = true;
-            _tray.ToolTipText = unread > 0
-                ? $"NotifyIsland — непрочитанных: {unread}"
-                : "NotifyIsland";
+            // The tooltip is owned by the window (OverlayWindow.UpdateTrayTooltip), which
+            // composes the unread count, the privacy pause and the notification-access state.
+            // Writing it here as well meant whichever of the two ran last silently dropped the
+            // other.
         }
         catch (Exception ex)
         {

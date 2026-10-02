@@ -449,6 +449,7 @@ public partial class OverlayWindow : Window
                 _lastTrayUnread = unread;
                 _tray?.RefreshIcon(unread);
                 _winTray?.RefreshIcon(unread);
+                UpdateTrayTooltip();
             }
         };
         _weatherTimer.Tick += (_, _) => _ = RefreshWeatherAsync();
@@ -1377,12 +1378,38 @@ public partial class OverlayWindow : Window
     /// we call it from the toggle path AND from the same hook that drives the rope pulse, so
     /// a pause that expires during a session simply stops blocking the next capture.
     /// </summary>
-    private void RefreshTrayPauseLabel()
+    private void RefreshTrayPauseLabel() => UpdateTrayTooltip();
+
+    /// <summary>
+    /// The ONE place the tray tooltip is written.
+    /// <para>
+    /// It had two: each tray class set the unread count, and the privacy-pause path overwrote the
+    /// whole string. Whichever ran last won, so pausing the clipboard silently dropped the
+    /// unread count from the tooltip and vice versa. One owner, one composition.
+    /// </para>
+    /// <para>
+    /// The listener state lives here too. A user who declines the notification-access prompt gets
+    /// an island that never shows a toast again, and until now there was nothing on screen and
+    /// nothing in the tray to say why — only a WARN in a log file they do not know exists. The
+    /// tooltip is where they already look. It is only added once the platform has actually
+    /// answered: a null AccessStatus means "not asked yet", and saying "disabled" then would be
+    /// a lie during the first second of startup.
+    /// </para>
+    /// </summary>
+    private void UpdateTrayTooltip()
     {
-        var remaining = ClipboardPrivacyPause.RemainingMinutes(_settings.ClipboardPrivacyPauseUntilUtc, DateTime.UtcNow);
-        var label = ClipboardPrivacyPause.TooltipText(remaining);
-        try { _winTray?.SetTooltip(label); } catch { /* tray may be torn down on shutdown */ }
-        try { _tray?.SetTooltip(label); } catch { /* tray may be torn down on shutdown */ }
+        var pause = ClipboardPrivacyPause.RemainingMinutes(
+            _settings.ClipboardPrivacyPauseUntilUtc, DateTime.UtcNow);
+
+        // Null AccessStatus means the platform has not answered yet — not "denied". Passing that
+        // as "known" would print "уведомления выкл" during the first second of every launch.
+        var known = _notifSource?.AccessStatus is not null;
+        var denied = _notifSource?.AccessStatus
+            == Windows.UI.Notifications.Management.UserNotificationListenerAccessStatus.Denied;
+
+        var text = TrayTooltipText.For(_machine.UnreadCount, pause, known, denied);
+        try { _winTray?.SetTooltip(text); } catch { /* tray may be torn down on shutdown */ }
+        try { _tray?.SetTooltip(text); } catch { /* tray may be torn down on shutdown */ }
     }
 
     private void OnPillPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -3918,6 +3945,10 @@ public partial class OverlayWindow : Window
             _notifSource = new WindowsNotificationSource(
                 action => Dispatcher.UIThread.Post(action));
             _notifSource.Accepted += OnToastAccepted;
+            // The platform's answer about our access is the one thing the user cannot see from
+            // the island itself: nothing on the capsule changes when toasts stop arriving. The
+            // tray tooltip is the only place that says so.
+            _notifSource.AccessChanged += () => Dispatcher.UIThread.Post(UpdateTrayTooltip);
             _notifSource.Start();
         }
         catch (Exception ex)

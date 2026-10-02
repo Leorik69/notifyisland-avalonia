@@ -72,6 +72,17 @@ public sealed class WindowsNotificationSource : IDisposable
     /// <summary>Raised for each toast the feed accepted. Runs on the UI thread.</summary>
     public event Action<IncomingToast>? Accepted;
 
+    /// <summary>
+    /// Raised on the UI thread whenever the platform's answer about our access changes.
+    /// <para>
+    /// 2026-10-02: without this, a user who says "no" to the listener prompt gets an island that
+    /// silently never shows a toast again. The only trace was a WARN line in a log file the user
+    /// does not know exists, so "the island is broken" and "you declined notification access"
+    /// were indistinguishable from the outside. The window surfaces it in the tray tooltip.
+    /// </para>
+    /// </summary>
+    public event Action? AccessChanged;
+
     /// <summary>Access status as the platform last reported it, or null before the first check.</summary>
     public UserNotificationListenerAccessStatus? AccessStatus { get; private set; }
 
@@ -298,6 +309,7 @@ public sealed class WindowsNotificationSource : IDisposable
                         $"{(OwnPackageFamilyName.Length == 0 ? "<none>" : OwnPackageFamilyName)}");
         else
             AppLog.Warn($"WindowsNotificationSource: access {granted} — no toasts will be read");
+        AccessChanged?.Invoke();
     }
 
     // -- Polling -----------------------------------------------------------

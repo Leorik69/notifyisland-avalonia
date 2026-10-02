@@ -92,23 +92,19 @@ internal sealed class WinFormsTray : IDisposable
         try
         {
             // There are two icons and the unread state is a bool, so most calls land here with
-            // nothing to change. Reassigning re-arms the shell's icon and tooltip machinery for
-            // no reason, and used to also pay the file read and PNG decode.
+            // nothing to change. Reassigning re-arms the shell's icon machinery for no reason, and
+            // used to also pay the file read and PNG decode.
+            //
+            // The tooltip is NOT written here. It used to be, and the privacy-pause path overwrote
+            // the whole string, so whichever ran last won and the two states could not both be
+            // seen. The window owns the tooltip now — see OverlayWindow.UpdateTrayTooltip.
             if (_notify.Icon is not null && _trayUnread == (unread > 0))
-            {
-                _notify.Text = unread > 0
-                    ? $"NotifyIsland ({Math.Min(unread, 99)})"
-                    : "NotifyIsland";
                 return;
-            }
 
             var old = _notify.Icon;
             _notify.Icon = LoadIcon(unread > 0);
             _trayUnread = unread > 0;
             old?.Dispose();
-            _notify.Text = unread > 0
-                ? $"NotifyIsland ({Math.Min(unread, 99)})"
-                : "NotifyIsland";
             _notify.Visible = true;
         }
         catch (Exception ex)
