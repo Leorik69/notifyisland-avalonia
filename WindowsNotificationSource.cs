@@ -53,7 +53,7 @@ public sealed class WindowsNotificationSource : IDisposable
     /// — where the user is waiting on their own Ctrl+C — a notification has no one waiting on the
     /// capsule to react in the same instant.
     /// </para></summary>
-    public static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(2);
+    public static readonly TimeSpan DefaultPollInterval = TimeSpan.FromMilliseconds(NotificationPollPlan.PollMs);
 
     /// <summary>How long one poll may take before it is abandoned. The WinRT call is asynchronous
     /// and a hung shell service would otherwise stall the poll loop indefinitely.
@@ -90,6 +90,10 @@ public sealed class WindowsNotificationSource : IDisposable
 
     private readonly Action<Action> _postToUi;
     private CancellationTokenSource? _stop;
+    // Wakes the poll loop early. Released by the toast-published signal and by an access grant;
+    // drained after every wake so a burst of signals collapses into one read.
+    private readonly SemaphoreSlim _wake = new(0, int.MaxValue);
+    private ToastPublishedSignal? _signal;
     private bool _primed;              // the first successful poll was spent on priming
     private bool _disposed;
     private bool _firstPollReported;   // say the first successful read once, not every second
@@ -133,6 +137,7 @@ public sealed class WindowsNotificationSource : IDisposable
         if (_disposed || IsRunning) return;
         IsRunning = true;
         TryGetIdentity();
+        StartSignal();
         _postToUi(RequestAccess);
 
         // A sequential async loop, not a repeating timer. The old timer fired on a fixed period
@@ -148,6 +153,38 @@ public sealed class WindowsNotificationSource : IDisposable
     {
         IsRunning = false;
         _stop?.Cancel();
+        if (_signal is not null)
+        {
+            _signal.Published -= Wake;
+            _signal.Dispose();
+            _signal = null;
+        }
+    }
+
+    /// <summary>
+    /// Subscribe to the shell's toast-published signal (see <see cref="ToastPublishedSignal"/>).
+    /// Fail-soft: when it is refused the loop simply keeps the plain poll interval.
+    /// </summary>
+    private void StartSignal()
+    {
+        if (_signal is not null) return;
+        var signal = new ToastPublishedSignal();
+        if (!signal.IsLive)
+        {
+            signal.Dispose();
+            return;
+        }
+        signal.Published += Wake;
+        _signal = signal;
+        AppLog.Info("WindowsNotificationSource: reading on toast signal, safety poll every " +
+                    $"{NotificationPollPlan.SignalFallbackPollMs / 1000} s");
+    }
+
+    private void Wake()
+    {
+        try { _wake.Release(); }
+        catch (ObjectDisposedException) { }
+        catch (SemaphoreFullException) { }
     }
 
     public void Dispose()
@@ -156,6 +193,7 @@ public sealed class WindowsNotificationSource : IDisposable
         _disposed = true;
         Stop();
         _stop?.Dispose();
+        _wake.Dispose();
     }
 
     // -- Access ------------------------------------------------------------
@@ -214,6 +252,10 @@ public sealed class WindowsNotificationSource : IDisposable
             {
                 AccessStatus = status;
                 IsListening = true;
+                // The loop's first read ran before this and found no access; with the signal
+                // live its next read could be 30 s away, which would also turn the first real
+                // toast into "backlog". Prime now.
+                Wake();
                 return;
             }
 
@@ -249,6 +291,8 @@ public sealed class WindowsNotificationSource : IDisposable
     {
         AccessStatus = granted;
         IsListening = granted == UserNotificationListenerAccessStatus.Allowed;
+        // With the signal live the next scheduled read may be 30 s away; read now instead.
+        if (IsListening) Wake();
         if (IsListening)
             AppLog.Info($"WindowsNotificationSource: access granted, identity=" +
                         $"{(OwnPackageFamilyName.Length == 0 ? "<none>" : OwnPackageFamilyName)}");
@@ -287,13 +331,30 @@ public sealed class WindowsNotificationSource : IDisposable
 
             try
             {
-                await Task.Delay(PollInterval, ct).ConfigureAwait(false);
+                await WaitForNextReadAsync(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
                 return;
             }
         }
+    }
+
+    /// <summary>
+    /// Sleep until the next read is due: the plain poll interval without a signal, or until the
+    /// shell says a toast was published (with a slow safety poll behind it) when the signal is live.
+    /// </summary>
+    private async Task WaitForNextReadAsync(CancellationToken ct)
+    {
+        var signalLive = _signal?.IsLive == true;
+        var wait = signalLive
+            ? TimeSpan.FromMilliseconds(NotificationPollPlan.NextWaitMs(signalLive: true))
+            : PollInterval;
+        var woken = await _wake.WaitAsync(wait, ct).ConfigureAwait(false);
+        if (!woken) return;
+        // Let a burst finish arriving, then swallow the wakes it produced: one read covers them all.
+        await Task.Delay(NotificationPollPlan.SignalCoalesceMs, ct).ConfigureAwait(false);
+        while (_wake.Wait(0)) { }
     }
 
     private async Task PollOnceAsync(CancellationToken ct)
