@@ -195,6 +195,18 @@ public sealed class AppSettings
     /// </summary>
     public bool RecordingIndicatorEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Keep a list of the windows the user has worked in, and offer to switch back to them from
+    /// the island's menu. Default ON.
+    /// <para>
+    /// 2026-10-03. Windows already has Alt+Tab; what it does not have is a list you can read at a
+    /// glance and jump from without holding a key, and that is what this is. The list is a jump
+    /// list, not a log: at most eight rows, and a window nobody has touched in half an hour is
+    /// forgotten.
+    /// </para>
+    /// </summary>
+    public bool RecentWindowsEnabled { get; set; } = true;
+
     /// <summary>Stock theme or Custom. Stock Apply overwrites palette/font/anim/icons/date.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ThemePreset ThemePreset { get; set; } = ThemePreset.Custom;
@@ -582,6 +594,7 @@ public sealed class AppSettings
         target.NotifyJumpToTop = NotifyJumpToTop;
         target.NotifyBodyMarquee = NotifyBodyMarquee;
         target.RecordingIndicatorEnabled = RecordingIndicatorEnabled;
+        target.RecentWindowsEnabled = RecentWindowsEnabled;
         target.ThemePreset = ThemePreset;
         target.WeatherSide = WeatherSide;
         target.ZOrderMode = ZOrderMode;

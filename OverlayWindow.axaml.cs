@@ -35,6 +35,7 @@ public partial class OverlayWindow : Window
     private WindowsNotificationSource? _notifSource;
     private WindowsKeyboardLayoutSource? _keyboardLayout;
     private WindowsRecordingSource? _recording;
+    private WindowsRecentWindowsSource? _recentWindows;
     private readonly RecordingGate _recordingGate = new();
     private CancellationTokenSource? _keyboardLayoutHide;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -432,6 +433,8 @@ public partial class OverlayWindow : Window
             _keyboardLayout = null;
             _recording?.Dispose();
             _recording = null;
+            _recentWindows?.Dispose();
+            _recentWindows = null;
             _keyboardLayoutHide?.Cancel();
             _keyboardLayoutHide = null;
         };
@@ -501,6 +504,9 @@ public partial class OverlayWindow : Window
         // The recording lamp, same reason — and it is additionally gated on its own setting, so
         // it may legitimately not start at all.
         EnsureRecordingSource();
+        // Same reason again: no window handle of its own, and it is the island's own pid that the
+        // filter compares against, so it must be running before any window is enumerated.
+        EnsureRecentWindowsSource();
 
 
 
@@ -2082,6 +2088,7 @@ public partial class OverlayWindow : Window
                 () => HandleClipboardSectionClick()));
         }
         menu.Items.Add(Menu("Настроить монитор…", () => OpenSettings("system")));
+        AddRecentWindowsMenu(menu);
         menu.Items.Add(new Avalonia.Controls.Separator());
         menu.Items.Add(Menu("Свернуть", () =>
         {
@@ -2092,6 +2099,46 @@ public partial class OverlayWindow : Window
         menu.Items.Add(Menu("Выход", () =>
             (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown()));
         menu.Open(Pill);
+    }
+
+    /// <summary>
+    /// Add the recent-windows submenu, or nothing at all when there is nothing to switch to.
+    /// <para>
+    /// An empty «Недавние окна» entry that opens an empty menu is the same mistake the clipboard
+    /// history drawer makes and does not make: the user clicks it expecting somewhere to go, and
+    /// gets a dead end. So the entry is simply absent until there is a window to return to.
+    /// </para>
+    /// <para>
+    /// It lives in the tray menu rather than as a floating panel because the panel would need its
+    /// own window geometry on a screen edge the island already occupies, and the restore path is
+    /// the valuable half anyway — the user wants to get BACK to a window, not to admire a list.
+    /// </para>
+    /// </summary>
+    private void AddRecentWindowsMenu(Avalonia.Controls.ContextMenu menu)
+    {
+        if (!_settings.RecentWindowsEnabled) return;
+        var items = _recentWindows?.List.Items;
+        if (items is null || items.Count == 0) return;
+
+        var sub = new Avalonia.Controls.MenuItem { Header = "Недавние окна" };
+        foreach (var w in items)
+        {
+            var handle = w.Handle;
+            var title = w.Title;
+            // The process name is in the label because two windows of the same app are otherwise
+            // indistinguishable — «Документ» tells you nothing about which of the four it is.
+            var label = string.IsNullOrWhiteSpace(w.ProcessName)
+                ? title
+                : $"{title}  —  {w.ProcessName}";
+            sub.Items.Add(Menu(label, () =>
+            {
+                if (_recentWindows?.Restore(handle) == true) return;
+                // A row can go stale between the poll that listed it and the click that uses it.
+                // Saying so is better than a menu item that silently does nothing.
+                AppLog.Info($"Recent window {handle} could not be restored — it is probably closed");
+            }));
+        }
+        menu.Items.Add(sub);
     }
 
     public void OpenSettings() => OpenSettings(null);
@@ -4155,10 +4202,32 @@ public partial class OverlayWindow : Window
 
     private string _recordingTip = "";
 
+    /// <summary>
+    /// Start tracking which windows the user is working in.
+    /// <para>
+    /// Gated on the setting for the same reason the recording lamp is: turning the feature off
+    /// must stop the 3 s foreground poll, not merely hide its result.
+    /// </para>
+    /// </summary>
+    private void EnsureRecentWindowsSource()
+    {
+        if (_recentWindows is not null) return;
+        if (!_settings.RecentWindowsEnabled) return;
+        try
+        {
+            _recentWindows = new WindowsRecentWindowsSource();
+            _recentWindows.Start();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("EnsureRecentWindowsSource failed — list idle", ex);
+            _recentWindows = null;
+        }
+    }
+
     private void EnsureNotificationSource()
     {
-        if (_notifSource is not null) return;
-        try
+        if (_notifSource is not null) return;        try
         {
             _notifSource = new WindowsNotificationSource(
                 action => Dispatcher.UIThread.Post(action));

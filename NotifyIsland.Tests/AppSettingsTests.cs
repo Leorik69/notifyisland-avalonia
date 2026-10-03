@@ -658,6 +658,22 @@ public class AppSettingsTests
     }
 
     [Fact]
+    public void RecentWindows_IsOnByDefaultAndSurvivesARoundTrip()
+    {
+        var fresh = new AppSettings();
+        Assert.True(fresh.RecentWindowsEnabled);
+
+        var s = new AppSettings { RecentWindowsEnabled = false };
+        var back = AppSettings.FromJson(s.ToJson());
+        Assert.NotNull(back);
+        Assert.False(back!.RecentWindowsEnabled);
+
+        var target = new AppSettings();
+        s.CopyTo(target);
+        Assert.False(target.RecentWindowsEnabled);
+    }
+
+    [Fact]
     public void HoverGrace_AFreshInstallAlreadyGetsTheNewDefault()
     {
         var s = new AppSettings();
