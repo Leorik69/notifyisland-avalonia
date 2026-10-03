@@ -33,6 +33,8 @@ public partial class OverlayWindow : Window
     private WindowsClipboardSource? _clipboardSource;
     private SystemMonitorMachine? _statsMachine;
     private WindowsNotificationSource? _notifSource;
+    private WindowsKeyboardLayoutSource? _keyboardLayout;
+    private CancellationTokenSource? _keyboardLayoutHide;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _weatherTimer = new() { Interval = TimeSpan.FromMilliseconds(OverlayTokens.WeatherRefreshMs) };
@@ -394,6 +396,7 @@ public partial class OverlayWindow : Window
             // process. (Do NOT put background-worker startup here — see the ctor note below.)
             Win32Overlay.ApplyNoActivate(this);
             Win32Overlay.ApplyZOrder(this, _settings.ZOrderMode);
+
             PlaceIsland();
             _ = RefreshWeatherAsync();
             EnsureMediaSource();
@@ -418,6 +421,10 @@ public partial class OverlayWindow : Window
             _statsMachine = null;
             _notifSource?.Dispose();
             _notifSource = null;
+            _keyboardLayout?.Dispose();
+            _keyboardLayout = null;
+            _keyboardLayoutHide?.Cancel();
+            _keyboardLayoutHide = null;
         };
         KeyDown += OnKey;
         _clock.Tick += (_, _) => TickClock();
@@ -477,6 +484,10 @@ public partial class OverlayWindow : Window
         // The notification listener is the island's actual subject, so it has no setting to
         // gate on and no window handle to wait for. Started from here, like its neighbours.
         EnsureNotificationSource();
+        // The language badge, same reason: it needs no window handle and no setting, and Opened
+        // is not a reliable place to start anything (it does not run on first launch at all).
+        EnsureKeyboardLayoutSource();
+
         // Same reason as above: the row set must exist before the first hover, or
         // ApplyHoverExpandedState sees zero rows and suppresses the stats surface. It only
         // appeared to work after touching the settings, because ApplySettingsFromUi happens
@@ -1042,7 +1053,7 @@ public partial class OverlayWindow : Window
         if (weatherLeft) Add(weather);
         Add(CyclePrevButton, clockText, digital, CyclePreviewText, CycleNavHint, CycleNextButton, dateText);
         if (!weatherLeft) Add(weather);
-        Add(battery, dot, pinned);
+        Add(battery, dot, pinned, KeyboardLayoutBadge);
     }
 
     private void ApplyOrientationLayout()
@@ -3949,6 +3960,47 @@ public partial class OverlayWindow : Window
 
     private void OnPowerChanged(PowerStatusSnapshot snap) =>
         Dispatcher.UIThread.Post(() => ApplyPowerSnapshot(snap), DispatcherPriority.Background);
+
+    private void EnsureKeyboardLayoutSource()
+    {
+        if (_keyboardLayout is not null) return;
+        try
+        {
+            _keyboardLayout = new WindowsKeyboardLayoutSource();
+            _keyboardLayout.Changed += OnKeyboardLayoutChanged;
+            _keyboardLayout.Start();
+        }
+        catch (Exception ex)
+        {
+            // Cosmetic. A missing language flag is not a reason for the island to be unhappy.
+            AppLog.Warn("EnsureKeyboardLayoutSource failed", ex);
+            _keyboardLayout = null;
+        }
+    }
+
+    /// <summary>
+    /// Flash the language badge for a couple of seconds. It is a caption, not a state: it takes
+    /// no space in the FSM, disappears on its own, and never survives into the next layout.
+    /// </summary>
+    private void OnKeyboardLayoutChanged(KeyboardLayoutInfo info)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            KeyboardLayoutFlag.Text = info.Region;
+            KeyboardLayoutName.Text = OneLine(info.Language);
+            KeyboardLayoutBadge.IsVisible = info.Region.Length > 0 || info.Language.Length > 0;
+
+            _keyboardLayoutHide?.Cancel();
+            _keyboardLayoutHide = new CancellationTokenSource();
+            var token = _keyboardLayoutHide.Token;
+            _ = Task.Delay(TimeSpan.FromMilliseconds(KeyboardLayoutTag.TypingWindowMs), token)
+                .ContinueWith(_ =>
+                {
+                    if (!token.IsCancellationRequested)
+                        Dispatcher.UIThread.Post(() => KeyboardLayoutBadge.IsVisible = false);
+                }, TaskScheduler.Default);
+        });
+    }
 
     private void EnsureNotificationSource()
     {

@@ -169,6 +169,36 @@
                      FontWeight="SemiBold"
                      Foreground="#C8C8CC" />
         </Border>
+
+        <!-- Keyboard-layout badge. Shown only for a moment after the user switches layout
+             while typing; WindowsKeyboardLayoutSource decides WHEN, and it never fires on the
+             first reading (that one is priming) or on a language-bar hover with no typing.
+
+             The left cell is the two-letter country code, NOT an emoji flag. Measured on this
+             Avalonia build: a plain emoji draws in full colour, but a pair of regional indicator
+             symbols does not get shaped into a flag and falls back to the letters "US" / "RU" —
+             so the code is drawn deliberately rather than as a surprise. OverlayTokens and the
+             icon pack are the places to revisit if real flag artwork ever lands. -->
+        <Border x:Name="KeyboardLayoutBadge"
+                IsVisible="False"
+                CornerRadius="4"
+                Background="#28FFFFFF"
+                Padding="5,1"
+                VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <TextBlock x:Name="KeyboardLayoutFlag"
+                       FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                       FontSize="9"
+                       FontWeight="SemiBold"
+                       Foreground="#7FD4C1"
+                       VerticalAlignment="Center" />
+            <TextBlock x:Name="KeyboardLayoutName"
+                       FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                       FontSize="9"
+                       Foreground="#C8C8CC"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+        </Border>
       </StackPanel>
 
       <!-- Expanded single-row: icon | title/subtitle | badge | (system-stats expanded when SystemStats kind) -->
