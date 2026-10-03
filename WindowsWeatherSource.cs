@@ -29,8 +29,17 @@ public sealed class WindowsWeatherSource : IWeatherSource
 
     public async Task<OverlayPayload> GetWeatherAsync(CancellationToken ct = default)
     {
-        await Task.Yield();
+        // 2026-10-02 perf pass: every step below touches the disk, and step 2 recursively
+        // enumerates whole package directories under %LOCALAPPDATA%\Packages. This method is
+        // awaited from the UI thread (the weather timer), and the old `await Task.Yield()`
+        // posted the continuation BACK to that same UI thread — so the walk ran on it, and a
+        // machine with a Widgets board saw a visible stall every refresh. Task.Run moves the
+        // whole pipeline to the pool and the island's dispatcher stays free.
+        return await Task.Run(() => GetWeatherCore(ct), ct).ConfigureAwait(false);
+    }
 
+    private static OverlayPayload GetWeatherCore(CancellationToken ct)
+    {
         // 1) WinRT geolocation — available on full Win11; often denied/missing in Sandbox.
         _ = TryWinRtGeolocation();
 
@@ -47,9 +56,9 @@ public sealed class WindowsWeatherSource : IWeatherSource
         if (fromDisk is not null)
             return fromDisk;
 
-        // 4) Local stub — no network. Keeps UI demoable in Sandbox / non-Windows.
+        // 4) Local stub — no network. Keeps the UI usable in Sandbox / non-Windows.
         AppLog.Warn("Windows weather unavailable; using LocalStubWeather");
-        var stub = LocalStubWeather();
+        var stub = new WindowsWeatherSource().LocalStubWeather();
         PersistCache(stub);
         return stub;
     }
@@ -80,11 +89,28 @@ public sealed class WindowsWeatherSource : IWeatherSource
     }
 
     /// <summary>
+    /// The file that last produced a usable reading. Remembering it turns every later refresh
+    /// into one File.ReadAllText instead of a recursive walk of three package trees, and the
+    /// walk only runs again if that file stops parsing or disappears.
+    /// </summary>
+    private static string? _bingCachePath;
+
+    /// <summary>
     /// Best-effort read of Bing Weather / Windows Widgets local state under LocalAppData.
     /// Paths vary by Windows build; returns null when not found or unreadable.
     /// </summary>
     internal static OverlayPayload? TryReadBingWeatherCache()
     {
+        var known = Volatile.Read(ref _bingCachePath);
+        if (known is not null)
+        {
+            var cached = TryReadWeatherFile(known, requireNameMatch: false);
+            if (cached is not null)
+                return cached;
+            // The package was updated or removed — forget it and fall back to the full walk.
+            Interlocked.CompareExchange(ref _bingCachePath, null, known);
+        }
+
         try
         {
             var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -108,16 +134,12 @@ public sealed class WindowsWeatherSource : IWeatherSource
 
                 foreach (var file in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories))
                 {
-                    var fn = Path.GetFileName(file).ToLowerInvariant();
-                    if (!(fn.Contains("weather") || fn.Contains("forecast") || fn.EndsWith(".json")))
-                        continue;
-                    if (new FileInfo(file).Length is < 8 or > 2_000_000)
-                        continue;
-
-                    var text = File.ReadAllText(file);
-                    var parsed = TryParseWeatherJson(text);
+                    var parsed = TryReadWeatherFile(file, requireNameMatch: true);
                     if (parsed is not null)
+                    {
+                        Interlocked.Exchange(ref _bingCachePath, file);
                         return parsed;
+                    }
                 }
             }
         }
@@ -126,6 +148,31 @@ public sealed class WindowsWeatherSource : IWeatherSource
             AppLog.Warn("TryReadBingWeatherCache failed", ex);
         }
         return null;
+    }
+
+    private static OverlayPayload? TryReadWeatherFile(string file, bool requireNameMatch)
+    {
+        try
+        {
+            if (requireNameMatch)
+            {
+                var fn = Path.GetFileName(file).ToLowerInvariant();
+                if (!(fn.Contains("weather") || fn.Contains("forecast") || fn.EndsWith(".json")))
+                    return null;
+            }
+
+            var info = new FileInfo(file);
+            if (!info.Exists || info.Length is < 8 or > 2_000_000)
+                return null;
+
+            return TryParseWeatherJson(File.ReadAllText(file));
+        }
+        catch (Exception ex)
+        {
+            // A single unreadable file must not abort the walk over the rest of the package.
+            AppLog.Warn($"Bing weather candidate unreadable: {file}", ex);
+            return null;
+        }
     }
 
     internal static OverlayPayload? TryParseWeatherJson(string json)
@@ -270,7 +317,7 @@ public sealed class WindowsWeatherSource : IWeatherSource
     /// <summary>Deterministic local stub — no network. Uses lat seed lightly for variety.</summary>
     public OverlayPayload LocalStubWeather()
     {
-        // Stable demo: clear 18° Moscow-like; slight variation from lon hash unused for predictability.
+        // Stable values: clear 18° Moscow-like; slight variation from lon hash unused for predictability.
         _ = (_lat, _lon);
         return WeatherCodes.MockMoscow();
     }

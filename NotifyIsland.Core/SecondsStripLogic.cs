@@ -49,6 +49,18 @@ public static class SecondsStripLogic
     public static int LitCount(DateTime now, int slots) =>
         LitCount(Progress01(now), slots);
 
+    /// <summary>
+    /// Lit count for display, honouring the reduced-motion decision in <see cref="FlickerGate"/>.
+    /// The strip is an elapsed-seconds readout rather than decoration, so it keeps updating even
+    /// under reduced motion — see FlickerGate for why the two per-second flickers are treated
+    /// differently. Routing through here means the policy is one call site, not a per-panel
+    /// <c>if</c>.
+    /// </summary>
+    public static int LitCountForDisplay(bool reducedMotion, DateTime now, int slots) =>
+        FlickerGate.SecondsStripUpdates(reducedMotion)
+            ? LitCount(now, slots)
+            : LitCount(now, slots);
+
     /// <summary>Slot count from available capsule width (DIP).</summary>
     public static int SlotCountForWidth(double pillWidthDip, double pitchDip = DotPitchDip)
     {

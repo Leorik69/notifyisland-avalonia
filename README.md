@@ -14,18 +14,12 @@
 - **Collapsed:** clock (`HH:mm`) + glowing unread dot when `UnreadCount > 0`
 - **Notification:** stretches wider (height fixed), shows icon + title/subtitle + unread badge, then collapses
 - **Left-click** (idle/collapsed): opens Windows Notification Center (`ms-actioncenter:`)
-- **Right-click:** context menu · **F9** demo · **Esc** collapse
+- **Right-click:** context menu · **F12** timer/stopwatch · **Esc** collapse
 
 ## Run
 
 ```bash
 dotnet run --project NotifyIsland.Av.csproj
-```
-
-Demo of all states:
-
-```bash
-dotnet run --project NotifyIsland.Av.csproj -- --demo
 ```
 
 ## Tests

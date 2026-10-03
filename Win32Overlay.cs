@@ -133,14 +133,29 @@ internal static class Win32Overlay
     /// Detect exclusive fullscreen / presentation / busy notification state, plus
     /// a best-effort monitor-covering foreground window check. Fail-soft → false.
     /// </summary>
-    public static bool IsFullscreenOrBusy()
+    public static bool IsFullscreenOrBusy() => IsFullscreenOrBusy(out _);
+
+    /// <summary>
+    /// Same test, plus a short reason saying WHICH of the two checks fired.
+    /// <para>
+    /// The log used to say only "Fullscreen detected", which is not a fact anyone can act on:
+    /// the shell state and the foreground-window heuristic fail for completely different reasons
+    /// and need completely different fixes. Naming the source turns the next occurrence into a
+    /// diagnosis instead of an investigation.
+    /// </para>
+    /// </summary>
+    public static bool IsFullscreenOrBusy(out string reason)
     {
+        reason = string.Empty;
         try
         {
             if (SHQueryUserNotificationState(out var state) == 0)
             {
-                if (state is QunsRunningD3dFullScreen or QunsBusy or QunsPresentationMode)
+                if (state is QunsBusy or QunsRunningD3dFullScreen or QunsPresentationMode)
+                {
+                    reason = $"shell QUNS={QunsName(state)}";
                     return true;
+                }
             }
         }
         catch (Exception ex)
@@ -150,8 +165,11 @@ internal static class Win32Overlay
 
         try
         {
-            if (IsForegroundCoveringMonitor())
+            if (IsForegroundCoveringMonitor(out var fgReason))
+            {
+                reason = "foreground " + fgReason;
                 return true;
+            }
         }
         catch (Exception ex)
         {
@@ -161,19 +179,34 @@ internal static class Win32Overlay
         return false;
     }
 
+    private static string QunsName(int state) => state switch
+    {
+        QunsNotPresent => "NOT_PRESENT",
+        QunsBusy => "BUSY",
+        QunsRunningD3dFullScreen => "RUNNING_D3D_FULL_SCREEN",
+        QunsPresentationMode => "PRESENTATION_MODE",
+        QunsAcceptsNotifications => "ACCEPTS_NOTIFICATIONS",
+        QunsQuietTime => "QUIET_TIME",
+        QunsApp => "APP",
+        _ => state.ToString(System.Globalization.CultureInfo.InvariantCulture)
+    };
+
     /// <summary>
     /// True when the foreground window covers ≥95% of its monitor and is not
     /// minimized / shell / our process.
     /// </summary>
-    private static bool IsForegroundCoveringMonitor()
+    private static bool IsForegroundCoveringMonitor() => IsForegroundCoveringMonitor(out _);
+
+    private static bool IsForegroundCoveringMonitor(out string reason)
     {
+        reason = "none";
         var fg = GetForegroundWindow();
-        if (fg == IntPtr.Zero) return false;
-        if (IsIconic(fg)) return false;
+        if (fg == IntPtr.Zero) { reason = "no foreground window"; return false; }
+        if (IsIconic(fg)) { reason = "minimized"; return false; }
 
         GetWindowThreadProcessId(fg, out var fgPid);
-        if (fgPid == 0) return false;
-        if (fgPid == (uint)Environment.ProcessId) return false;
+        if (fgPid == 0) { reason = "no foreground pid"; return false; }
+        if (fgPid == (uint)Environment.ProcessId) { reason = "our own window"; return false; }
 
         // Skip desktop / shell
         var className = new char[64];
@@ -183,14 +216,14 @@ internal static class Win32Overlay
             var cn = new string(className, 0, len);
             if (cn is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd"
                 or "XamlExplorerHostIslandWindow" or "Windows.UI.Core.CoreWindow")
-                return false;
+            { reason = $"shell window '{cn}'"; return false; }
         }
 
-        if (!GetWindowRect(fg, out var wr)) return false;
+        if (!GetWindowRect(fg, out var wr)) { reason = "no rect"; return false; }
         var mon = MonitorFromWindow(fg, MonitorDefaultToNearest);
-        if (mon == IntPtr.Zero) return false;
+        if (mon == IntPtr.Zero) { reason = "no monitor"; return false; }
         var mi = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
-        if (!GetMonitorInfo(mon, ref mi)) return false;
+        if (!GetMonitorInfo(mon, ref mi)) { reason = "no monitor info"; return false; }
 
         var mw = Math.Max(1, mi.Monitor.Right - mi.Monitor.Left);
         var mh = Math.Max(1, mi.Monitor.Bottom - mi.Monitor.Top);
@@ -198,7 +231,10 @@ internal static class Win32Overlay
         var wh = Math.Max(0, wr.Bottom - wr.Top);
         var cover = (ww / (double)mw) * (wh / (double)mh);
         // Borderless fullscreen typically ≥0.97; allow a little chrome.
-        return cover >= 0.95 && ww >= mw * 0.95 && wh >= mh * 0.95;
+        var isFull = cover >= 0.95 && ww >= mw * 0.95 && wh >= mh * 0.95;
+        var cn2 = len > 0 ? new string(className, 0, len) : "?";
+        reason = $"'{cn2}' covers {cover:P1} of the monitor ({ww}x{wh} vs {mw}x{mh})";
+        return isFull;
     }
 
     /// <summary>

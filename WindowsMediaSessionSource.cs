@@ -8,7 +8,7 @@ namespace NotifyIsland;
 
 /// <summary>
 /// Live Now Playing via Windows System Media Transport Controls (SMTC).
-/// Fail-soft: if WinRT is unavailable or no session, raises null and leaves demo/idle alone.
+/// Fail-soft: if WinRT is unavailable or no session, raises null and leaves the island alone.
 /// </summary>
 public sealed class WindowsMediaSessionSource : IDisposable
 {

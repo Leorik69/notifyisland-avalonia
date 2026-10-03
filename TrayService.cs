@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -19,53 +21,30 @@ internal sealed class TrayService : IDisposable
     private readonly OverlayWindow _overlay;
     private readonly TrayIcon _tray;
     private readonly TrayIcons _icons;
+    private readonly ClipboardHistory _clipboard;
     private readonly NativeMenuItem _toggleIsland;
     private readonly NativeMenuItem _toggleWeather;
-    private readonly NativeMenuItem _toggleDemo;
     private DateTime _lastClickUtc = DateTime.MinValue;
     private bool _disposed;
 
-    public TrayService(OverlayWindow overlay)
+    public TrayService(OverlayWindow overlay, ClipboardHistory clipboard)
     {
         _overlay = overlay;
+        _clipboard = clipboard ?? throw new ArgumentNullException(nameof(clipboard));
         _tray = new TrayIcon
         {
             IsVisible = true,
             ToolTipText = "NotifyIsland"
         };
 
-        var settings = new NativeMenuItem("Открыть настройки");
-        settings.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.OpenSettings);
-
-        _toggleIsland = new NativeMenuItem("Показать/скрыть островок");
+        _toggleIsland = new NativeMenuItem("Показать островок");
         _toggleIsland.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.ToggleIslandVisible);
-
-        _toggleDemo = new NativeMenuItem("Демо вкл");
-        _toggleDemo.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.ToggleDemoFromTray);
 
         _toggleWeather = new NativeMenuItem("Погода вкл");
         _toggleWeather.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.ToggleWeatherFromTray);
 
-        var timerMenu = new NativeMenuItem("Таймер");
-        var timerSub = new NativeMenu();
-        void AddPreset(string label, int min)
-        {
-            var item = new NativeMenuItem(label);
-            item.Click += (_, _) => Dispatcher.UIThread.Post(() => _overlay.StartCountdownMinutes(min));
-            timerSub.Add(item);
-        }
-        AddPreset("1 мин", 1);
-        AddPreset("5 мин", 5);
-        AddPreset("10 мин", 10);
-        AddPreset("25 мин", 25);
-        var custom = new NativeMenuItem("По умолчанию…");
-        custom.Click += (_, _) => Dispatcher.UIThread.Post(() =>
-            _overlay.StartCountdownMinutes(_overlay.Settings.TimerDefaultMinutes));
-        timerSub.Add(custom);
-        var cancel = new NativeMenuItem("Отменить");
-        cancel.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.CancelTimer);
-        timerSub.Add(cancel);
-        timerMenu.Menu = timerSub;
+        var timerMenu = BuildTimerMenu();
+        var clipboardMenu = BuildClipboardSubmenu();
 
         var exit = new NativeMenuItem("Выход");
         exit.Click += (_, _) =>
@@ -77,14 +56,22 @@ internal sealed class TrayService : IDisposable
         var actionCenter = new NativeMenuItem("Центр уведомлений");
         actionCenter.Click += (_, _) => OpenActionCenter();
 
+        var settings = new NativeMenuItem("Открыть настройки");
+        settings.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.OpenSettings);
+
+        // Plan §Task 10 Step 6:
+        //   Toggle island → sep → Action Center → clipboard submenu → sep
+        //   → weather toggle → timer submenu → sep → Settings → Exit.
         var menu = new NativeMenu();
-        menu.Add(settings);
-        menu.Add(actionCenter);
         menu.Add(_toggleIsland);
-        menu.Add(_toggleDemo);
+        menu.Add(new NativeMenuItemSeparator());
+        menu.Add(actionCenter);
+        menu.Add(clipboardMenu);
+        menu.Add(new NativeMenuItemSeparator());
         menu.Add(_toggleWeather);
         menu.Add(timerMenu);
         menu.Add(new NativeMenuItemSeparator());
+        menu.Add(settings);
         menu.Add(exit);
         _tray.Menu = menu;
 
@@ -108,7 +95,6 @@ internal sealed class TrayService : IDisposable
         var s = _overlay.Settings;
         _toggleIsland.Header = s.IslandVisible ? "Скрыть островок" : "Показать островок";
         _toggleWeather.Header = s.WeatherEnabled ? "Погода выкл" : "Погода вкл";
-        _toggleDemo.Header = _overlay.IsDemoRunning ? "Демо выкл" : "Демо вкл";
     }
 
     public void RefreshIcon(int unread)
@@ -132,15 +118,26 @@ internal sealed class TrayService : IDisposable
 
             _tray.Icon = icon;
             _tray.IsVisible = true;
-            _tray.ToolTipText = unread > 0
-                ? $"NotifyIsland — непрочитанных: {unread}"
-                : "NotifyIsland";
+            // The tooltip is owned by the window (OverlayWindow.UpdateTrayTooltip), which
+            // composes the unread count, the privacy pause and the notification-access state.
+            // Writing it here as well meant whichever of the two ran last silently dropped the
+            // other.
         }
         catch (Exception ex)
         {
             AppLog.Warn("TrayService.RefreshIcon failed", ex);
         }
         RefreshLabels();
+    }
+
+    /// <summary>
+    /// Override the tray tooltip without touching the icon. Privacy-pause toggle calls this so
+    /// the tray surfaces «NotifyIsland — пауза 30 мин» for the duration of the pause.
+    /// </summary>
+    public void SetTooltip(string text)
+    {
+        try { _tray.ToolTipText = text; }
+        catch (Exception ex) { AppLog.Warn("TrayService.SetTooltip failed", ex); }
     }
 
     private void OnTrayClicked(object? sender, EventArgs e)
@@ -176,6 +173,85 @@ internal sealed class TrayService : IDisposable
         {
             AppLog.Warn("OpenActionCenter failed", ex);
         }
+    }
+
+    /// <summary>Timer submenu — same presets the keyboard / context menu already expose.</summary>
+    private NativeMenuItem BuildTimerMenu()
+    {
+        var timerMenu = new NativeMenuItem("Таймер");
+        var timerSub = new NativeMenu();
+        void AddPreset(string label, int min)
+        {
+            var item = new NativeMenuItem(label);
+            item.Click += (_, _) => Dispatcher.UIThread.Post(() => _overlay.StartCountdownMinutes(min));
+            timerSub.Add(item);
+        }
+        AddPreset("1 мин", 1);
+        AddPreset("5 мин", 5);
+        AddPreset("10 мин", 10);
+        AddPreset("25 мин", 25);
+        var custom = new NativeMenuItem("По умолчанию…");
+        custom.Click += (_, _) => Dispatcher.UIThread.Post(() =>
+            _overlay.StartCountdownMinutes(_overlay.Settings.TimerDefaultMinutes));
+        timerSub.Add(custom);
+        var cancel = new NativeMenuItem("Отменить");
+        cancel.Click += (_, _) => Dispatcher.UIThread.Post(_overlay.CancelTimer);
+        timerSub.Add(cancel);
+        timerMenu.Menu = timerSub;
+        return timerMenu;
+    }
+
+    /// <summary>
+    /// Clipboard submenu — last <see cref="OverlayTokens.TrayClipboardSubmenuItems"/> items
+    /// from <see cref="ClipboardHistory"/>, newest-first. Clicking re-copies via
+    /// <see cref="WindowsClipboardWriter"/>. Empty state shows "(пусто)".
+    /// </summary>
+    private NativeMenuItem BuildClipboardSubmenu()
+    {
+        var clipMenu = new NativeMenuItem("Буфер обмена");
+        var sub = new NativeMenu();
+        foreach (var entry in _clipboard.SnapshotNewestFirst()
+                     .Take(OverlayTokens.TrayClipboardSubmenuItems))
+        {
+            var captured = entry;
+            var label = MakeClipboardLabel(captured);
+            var item = new NativeMenuItem(label);
+            item.Click += (_, _) => Dispatcher.UIThread.Post(() =>
+            {
+                var ok = captured.Kind switch
+                {
+                    ClipboardItemKind.Text => WindowsClipboardWriter.WriteText(captured.Text ?? ""),
+                    ClipboardItemKind.File or ClipboardItemKind.MultiFile =>
+                        WindowsClipboardWriter.WriteFiles(captured.Paths ?? new List<string>()),
+                    _ => false
+                };
+                if (ok)
+                {
+                    AppLog.Info($"TrayService clipboard re-copy: kind={captured.Kind} ok");
+                    RefreshIcon(0);
+                }
+                else
+                    AppLog.Warn($"TrayService clipboard re-copy failed: kind={captured.Kind}");
+            });
+            sub.Add(item);
+        }
+        if (sub.Items.Count == 0)
+            sub.Add(new NativeMenuItem("(пусто)"));
+        clipMenu.Menu = sub;
+        return clipMenu;
+    }
+
+    private static string MakeClipboardLabel(ClipboardEntry e)
+    {
+        string label = e.Kind switch
+        {
+            ClipboardItemKind.Text => (e.Text ?? "").Replace('\n', ' ').Replace('\r', ' ').Trim(),
+            ClipboardItemKind.File => Path.GetFileName(e.Paths is { Count: > 0 } ? e.Paths[0] : ""),
+            ClipboardItemKind.MultiFile => $"{e.Paths?.Count ?? 0} файлов",
+            _ => ""
+        };
+        if (label.Length > 40) label = label[..39] + "…";
+        return label;
     }
 
     public void Dispose()

@@ -73,9 +73,15 @@ class Machine:
             self.payload.remaining = max(0.0, self.payload.remaining - dt / 1000.0)
 
 def _token_int(name: str) -> int:
+    # Prefer a literal int RHS; fall back to a single-level alias like
+    # `public const int Foo = Bar;` and recurse once to keep the assertion
+    # meaningful (== 12 still means the chain ultimately resolves to 12).
     m = re.search(rf"{name}\s*=\s*(\d+)", TOKENS)
-    assert m, name
-    return int(m.group(1))
+    if m:
+        return int(m.group(1))
+    a = re.search(rf"{name}\s*=\s*([A-Za-z_]\w*)\s*;", TOKENS)
+    assert a, name
+    return _token_int(a.group(1))
 
 def _token_float(name: str) -> float:
     m = re.search(rf"{name}\s*=\s*([\d.]+)", TOKENS)

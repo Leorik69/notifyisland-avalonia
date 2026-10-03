@@ -23,7 +23,11 @@ public enum AnimationAction
     UnreadPulse,
     Hover,
     SwipeRubber,
-    IconCrossfade
+    IconCrossfade,
+    /// <summary>Click-acknowledgement pop on CycleNext / CyclePrev / chevron clicks.</summary>
+    ClickPop,
+    /// <summary>First-appear horizontal wobble after the pill becomes visible again.</summary>
+    FirstAppearWobble
 }
 
 /// <summary>Maps <see cref="AnimationSpeed"/> to duration multipliers and scaled ms.</summary>

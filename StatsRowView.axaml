@@ -1,0 +1,140 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="NotifyIsland.StatsRowView"
+             ClipToBounds="False">
+  <!-- One row of the System Stats surface. Three visual shapes (spec: the 1.13
+       single-capsule spec under docs/superpowers/specs, September 2026):
+         pair    — label left (FontSize 11, #8A8A92), value right (FontSize 12, primary)
+         caption — one centred line (FontSize 10, #7C7C84), used by the Date row
+         status  — Media / Timer: meta left, value in the middle, actions right
+
+       COLUMN SHAPE (1.17). "Auto,*,Auto" for every shape, on purpose:
+         - metric pair: the label is Auto (its natural width, flush left) and the value is
+           the star column, right-aligned — visually identical to the old "*,Auto", which
+           measured label 240 DIP + value at the row's right edge.
+         - status row: the value is the thing that can be arbitrarily long (a track title,
+           a long localised number), so IT must be the star column and ellipsize. With the
+           old "*,Auto" a long title squeezed the label and the actions out of existence.
+           Value and ActionsHost also no longer share a cell: they used to both sit in
+           column 1, one right-aligned and one centred, and a long title ran straight
+           through the buttons.
+       HEIGHT. One Auto row, so every row measures the same ~16 DIP that
+       StatsLayout.StatsHeightFor budgets per row. The status bar is an OVERLAY pinned to
+       the bottom of row 0 rather than a second grid row: as row 1 it added 2 + 2 DIP and
+       pushed a Media/Timer row 4 DIP past its budget, which is what made the last row
+       clip once both status rows were on. Do not move it back into a row of its own. -->
+  <Grid x:Name="RowGrid"
+        ColumnDefinitions="Auto,*,Auto"
+        RowDefinitions="Auto">
+    <!-- 1.16: the row separator, drawn only above the date caption.
+         1 DIP, low contrast, and — the part that matters — it costs NO extra height: the
+         caption's own top Margin (0,2,0,0) already reserved 2 DIP, so the 1 DIP rule fits
+         inside that existing 2 DIP gap. The row still measures 15.3 DIP exactly as before
+         (divider 1 + gap 1 + caption 13.3), which is what keeps StatsHeightFor(5) = 108
+         and AdaptiveStatsLayoutTests' content budget true. Do NOT give it a margin of its
+         own: any padding here pushes the panel past its budget and clips the last row. -->
+    <Border x:Name="RowDivider"
+            Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+            Height="1"
+            VerticalAlignment="Top"
+            Background="#14FFFFFF"
+            IsVisible="False"
+            IsHitTestVisible="False" />
+
+    <!-- Meta cell: the row's own caption (Плеер / Таймер) plus the artist or the
+         timer state beside it. One horizontal line so a two-line status row cannot eat
+         the panel's height budget. -->
+    <StackPanel x:Name="MetaStack"
+                Grid.Row="0" Grid.Column="0"
+                Orientation="Horizontal"
+                Spacing="6"
+                VerticalAlignment="Center">
+      <TextBlock x:Name="LabelBlock"
+                 FontSize="11"
+                 Foreground="#8A8A92"
+                 VerticalAlignment="Center" />
+      <TextBlock x:Name="StatusDetail"
+                 FontSize="10"
+                 Foreground="#6E6E76"
+                 TextTrimming="CharacterEllipsis"
+                 MaxWidth="140"
+                 VerticalAlignment="Center"
+                 IsVisible="False" />
+    </StackPanel>
+
+    <TextBlock x:Name="ValueBlock"
+               Grid.Row="0" Grid.Column="1"
+               Margin="8,0,8,0"
+               FontSize="12"
+               FontWeight="SemiBold"
+               Foreground="#FFFFFF"
+               FontFeatures="tnum"
+               TextTrimming="CharacterEllipsis"
+               TextAlignment="Right"
+               VerticalAlignment="Center"
+               Text="—" />
+
+    <!-- Actions keep their own cell so the value never runs under them, and they stay on
+         the row's 16 DIP line: three small glyphs, not three button-shaped cards. -->
+    <StackPanel x:Name="ActionsHost"
+                Grid.Row="0" Grid.Column="2"
+                Orientation="Horizontal"
+                Spacing="2"
+                VerticalAlignment="Center"
+                IsVisible="False">
+      <Button x:Name="ActionA" Classes="rowAction" Click="OnActionAClick" />
+      <Button x:Name="ActionB" Classes="rowAction" Click="OnActionBClick" />
+      <Button x:Name="ActionC" Classes="rowAction" Click="OnActionCClick" />
+    </StackPanel>
+
+    <TextBlock x:Name="CaptionBlock"
+               Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+               FontSize="10"
+               Foreground="#7C7C84"
+               TextAlignment="Center"
+               VerticalAlignment="Center"
+               Margin="0,2,0,0"
+               IsVisible="False" />
+
+    <!-- 1.17: the status bar is an overlay on the bottom edge of the row, like the
+         capsule's own band, so it adds no height. It is shown only for a source that does
+         NOT own the capsule band (see ShowRowProgress): the band's owner is already drawn
+         there, and two bars for one activity read as a rendering bug. -->
+    <ProgressBar x:Name="StatusBar"
+                 Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                 Height="2"
+                 Minimum="0" Maximum="1"
+                 Foreground="#3D9CF0"
+                 Background="Transparent"
+                 VerticalAlignment="Bottom"
+                 IsVisible="False"
+                 IsHitTestVisible="False" />
+  </Grid>
+  <UserControl.Styles>
+    <Style Selector="Button.rowAction">
+      <Setter Property="Padding" Value="3,0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#3D9CF0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="MinWidth" Value="0" />
+      <!-- 1.16: the glyphs stay on the row's 16 DIP line (no separate 24-DIP button
+           targets), but a faint hover fill gives the pointer something to aim at — the
+           accent glyph alone was too easy to miss in a dense grid. -->
+      <Setter Property="MinHeight" Value="16" />
+      <Setter Property="CornerRadius" Value="3" />
+    </Style>
+    <Style Selector="Button.rowAction:pointerover">
+      <Setter Property="Background" Value="#1FFFFFFF" />
+    </Style>
+    <Style Selector="Button.rowAction:pressed">
+      <Setter Property="Background" Value="#2EFFFFFF" />
+    </Style>
+    <!-- The cancel action reads as destructive, so it is the one glyph in the row that is
+         not the accent colour. -->
+    <Style Selector="Button.rowAction.danger">
+      <Setter Property="Foreground" Value="#E8A0A0" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

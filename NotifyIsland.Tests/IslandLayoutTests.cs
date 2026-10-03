@@ -33,13 +33,39 @@ public class IslandLayoutTests
     {
         var (w, h) = IslandLayout.SizeFor(OverlayKind.Idle, weatherEnabled: true,
             IslandOrientation.Vertical, IslandEdge.Left);
-        Assert.Equal(OverlayTokens.CollapsedH, w);
+        // The cross axis is the island's WIDTH here, and it is sized to the digital clock's digit
+        // strip rather than to the horizontal capsule's 30 DIP height.
+        Assert.Equal(OverlayTokens.CollapsedCrossAxisVertical, w);
         Assert.Equal(OverlayTokens.CollapsedWeatherW, h);
 
+        // Auto + Right is vertical too: IsVertical treats Left/Right as vertical under Auto, so
+        // this is the same cross axis, not the horizontal 30.
         var (nw, nh) = IslandLayout.SizeFor(OverlayKind.Media, false,
             IslandOrientation.Auto, IslandEdge.Right);
-        Assert.Equal(OverlayTokens.CollapsedH, nw);
+        Assert.Equal(OverlayTokens.CollapsedCrossAxisVertical, nw);
         Assert.True(nh >= OverlayTokens.ExpandedMinW);
+    }
+
+    [Fact]
+    public void TheVerticalCrossAxisIsWideEnoughForTheDigitalClock()
+    {
+        // The reason the vertical cross axis is not simply CollapsedH: the digit strip is not
+        // rotated with the row, so it runs across the island's width. "HH:mm" at the maximum
+        // FontSize of 18 is FOUR digits (0,2,4,3) plus a colon, not two digits: 18×4 + 9 = 81.
+        // The earlier 45 was two digits and a colon, and 48 against it still cut the minutes off.
+        var maxFont = 18.0;
+        // WidthFactor is 1.0 for a digit and 0.5 for the colon, so the colon is 9 DIP — applying
+        // the factor a second time to an already-factored number was the first wrong attempt here.
+        var clockAtMaxFont = 4 * maxFont * 1.0 + maxFont * 0.5;
+        Assert.Equal(81.0, clockAtMaxFont);
+        Assert.True(OverlayTokens.CollapsedCrossAxisVertical >= clockAtMaxFont,
+            $"cross axis {OverlayTokens.CollapsedCrossAxisVertical} cannot hold a clock needing {clockAtMaxFont}");
+
+        // The horizontal capsule must keep the height its design was built around.
+        var (hw, hh) = IslandLayout.SizeFor(OverlayKind.Idle, false,
+            IslandOrientation.Horizontal, IslandEdge.Bottom);
+        Assert.Equal(OverlayTokens.CollapsedH, hh);
+        Assert.Equal(OverlayTokens.CollapsedW, hw);
     }
 
     [Fact]
@@ -63,4 +89,97 @@ public class IslandLayoutTests
 
     [Fact]
     public void DragHoldMs_Is200() => Assert.Equal(200, IslandLayout.DragHoldMs);
+
+    // -- 1.14 clipboard drawer: the window is capsule(+drawer), the capsule must not move --
+
+    [Fact]
+    public void DrawerWindowFor_Horizontal_KeepsXAndTakesTheDrawerOnY()
+    {
+        // Capsule 170x30 at (400, 100), drawer opening downwards (+1) so it needs no shift.
+        var (x, y) = IslandLayout.DrawerWindowFor(
+            isVertical: false, capsuleX: 400, capsuleY: 100, crossShiftDip: 0, scale: 1);
+        Assert.Equal(400, x);
+        Assert.Equal(100, y);
+    }
+
+    [Fact]
+    public void DrawerWindowFor_Vertical_KeepsYAndTakesTheDrawerOnX()
+    {
+        var (x, y) = IslandLayout.DrawerWindowFor(
+            isVertical: true, capsuleX: 400, capsuleY: 100, crossShiftDip: 0, scale: 1);
+        Assert.Equal(400, x);
+        Assert.Equal(100, y);
+    }
+
+    [Fact]
+    public void DrawerWindowFor_ShiftsBackByTheDrawerWhenItOpensUpwards()
+    {
+        // A Bottom/Right island grows its drawer UPWARDS/LEFTWARDS, so the drawer occupies the
+        // part of the window nearest the origin and the window must start that much ABOVE the
+        // capsule. Getting this sign wrong is what draws the drawer off-screen.
+        var (x, y) = IslandLayout.DrawerWindowFor(
+            isVertical: false, capsuleX: 400, capsuleY: 100, crossShiftDip: -120, scale: 1);
+        Assert.Equal(400, x);
+        Assert.Equal(-20, y);
+    }
+
+    [Fact]
+    public void DrawerWindowFor_LeavesCapsuleAtTheSameScreenSpot()
+    {
+        // The whole point of the function: whatever the drawer does, the capsule's screen spot is
+        // unchanged. Reproduce the anchor math PlaceIsland uses. The two orientations use the
+        // same capsule rotated: 170x30 on Top/Bottom, 30x170 on Left/Right.
+        // The shifts below are ClipboardDrawer.CrossShiftDipFor's whole range: 0 (drawer grows
+        // away from the capsule) and negative by the drawer's extent (grows the other way).
+        const int capX = 400, capY = 100;
+        foreach (var vertical in new[] { false, true })
+        {
+            foreach (var shiftDip in new[] { 0.0, -120.0, -384.0 })
+            {
+                var (x, y) = IslandLayout.DrawerWindowFor(vertical, capX, capY, shiftDip, 1);
+                // The capsule is anchored at window offset -shiftDip on the cross axis -- flush
+                // against the edge the drawer is NOT growing from.
+                var capsuleX = vertical ? x - (int)shiftDip : x;
+                var capsuleY = vertical ? y : y - (int)shiftDip;
+                Assert.Equal(capX, capsuleX);
+                Assert.Equal(capY, capsuleY);
+            }
+        }
+    }
+
+    [Fact]
+    public void DrawerWindowFor_ScalesTheShiftToPixels()
+    {
+        // At 150% the same 120 DIP shift is 180 px. Measuring in DIP would leave a 60 px seam.
+        var (_, y1) = IslandLayout.DrawerWindowFor(false, 0, 0, -120, scale: 1);
+        var (_, y15) = IslandLayout.DrawerWindowFor(false, 0, 0, -120, scale: 1.5);
+        Assert.Equal(-120, y1);
+        Assert.Equal(-180, y15);
+    }
+
+    [Fact]
+    public void DrawerWindowFor_ZeroShiftIsIdentity()
+    {
+        var (x, y) = IslandLayout.DrawerWindowFor(false, 10, 20, 0, 1);
+        Assert.Equal((10, 20), (x, y));
+    }
+
+    [Fact]
+    public void ScreenSizeFor_RotatesOnlyVerticalIslands()
+    {
+        Assert.Equal((384.0, 30.0), IslandLayout.ScreenSizeFor(384, 30, vertical: false));
+        Assert.Equal((30.0, 384.0), IslandLayout.ScreenSizeFor(384, 30, vertical: true));
+    }
+
+    [Fact]
+    public void RightEdgeVerticalIsland_HugsTheEdgeAndIsCentred()
+    {
+        // The user's real primary screen: 2560x1440 with the taskbar on the left, so the work
+        // area is 2474x1408 starting at x = 86.
+        var (w, h) = IslandLayout.ScreenSizeFor(384, 30, vertical: true);
+        var (x, y) = IslandLayout.Place(86, 0, 2474, 1408, (int)w, (int)h, IslandEdge.Right, 0, 0);
+        var rightGap = 2560 - (x + (int)w);
+        Assert.InRange(rightGap, 0, 40);
+        Assert.InRange(y + h / 2, 704 - 2, 704 + 2);
+    }
 }

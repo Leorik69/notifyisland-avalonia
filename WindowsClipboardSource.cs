@@ -25,6 +25,14 @@ public sealed class WindowsClipboardSource : IDisposable
     /// <summary>Raised when a new text/file clipboard item is captured. Handler runs on UI thread.</summary>
     public event Action<ClipboardEntry>? Captured;
 
+    /// <summary>
+    /// Privacy-pause hook (spec §«Не реагировать 30 мин»). The source consults this each tick;
+    /// while it returns true, captures are read from the system clipboard to keep the baseline
+    /// sequence number advancing, but the captured entry is DROPPED — neither pushed to the
+    /// history nor forwarded to <see cref="Captured"/>. Returning false means "listen normally".
+    /// </summary>
+    public Func<bool>? IsPaused { get; set; }
+
     private readonly ClipboardHistory _history;
     private readonly Action<Action> _postToUi;
     private uint _lastSequence;
@@ -72,6 +80,14 @@ public sealed class WindowsClipboardSource : IDisposable
         if (seq == _lastSequence) return;
         AppLog.Info($"clipboard sequence changed {_lastSequence} -> {seq}");
         _lastSequence = seq;
+        // Privacy pause: drain the clipboard contents so the baseline keeps advancing (so the
+        // user does not see a flood of stale captures the moment the pause ends) but never
+        // surface the entry while paused. The history is the truth: it sees nothing.
+        if (IsPaused is { } paused && paused())
+        {
+            AppLog.Info("clipboard sequence changed but privacy-pause is on — dropping capture");
+            return;
+        }
         var entry = TryCapture();
         if (entry is null)
         {

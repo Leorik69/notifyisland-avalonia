@@ -70,6 +70,23 @@ public static class AnimationEasing
         return 1.18 - 0.18 * CubicOut(v); // → 1.0
     }
 
+    /// <summary>
+    /// Click-acknowledgement pop: starts at 1, peaks at ClickPopPeak in the first third,
+    /// settles back to 1. Never dips below 1 (unlike PopScale, which starts at 0.88).
+    /// </summary>
+    public static double ClickPop(double t)
+    {
+        t = Math.Clamp(t, 0.0, 1.0);
+        const double rise = 0.33;
+        if (t < rise)
+        {
+            var u = t / rise;
+            return 1.0 + (OverlayTokens.ClickPopPeak - 1.0) * CubicOut(u);
+        }
+        var v = (t - rise) / (1.0 - rise);
+        return OverlayTokens.ClickPopPeak + (1.0 - OverlayTokens.ClickPopPeak) * CubicOut(v);
+    }
+
     /// <summary>Glitch: stepped progress (stutter).</summary>
     public static double GlitchStep(double t)
     {
