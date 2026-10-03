@@ -109,6 +109,24 @@ public sealed class WindowsRecordingSource : IDisposable
     /// <summary>Set when the audio stack could not be reached at all, for the tooltip.</summary>
     public string? LastError { get; private set; }
 
+    /// <summary>
+    /// Consecutive refused polls before the source stops asking.
+    /// <para>
+    /// 20 polls at 700 ms is about fourteen seconds of a COM call that provably cannot succeed.
+    /// A machine with no capture device would otherwise pay that forever for a lamp that is off.
+    /// The poll is NOT given up on permanently — see <see cref="ScheduleRetry"/> — because the
+    /// user can plug in a microphone at any moment, and an indicator that never notices is worse
+    /// than one that costs a little CPU.
+    /// </para>
+    /// </summary>
+    private const int MaxConsecutiveFailures = 20;
+
+    /// <summary>How long to wait before trying again once the source has backed off (ms).</summary>
+    private const int RetryDelayMs = 30_000;
+
+    private int _consecutiveFailures;
+    private bool _backedOff;
+
     public WindowsRecordingSource()
     {
         _poll = new DispatcherTimer { Interval = PollInterval };
@@ -180,6 +198,7 @@ public sealed class WindowsRecordingSource : IDisposable
                 // the ones after it could.
                 if (Interlocked.Exchange(ref _errorLogged, 0) == 1)
                     AppLog.Info("WindowsRecordingSource: capture meter available again");
+                if (Interlocked.Exchange(ref _consecutiveFailures, 0) > 0) ResumeAfterBackoff();
                 var recorder = FindRecorder();
                 var sample = new RecordingSample
                 {
@@ -203,6 +222,12 @@ public sealed class WindowsRecordingSource : IDisposable
                     LastError = ex.Message;
                     AppLog.Warn("WindowsRecordingSource.Refresh failed — indicator idle", ex);
                 }
+                // Counted separately from the log latch: the latch is about not repeating a
+                // MESSAGE, this is about not repeating the CALL. On a machine whose endpoint
+                // refuses every audio interface (measured 2026-10-03) the poll would otherwise
+                // run COM 128 times a minute, forever, for a lamp that can never light.
+                if (Interlocked.Increment(ref _consecutiveFailures) == MaxConsecutiveFailures)
+                    BackOff();
             }
             finally
             {
@@ -212,6 +237,39 @@ public sealed class WindowsRecordingSource : IDisposable
     }
 
     private bool _readingInFlight;
+
+    /// <summary>Stop polling and arrange one more attempt later.</summary>
+    private void BackOff()
+    {
+        _backedOff = true;
+        try { _poll.Stop(); } catch { /* ignore */ }
+        AppLog.Warn(
+            $"WindowsRecordingSource: no capture meter after {MaxConsecutiveFailures} attempts — " +
+            $"polling every {RetryDelayMs / 1000} s instead");
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(RetryDelayMs, _disposed
+                    ? new CancellationToken(true) : CancellationToken.None).ConfigureAwait(false);
+            }
+            catch { return; }   // disposed while waiting
+            if (_disposed || !_reading) return;
+            try { _poll.Start(); } catch { /* ignore */ }
+        });
+    }
+
+    /// <summary>A reading came back, so the source is live again.</summary>
+    private void ResumeAfterBackoff()
+    {
+        if (!_backedOff) return;
+        _backedOff = false;
+        AppLog.Info("WindowsRecordingSource: polling normally again");
+        // DispatcherTimer has no IsRunning, and reaching for one would mean keeping a second
+        // source of truth. The backoff flag already IS the answer: we only get here having just
+        // come out of BackOff, which is the only path that stopped the timer.
+        try { _poll.Start(); } catch { /* ignore */ }
+    }
 
     /// <summary>
     /// Resolve the meter once, before the first poll, so the first reading is not a second late.
