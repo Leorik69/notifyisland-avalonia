@@ -56,18 +56,6 @@ public sealed class WindowsRecordingSource : IDisposable
     [Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
     private class MMDeviceEnumeratorComObject { }
 
-    [ComImport]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6")]
-    private interface IMMDeviceEnumerator
-    {
-        int EnumAudioEndpoints(uint dataflow, uint state, out object devices);
-        int GetDefaultAudioEndpoint(uint dataflow, uint role, [MarshalAs(UnmanagedType.Interface)] out object endpoint);
-        int GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out object device);
-        int RegisterEndpointNotificationCallback(IntPtr client);
-        int UnregisterEndpointNotificationCallback(IntPtr client);
-    }
-
     /// <summary>
     /// The peak meter, narrowed to the one method we call. The interface has four members and the
     /// vtable order IS the contract — GetPeakValue is index 3, so the two before it must be
@@ -84,6 +72,27 @@ public sealed class WindowsRecordingSource : IDisposable
         int GetChannelsPeakValues(int channelCount, [Out] float[] peaks);
         int QueryHardwareSupport(out int hardwareSupportMask);
     }
+
+    [ComImport]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6")]
+    private interface IMMDeviceEnumeratorRaw
+    {
+        int EnumAudioEndpoints(uint dataflow, uint state, out object devices);
+        int GetDefaultAudioEndpoint(uint dataflow, uint role, out IntPtr endpoint);
+        int GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out IntPtr device);
+        int RegisterEndpointNotificationCallback(IntPtr client);
+        int UnregisterEndpointNotificationCallback(IntPtr client);
+    }
+
+    /// <summary>
+    /// IID_IAudioMeterInformation. Spelled as bytes because it is needed before any interface
+    /// type exists, and passing a <c>Guid</c> here means constructing one on every call.
+    /// </summary>
+    private static readonly Guid IidAudioMeterInformation =
+        new("C02216F6-8C67-4B5B-9D00-D008E73E0064");
+
+    private IntPtr _endpointRaw;
 
     private IAudioMeterInformation? _meter;
     private float _lastPeak;
@@ -139,6 +148,14 @@ public sealed class WindowsRecordingSource : IDisposable
             try { Marshal.ReleaseComObject(meter); }
             catch { /* the RCW may already be detached */ }
         }
+        // The raw endpoint pointer is ours alone: the meter wrapper took its own reference, so
+        // this one is still held and has to be released separately.
+        var endpoint = Interlocked.Exchange(ref _endpointRaw, IntPtr.Zero);
+        if (endpoint != IntPtr.Zero)
+        {
+            try { Marshal.Release(endpoint); }
+            catch { /* ignore */ }
+        }
     }
 
     /// <summary>
@@ -156,6 +173,13 @@ public sealed class WindowsRecordingSource : IDisposable
             try
             {
                 var peak = await Task.Run(ReadPeakAsync).ConfigureAwait(false);
+                // A failure is latched to one log line, so it has to be UNLATCHED on success or a
+                // transient failure at startup would silence every later problem for the rest of
+                // the session. The audio stack is not always up in the first second of a launch —
+                // measured here: the very first poll at 20:04:49 could not reach the meter, and
+                // the ones after it could.
+                if (Interlocked.Exchange(ref _errorLogged, 0) == 1)
+                    AppLog.Info("WindowsRecordingSource: capture meter available again");
                 var recorder = FindRecorder();
                 var sample = new RecordingSample
                 {
@@ -189,9 +213,29 @@ public sealed class WindowsRecordingSource : IDisposable
 
     private bool _readingInFlight;
 
+    /// <summary>
+    /// Resolve the meter once, before the first poll, so the first reading is not a second late.
+    /// <para>
+    /// Failures are LOGGED and dropped, never rethrown. A fire-and-forget task whose exception
+    /// nobody observes is rethrown by the finalizer thread as an unobserved task exception, which
+    /// the app treats as FATAL — so on a machine with no capture device at all, starting the
+    /// source would otherwise log one warning and then kill the island.
+    /// </para>
+    /// </summary>
     private async Task PrimeAsync()
     {
-        await ReadPeakAsync().ConfigureAwait(false);
+        try
+        {
+            await ReadPeakAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            if (System.Threading.Interlocked.Exchange(ref _errorLogged, 1) == 0)
+            {
+                LastError = ex.Message;
+                AppLog.Warn("WindowsRecordingSource: no capture meter — indicator idle", ex);
+            }
+        }
     }
 
     /// <summary>
@@ -207,24 +251,81 @@ public sealed class WindowsRecordingSource : IDisposable
     {
         return Task.Run(() =>
         {
-            if (_meter is null)
-            {
-                var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorComObject();
-                try
-                {
-                    enumerator.GetDefaultAudioEndpoint(EDataflowCapture, ERoleConsole, out var endpoint);
-                    _meter = (IAudioMeterInformation)endpoint;
-                }
-                finally
-                {
-                    Marshal.ReleaseComObject(enumerator);
-                }
-            }
+            if (_meter is null) _meter = ResolveMeter();
             var hr = _meter.GetPeakValue(out var peak);
             if (hr != 0) Marshal.ThrowExceptionForHR(hr);
             _lastPeak = peak;
             return peak;
         });
+    }
+
+    /// <summary>
+    /// Resolve the default capture endpoint and pull the meter interface off it.
+    /// <para>
+    /// The QueryInterface is EXPLICIT, and that is the fix rather than a stylistic choice.
+    /// Casting the endpoint straight to <c>IAudioMeterInformation</c> is the obvious way to write
+    /// this and it does not work: the endpoint arrives as a bare <c>System.__ComObject</c>, and
+    /// the implicit cast asks the RCW for an interface the marshaler cannot supply, failing with
+    /// <c>E_NOINTERFACE</c> — measured on this machine, on the very first poll. Going through
+    /// <c>Marshal.QueryInterface</c> on the raw pointer asks the object itself.
+    /// </para>
+    /// <para>
+    /// A REFUSAL here is a normal, recoverable state, not a bug: the audio service is not always
+    /// ready in the first second of a launch, and a machine with no capture device never will be.
+    /// Nothing is cached on failure, so the next poll tries again — which is why the failure is
+    /// logged once and then, on recovery, logged as coming back.
+    /// </para>
+    /// </summary>
+    private IAudioMeterInformation ResolveMeter()
+    {
+        var enumerator = (IMMDeviceEnumeratorRaw)new MMDeviceEnumeratorComObject();
+        try
+        {
+            var hr = enumerator.GetDefaultAudioEndpoint(EDataflowCapture, ERoleConsole, out var endpoint);
+            if (hr != 0) Marshal.ThrowExceptionForHR(hr);
+            if (endpoint == IntPtr.Zero)
+                throw new COMException("No default capture endpoint");
+
+            _endpointRaw = endpoint;
+            // Marshal.QueryInterface(IntPtr, in Guid, out IntPtr) reports the HRESULT as the
+            // RETURN VALUE and hands back the interface through the out parameter. Both are
+            // integers and the compiler does not check the order, so a swap here is silent — both
+            // are named for their role and both are in the failure message.
+            var iid = IidAudioMeterInformation;
+            var qiHr = Marshal.QueryInterface(endpoint, in iid, out var meterPtr);
+            if (qiHr != 0 || meterPtr == IntPtr.Zero)
+            {
+                Marshal.Release(endpoint);
+                _endpointRaw = IntPtr.Zero;
+                // E_NOINTERFACE here is NOT a bug in the query, and saying so is the whole point
+                // of the message. Measured on this machine on 2026-10-03: the default capture
+                // endpoint answers IUnknown and IMMDevice but refuses IAudioMeterInformation,
+                // IAudioClient AND IAudioEndpointVolume — an endpoint that implements no audio
+                // interface at all is a placeholder, not a microphone. The IID is correct
+                // (verified against the WASAPI header), so there is nothing left to try: the
+                // machine has no capture device to measure.
+                throw new COMException(
+                    qiHr == unchecked((int)0x80004002)
+                        ? "The default capture endpoint exposes no audio interfaces " +
+                          "(E_NOINTERFACE for IAudioMeterInformation) — this machine has no " +
+                          "capture device to measure, so the indicator stays idle"
+                        : $"The capture endpoint does not expose IAudioMeterInformation " +
+                          $"(hr=0x{qiHr:X8}, ptr=0x{meterPtr.ToInt64():X})");
+            }
+            try
+            {
+                return (IAudioMeterInformation)Marshal.GetObjectForIUnknown(meterPtr);
+            }
+            finally
+            {
+                // The wrapper holds its own reference now, so this one is ours to drop.
+                Marshal.Release(meterPtr);
+            }
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(enumerator);
+        }
     }
 
     /// <summary>
