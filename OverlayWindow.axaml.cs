@@ -488,6 +488,7 @@ public partial class OverlayWindow : Window
         // is not a reliable place to start anything (it does not run on first launch at all).
         EnsureKeyboardLayoutSource();
 
+
         // Same reason as above: the row set must exist before the first hover, or
         // ApplyHoverExpandedState sees zero rows and suppresses the stats surface. It only
         // appeared to work after touching the settings, because ApplySettingsFromUi happens
@@ -1419,6 +1420,14 @@ public partial class OverlayWindow : Window
             == Windows.UI.Notifications.Management.UserNotificationListenerAccessStatus.Denied;
 
         var text = TrayTooltipText.For(_machine.UnreadCount, pause, known, denied);
+
+        // 2026-10-02: a run being replayed is worth saying out loud. "3" in the tooltip is a count
+        // the user cannot act on; "ещё 2" tells them the island is still working through it and
+        // has not silently swallowed the rest.
+        var pending = _machine.PendingNotifications;
+        if (pending > 0)
+            text += $" — ещё {pending}";
+
         try { _winTray?.SetTooltip(text); } catch { /* tray may be torn down on shutdown */ }
         try { _tray?.SetTooltip(text); } catch { /* tray may be torn down on shutdown */ }
     }
@@ -3455,7 +3464,14 @@ public partial class OverlayWindow : Window
         // collapsed dot, so nothing is ever "lost" by the swap.
         var showBadge = overlayOn && unread > 0 && kind is OverlayKind.Notification or OverlayKind.Expanded;
         UnreadBadge.IsVisible = showBadge && !notifActions;
-        BadgeText.Text = unread > 99 ? "99+" : unread.ToString(CultureInfo.InvariantCulture);
+        // While a run is being replayed, the badge says WHICH one is on screen rather than how many
+        // are waiting: "1/3" says the capsule is working through a burst, where a plain "3" is just
+        // a count the user has already seen and cannot act on. With nothing waiting the unread
+        // count is the more useful thing, so it stays.
+        var progress = _machine.NotificationProgress;
+        BadgeText.Text = progress.Length > 0
+            ? progress
+            : unread > 99 ? "99+" : unread.ToString(CultureInfo.InvariantCulture);
 
         var showDot = !overlayOn && unread > 0;
         if (!showDot)

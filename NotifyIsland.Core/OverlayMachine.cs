@@ -164,6 +164,13 @@ public sealed class OverlayMachine
     // offered for cycling at all (see EnabledSlots).
     private OverlayPayload _lastNotify = new();
     private bool _hasLastNotify;
+    // 2026-10-02: notifications displaced by a newer one, replayed in order when the capsule
+    // frees up. See NotificationQueue.
+    private readonly NotificationQueue _queue = new();
+    // Arrivals that have started or joined the current run. The position being shown is derived
+    // as (this minus whatever is still waiting) rather than tracked separately — one counter
+    // cannot drift out of step with the queue, which two could.
+    private int _notifRunTotal;
     private OverlayPayload _timer = new();
     private bool _timerActive;
     private double _timerTotalSeconds;
@@ -290,6 +297,16 @@ public sealed class OverlayMachine
     /// <summary>True while a clipboard half is attached next to the normal island content (1.12.2).</summary>
     public bool IsSplitClipboard => _isSplitClipboard;
 
+    /// <summary>Notifications still waiting behind the one on the capsule.</summary>
+    public int PendingNotifications => _queue.Count;
+
+    /// <summary>
+    /// "2/3" while a run of notifications is still being shown, empty otherwise. A lone
+    /// notification shows no progress at all — there is nothing to be progressing through.
+    /// </summary>
+    public string NotificationProgress =>
+        _notifRunTotal > 1 ? $"{_notifRunTotal - _queue.Count}/{_notifRunTotal}" : string.Empty;
+
     public OverlaySnapshot Snapshot() => new()
     {
         Kind = _kind,
@@ -343,6 +360,16 @@ public sealed class OverlayMachine
                         _returnTo = _kind == OverlayKind.Collapsed ? OverlayKind.Idle : _kind;
                     _kind = OverlayKind.Notification;
                 }
+                // 2026-10-02: a second notification arriving while one is on screen used to
+                // overwrite it outright — the first was never seen again and the unread badge
+                // was the only trace that anything had been lost. The DISPLACED payload now waits
+                // in the queue and is replayed when this one's time runs out. The newest still
+                // takes the capsule immediately, because the newest is the one the user most
+                // likely still needs.
+                if (_kind == OverlayKind.Notification && _notifyMs > 0)
+                    _queue.Push(Clone(_payload));
+                _notifRunTotal++;
+
                 if (string.IsNullOrWhiteSpace(_payload.Title))
                     _payload.Title = "Уведомление";
                 if (string.IsNullOrWhiteSpace(data.Title))
@@ -411,6 +438,8 @@ public sealed class OverlayMachine
                 // message back on it.
                 _lastNotify = new OverlayPayload();
                 _hasLastNotify = false;
+                _queue.Clear();
+                _notifRunTotal = 0;
                 Apply(new OverlayPayload());
                 ClearSplit();
                 break;
@@ -517,11 +546,32 @@ public sealed class OverlayMachine
             if (_notifyMs <= 0)
             {
                 _notifyMs = 0;
-                _kind = _returnTo is OverlayKind.Battery or OverlayKind.Notification
-                    ? OverlayKind.Idle
-                    : _returnTo;
-                if (_kind == OverlayKind.Idle)
-                    _returnTo = OverlayKind.Idle;
+                // 2026-10-02: before returning to rest, spend the queue. A notification whose
+                // time ran out is not the end of the run — the ones it displaced are still
+                // unseen, and dropping them here is exactly the loss the queue exists to stop.
+                // Only when the queue is empty does the capsule go back to where it came from.
+                var wasNotification = _kind == OverlayKind.Notification;
+                var next = _queue.Dequeue();
+                if (next is not null && wasNotification)
+                {
+                    Apply(Clone(next));
+                    _notifyMs = NotifyDurationMs;
+                    _lastNotify = Clone(_payload);
+                    _hasLastNotify = true;
+                }
+                else
+                {
+                    _kind = _returnTo is OverlayKind.Battery or OverlayKind.Notification
+                        ? OverlayKind.Idle
+                        : _returnTo;
+                    if (_kind == OverlayKind.Idle)
+                        _returnTo = OverlayKind.Idle;
+                    // The run is over, so the next arrival starts a fresh one instead of
+                    // inheriting the old total and reporting "3/3" for a notification that is
+                    // the only thing on screen.
+                    if (wasNotification)
+                        _notifRunTotal = 0;
+                }
             }
         }
         // 1.12.2: the split clipboard half has its own lifetime. It cannot ride on _notifyMs —

@@ -132,6 +132,16 @@ public class OverlayMachineTests
         m.Tick(800);
         Assert.Equal(OverlayKind.Notification, m.Snapshot().Kind);
         m.Tick(800);
+        // 2026-10-02: the second arrival's lifetime running out no longer ends the run — the
+        // first one it displaced is replayed instead of being lost. The guarantee this test
+        // actually guards is that the RETURN TARGET never became the notification itself, so
+        // the capsule still returns to Idle once the queue is drained.
+        Assert.Equal("Первый", m.Snapshot().Payload.Title);
+        // The replay got a FULL lifetime, not the 200 ms the old code would have left it, so it
+        // needs a full tick of its own before the capsule goes back to rest.
+        m.Tick(800);
+        Assert.Equal(OverlayKind.Notification, m.Snapshot().Kind);
+        m.Tick(800);
         Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
     }
 
@@ -140,11 +150,26 @@ public class OverlayMachineTests
     {
         // _returnTo is sticky across arrivals. Without the self-kind guard a notification whose
         // return target was another notification would refresh itself forever.
+        //
+        // 2026-10-02: the queue means a single huge tick only advances ONE lifetime — it promotes
+        // the next waiting notification rather than draining the run. So the original "tick a
+        // lot, expect Idle" is no longer a test of anything; what is being guarded here is that
+        // the replay TERMINATES, and it does so in exactly as many steps as notifications arrived.
         var m = new OverlayMachine { NotifyDurationMs = 500 };
         m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Раз" });
         m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Два" });
         m.Dispatch(OverlayCommand.Notify, new OverlayPayload { Title = "Три" });
-        m.Tick(10_000);
+
+        var shown = 0;
+        for (var i = 0; i < 20 && m.Snapshot().Kind == OverlayKind.Notification; i++)
+        {
+            shown++;
+            m.Tick(10_000);
+        }
+
+        // Three arrived, three were shown, and then it stopped. A self-refreshing notification
+        // would run this loop to the cap and still be on screen.
+        Assert.Equal(3, shown);
         Assert.Equal(OverlayKind.Idle, m.Snapshot().Kind);
     }
 
