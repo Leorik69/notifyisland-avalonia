@@ -23,7 +23,15 @@ public sealed record ClipboardHistoryRow(
     int RunCount,
     /// <summary>True when the user pinned the row from the panel context menu. Drives both
     /// the sort order and the row's "закреп" badge.</summary>
-    bool IsPinned);
+    bool IsPinned,
+    /// <summary>This row's index in the CHRONOLOGICAL newest-first order, which is what
+    /// <c>Pin</c>, <c>Unpin</c> and <c>RemoveAt</c> take.</summary>
+    /// <para>
+    /// It is NOT the row's own position in the panel: the panel sorts pinned rows to the top by
+    /// age, so those two numbers diverge as soon as anything is pinned. Carrying the history
+    /// index on the row is what makes «delete this one» mean this one.
+    /// </para></summary>
+    int HistoryIndex);
 
 /// <summary>
 /// Builds the panel's rows and the «сколько времени назад» wording.
@@ -64,7 +72,7 @@ public static class ClipboardHistoryRows
         // Clamp to the token: the panel's height is a token-derived constant, so a caller asking
         // for more rows than fit would overflow the window the panel is laid out inside.
         var limit = Math.Min(maxRows, OverlayTokens.HistoryPanelMaxRows);
-        foreach (var entry in history.SnapshotPinnedFirst())
+        foreach (var (historyIndex, entry) in history.SnapshotPinnedFirstIndexed())
         {
             if (rows.Count >= limit) break;
             var payload = ClipboardHistory.BuildPayload(entry, now);
@@ -74,7 +82,8 @@ public static class ClipboardHistoryRows
                 AgeTextFor(payload.ClipboardCapturedAt, now),
                 entry,
                 entry.RunCount,
-                entry.IsPinned));
+                entry.IsPinned,
+                historyIndex));
         }
         return rows;
     }

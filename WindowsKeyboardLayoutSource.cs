@@ -157,6 +157,79 @@ public sealed class WindowsKeyboardLayoutSource : IDisposable
     [DllImport("user32.dll")]
     private static extern IntPtr GetKeyboardLayout(uint idThread);
 
+    // -- Switching ------------------------------------------------------------------------
+    // The island already READS the active layout, so making the badge clickable is a matter of
+    // asking Windows for the other one. GetKeyboardLayoutList gives the installed layouts in
+    // the system's own order, which is the order the tray and the Win+Space switcher use — so
+    // walking it lands on the layout the user would have picked there.
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetKeyboardLayoutList(uint nBuff, IntPtr[]? lpBuff);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr LoadKeyboardLayoutW(string id, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr PostMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    private const uint WmInputLangChangeRequest = 0x0050;
+
+    /// <summary>
+    /// Switch to the next installed keyboard layout, the way Win+Space and the tray do.
+    /// <para>
+    /// Two calls, and both are needed: <c>LoadKeyboardLayout</c> changes the layout of THIS
+    /// thread, which on its own would leave every other window on the old one, and the posted
+    /// message asks the foreground window's thread to do the same. The result is read back and
+    /// verified, so a layout list the user has just emptied reports failure rather than a
+    /// silent no-op.
+    /// </para>
+    /// <para>
+    /// Returns the layout's tag, or <c>null</c> when there is nothing to switch to. The caller
+    /// uses that to decide whether to make any noise: a click that changed nothing should not
+    /// play a sound.
+    /// </para>
+    /// </summary>
+    public string? SwitchToNext()
+    {
+        try
+        {
+            // A NULL buffer is how the API is asked how big the list is, so the parameter is
+            // declared nullable on purpose — passing an empty array would ask for zero entries
+            // and return zero, which reads as "no layouts installed".
+            var count = GetKeyboardLayoutList(0, null);
+            if (count <= 1) return null;
+            var layouts = new IntPtr[count];
+            if (GetKeyboardLayoutList(count, layouts) != count) return null;
+
+            var current = GetKeyboardLayout(0);
+            var index = Array.IndexOf(layouts, current);
+            // A layout list that does not contain the current one (it was just removed) still
+            // has a sensible "next": the first entry.
+            if (index < 0) index = 0;
+            var next = layouts[(index + 1) % layouts.Length];
+
+            // LCIDToLocaleName takes the LOWORD of the HKL, and expects a name-style string —
+            // passing a LangID here is the access violation this file's header warns about.
+            // It is called BEFORE anything is posted, so a bad locale name aborts the switch
+            // rather than half-applying it.
+            var lcid = (uint)(next.ToInt64() & 0xFFFF);
+            var sb = new StringBuilder(85);
+            if (LCIDToLocaleName(lcid, sb, sb.Capacity, 0) <= 0) return null;
+
+            var hwnd = GetForegroundWindow();
+            if (hwnd != IntPtr.Zero)
+                PostMessageW(hwnd, WmInputLangChangeRequest, IntPtr.Zero, next);
+            LoadKeyboardLayoutW(sb.ToString(), 0);
+
+            return sb.ToString();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("SwitchToNext failed", ex);
+            return null;
+        }
+    }
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "LCIDToLocaleName")]
     private static extern int LCIDToLocaleName(uint locale, StringBuilder localeName, int cchLocaleName, int flags);
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace NotifyIsland.Tests;
@@ -7,6 +8,20 @@ namespace NotifyIsland.Tests;
 public class ClipboardHistoryTests
 {
     private static DateTimeOffset T(int seconds) => new DateTimeOffset(2026, 9, 24, 12, 0, 0, TimeSpan.Zero).AddSeconds(seconds);
+
+    /// <summary>
+    /// Five entries, a…e, with <b>e the newest</b> and a the oldest. A panel of five is the case
+    /// where «delete the wrong row» is most visible: every row is clickable, and the head is
+    /// the one that used to disappear by mistake. The letters run oldest-to-newest, so
+    /// chronological index 0 is "e" and index 4 is "a".
+    /// </summary>
+    private static ClipboardHistory Five()
+    {
+        var h = new ClipboardHistory();
+        foreach (var text in new[] { "a", "b", "c", "d", "e" })
+            h.Push(ClipboardEntry.FromText(text, T(text[0] - 'a')));
+        return h;
+    }
 
     [Fact]
     public void Capacity_IsClampedToHardCap()
@@ -308,10 +323,131 @@ public class ClipboardHistoryTests
         Assert.Null(h.Latest);
     }
 
+    // -- RemoveAt ------------------------------------------------------------------------
+    // These pin the bug the panel's «Удалить» had: it called PopLatest(), so deleting the fifth
+    // row of five removed the FIRST one. Every one of them fails against that behaviour.
+
+    [Fact]
+    public void RemoveAt_DropsTheRowItWasGiven_NotTheHead()
+    {
+        var h = Five();
+        Assert.True(h.RemoveAt(4));              // the OLDEST, last panel row
+        Assert.Equal(4, h.Count);
+        Assert.Equal("e", h.Latest!.Text);       // the head is untouched
+        Assert.Null(h.NewestAt(4));              // "a" is the one that went
+        Assert.DoesNotContain(h.SnapshotNewestFirst(), e => e.Text == "a");
+    }
+
+    [Fact]
+    public void RemoveAt_Zero_DropsTheNewest()
+    {
+        var h = Five();
+        Assert.True(h.RemoveAt(0));
+        Assert.Equal("d", h.Latest!.Text);
+        Assert.Equal(4, h.Count);
+    }
+
+    [Fact]
+    public void RemoveAt_Middle_LeavesBothSides()
+    {
+        var h = Five();
+        Assert.True(h.RemoveAt(2));              // "c"
+        Assert.Equal("e", h.NewestAt(0)!.Text);
+        Assert.Equal("d", h.NewestAt(1)!.Text);
+        Assert.Equal("b", h.NewestAt(2)!.Text);
+        Assert.Equal("a", h.NewestAt(3)!.Text);
+        Assert.Equal(4, h.Count);
+    }
+
+    [Fact]
+    public void RemoveAt_OutOfRange_ChangesNothing()
+    {
+        var h = Five();
+        Assert.False(h.RemoveAt(5));
+        Assert.False(h.RemoveAt(-1));
+        Assert.Equal(5, h.Count);
+    }
+
+    [Fact]
+    public void RemoveAt_Repeated_EmptiesTheHistory()
+    {
+        var h = Five();
+        for (var i = 0; i < 5; i++) Assert.True(h.RemoveAt(0));
+        Assert.Equal(0, h.Count);
+        Assert.Null(h.Latest);
+    }
+
+    [Fact]
+    public void RemoveAt_A_PinnedRow_RemovesThatRow()
+    {
+        // A pin does not exempt an entry from deletion, and the pinned block being FIRST in the
+        // panel is exactly the case where panel position and history index disagree.
+        var h = Five();
+        h.Pin(3);                                 // chronological 3 is "b"
+        Assert.True(h.RemoveAt(3));               // delete exactly that row
+        Assert.Equal(4, h.Count);
+        Assert.DoesNotContain(h.SnapshotNewestFirst(), e => e.Text == "b");
+    }
+
+    // -- Indexed snapshot ------------------------------------------------------------------
+
+    [Fact]
+    public void IndexedSnapshot_NumbersRowsInNewestFirstOrder()
+    {
+        var h = Five();
+        var rows = h.SnapshotPinnedFirstIndexed();
+        Assert.Equal(5, rows.Count);
+        for (var i = 0; i < rows.Count; i++) Assert.Equal(i, rows[i].HistoryIndex);
+    }
+
+    [Fact]
+    public void IndexedSnapshot_ReportsTheSameOrderAsThePlainSnapshot()
+    {
+        // The indexed snapshot is the implementation the plain one now delegates to, so the two
+        // can never drift into showing different lists.
+        var h = Five();
+        h.Pin(3);
+        h.Pin(1);
+        var plain = h.SnapshotPinnedFirst().Select(e => e.Text).ToList();
+        var indexed = h.SnapshotPinnedFirstIndexed().Select(r => r.Entry.Text).ToList();
+        Assert.Equal(plain, indexed);
+    }
+
+    [Fact]
+    public void IndexedSnapshot_PanelOrderAndHistoryIndex_Diverge_WhenSomethingIsPinned()
+    {
+        // The whole reason HistoryIndex is carried: pinning reorders the panel, so the panel
+        // position and the chronological index stop meaning the same thing.
+        var h = Five();
+        h.Pin(3);
+        var rows = h.SnapshotPinnedFirstIndexed().ToList();
+        var pinnedRow = rows.First(r => r.Entry.Text == "b");
+        Assert.NotEqual(rows.IndexOf(pinnedRow), pinnedRow.HistoryIndex);
+    }
+
+    [Fact]
+    public void IndexedSnapshot_HistoryIndexStillResolvesTheEntryAfterPinning()
+    {
+        // The panel's real rhythm: read a row, delete it, rebuild the rows, read the next one.
+        // The index is re-read from the rebuilt panel every time, which is the only correct
+        // pattern — deleting shifts every later index, so a loop that held on to the first
+        // snapshot would delete the wrong rows.
+        var h = Five();
+        h.Pin(3);
+        for (var round = 0; round < 5; round++)
+        {
+            var rows = h.SnapshotPinnedFirstIndexed();
+            if (rows.Count == 0) break;
+            var (historyIndex, entry) = rows[rows.Count - 1];   // the bottom row
+            Assert.True(h.RemoveAt(historyIndex));
+            Assert.DoesNotContain(h.SnapshotNewestFirst(), e => e.Text == entry.Text);
+        }
+        Assert.Equal(0, h.Count);
+    }
+
     [Fact]
     public void Clear_WipesAll()
-    {
-        var h = new ClipboardHistory();
+    {        var h = new ClipboardHistory();
         h.Push(ClipboardEntry.FromText("x", T(0)));
         h.Push(ClipboardEntry.FromText("y", T(1)));
         h.Clear();

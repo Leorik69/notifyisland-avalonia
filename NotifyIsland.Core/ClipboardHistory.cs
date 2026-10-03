@@ -113,19 +113,73 @@ public sealed class ClipboardHistory
     public void Clear() => _items.Clear();
 
     /// <summary>
+    /// Snapshot of pinned-then-chronological rows for the panel, each carrying its own index in
+    /// the CHRONOLOGICAL newest-first order — the order <see cref="Pin"/>, <see cref="Unpin"/>
+    /// and <see cref="RemoveAt"/> take.
+    /// <para>
+    /// The index is here, on the row, and not derived at the call site because the two orders are
+    /// not the same list. Passing the panel's own row position to a chronological-indexed method
+    /// silently acted on the wrong row the moment anything was pinned: pinned rows sort to the
+    /// top by age, so panel position 0 is the OLDEST pin while chronological 0 is the NEWEST
+    /// capture. The bug that surfaced first was «Удалить» removing the head, but «Закрепить» on
+    /// a pinned row failed for the same reason.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<(int HistoryIndex, ClipboardEntry Entry)> SnapshotPinnedFirstIndexed()
+    {
+        // Walk once from the newest, counting: index i is the i-th most recent entry. The walk is
+        // the same one NewestAt does, and it is the reason the indices below are what
+        // Pin/Unpin/RemoveAt expect. A `for` is not used here because declaring two variables of
+        // different types in its init needs both spelled out, and the second one is a plain
+        // counter — a while loop says that more plainly.
+        var chronological = new List<(int HistoryIndex, ClipboardEntry Entry)>(_items.Count);
+        var node = _items.Last;
+        for (var i = 0; node is not null; i++)
+        {
+            chronological.Add((i, node.Value));
+            node = node.Previous;
+        }
+        // Pinned first, OLDEST PIN FIRST: the pinned block reads in the order the pins were
+        // made, which is the reverse of the newest-first walk above. Only the PINNED list is
+        // reversed — the rest keeps the walk's order, because that is what newest-first means
+        // and reversing it too would put the oldest unpinned entry at the top.
+        var pinned = new List<(int HistoryIndex, ClipboardEntry Entry)>();
+        var rest = new List<(int HistoryIndex, ClipboardEntry Entry)>();
+        for (var i = 0; i < chronological.Count; i++)
+            (chronological[i].Entry.IsPinned ? pinned : rest).Add(chronological[i]);
+        pinned.Reverse();
+        pinned.AddRange(rest);
+        return pinned;
+    }
+
+    /// <summary>
     /// Snapshot of pinned-then-chronological rows for the panel. Pinned first (oldest pin
     /// first), then the rest newest-first. Defensive copy; the underlying list is not mutated.
     /// </summary>
     public IReadOnlyList<ClipboardEntry> SnapshotPinnedFirst()
     {
         var list = new List<ClipboardEntry>(_items.Count);
-        // Pinned: keep insertion order so "first pin shows first".
-        for (var node = _items.First; node is not null; node = node.Next)
-            if (node.Value.IsPinned) list.Add(node.Value);
-        // Chronological: newest-first.
-        for (var node = _items.Last; node is not null; node = node.Previous)
-            if (!node.Value.IsPinned) list.Add(node.Value);
+        foreach (var (_, entry) in SnapshotPinnedFirstIndexed()) list.Add(entry);
         return list;
+    }
+
+    /// <summary>
+    /// Drop the entry at <paramref name="snapshotIndex"/> in the chronological newest-first
+    /// order — the same index <see cref="NewestAt"/> takes, so panel and method agree.
+    /// <para>
+    /// This exists because the panel used to call <see cref="PopLatest"/> for every row's delete,
+    /// which removed the head regardless of which row was clicked: delete the fifth row of five
+    /// and the first one disappeared instead. Returns <c>false</c> on an out-of-range index.
+    /// </para>
+    /// </summary>
+    public bool RemoveAt(int snapshotIndex)
+    {
+        if (snapshotIndex < 0) return false;
+        var node = _items.Last;
+        for (var i = 0; i < snapshotIndex && node is not null; i++) node = node.Previous;
+        if (node is null) return false;
+        _items.Remove(node);
+        return true;
     }
 
     /// <summary>

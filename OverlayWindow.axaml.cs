@@ -322,6 +322,9 @@ public partial class OverlayWindow : Window
         OverlayTitle.RenderTransform = _titleMarqueeShift;
         NotifyBellRing.RenderTransform = _bellRingScale;
         OverlayTextColumn.SizeChanged += (_, _) => ClampTitleToColumn();
+        // 1.15: the layout badge became a button. The source has been reading the active layout
+        // since it was added, so making it actionable is a handler, not a feature.
+        KeyboardLayoutBadge.PointerPressed += OnKeyboardLayoutBadgePressed;
         _settings = AppSettings.Load();
         // If the settings file was unreadable, Load moved it aside and fell back to defaults. Say
         // so in the app's own log: without it, a user whose settings reset has no way to tell a
@@ -1517,10 +1520,24 @@ public partial class OverlayWindow : Window
                 }
                 else if (kind == OverlayKind.SystemStats)
                 {
-                    // 1.12.1: the click no longer collapses the stats surface — exit is pointer-leave
-                    // driven. The click still reaches the pin path so "hover, then click" pins
-                    // instead of being swallowed by the metrics surface. Right click → context menu.
-                    HandleIdlePillClick(zonePos, zoneExtent);
+                    // 1.15: a click on the metrics surface CLOSES it, and the reason it ever
+                    // didn't is that closing used to be pointer-leave only. That meant: read the
+                    // metrics, decide you are done, and wait out HoverCollapseGraceMs (5 s) with
+                    // the pointer still on the island. The click was spent on pin instead, so
+                    // the surface stayed open and the 5 s still ran.
+                    //
+                    // Pinned is the exception, and it has to be: a pin is a promise that the
+                    // surface stays open, so a click there still means "unpin", exactly as it did
+                    // before. Closing something the user explicitly pinned would be the opposite
+                    // of what they asked for.
+                    if (_hoverPin.IsPinned)
+                    {
+                        HandleIdlePillClick(zonePos, zoneExtent);
+                    }
+                    else
+                    {
+                        CollapseMetricsSurface();
+                    }
                 }
                 // 1.13: the Timer and Media cases are gone. Both used to be capsule kinds whose
                 // click had something to decide (keep expanded / claim ownership from the
@@ -1784,13 +1801,17 @@ public partial class OverlayWindow : Window
     {
         var menu = new Avalonia.Controls.ContextMenu();
         var entry = row.Entry;
+        // The history index, NOT the panel position. The panel sorts pinned rows to the top by
+        // age, so the two diverge as soon as anything is pinned — passing the panel position
+        // acted on whichever row happened to sit at that chronological slot.
+        var historyIndex = row.HistoryIndex;
         // Pin/unpin: only enabled when Core will accept the change. The newest row's
         // TogglePin always returns false, so the menu item surfaces that as disabled.
-        var canPin = !entry.IsPinned && index > 0;
+        var canPin = !entry.IsPinned && historyIndex > 0;
         var pinLabel = entry.IsPinned ? "Открепить" : "Закрепить";
         var pinItem = Menu(pinLabel, () =>
         {
-            if (_clipboardHistory.TogglePin(index))
+            if (_clipboardHistory.TogglePin(historyIndex))
             {
                 _settings.Save();
                 var rows = ClipboardHistoryRows.Build(_clipboardHistory, DateTimeOffset.UtcNow);
@@ -1804,12 +1825,11 @@ public partial class OverlayWindow : Window
         menu.Items.Add(Menu("Скопировать в буфер", () => ApplyHistoryRow(row)));
         menu.Items.Add(Menu("Удалить", () =>
         {
-            // Pop the entry by timestamp+text match — Delete on a row that has just been
-            // pinned clears the pin and then drops the row, since pinned rows still pop out
-            // of the chronological block when removed from the ring. We re-use the
-            // PopLatest path only when the user picked the head; otherwise we look up by
-            // value.
-            _clipboardHistory.PopLatest();
+            // The clicked row, by its history index. This used to call PopLatest(), which drops
+            // the head of the list whatever row was clicked — delete the fifth of five and the
+            // first one vanished. The comment here promised a "look up by value" fallback that
+            // was never written; now the index does the work directly.
+            _clipboardHistory.RemoveAt(historyIndex);
             if (_historyOpen)
             {
                 var rows = ClipboardHistoryRows.Build(_clipboardHistory, DateTimeOffset.UtcNow);
@@ -4152,6 +4172,26 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
+    /// Click the language badge to switch to the next installed layout.
+    /// <para>
+    /// The badge only exists while the user is typing (a 4 s window), so a click on it is always
+    /// a deliberate act, which is why no confirmation is needed. The badge stays up afterwards:
+    /// switching layouts is something you do again and again while writing, and making it
+    /// disappear under the cursor after the first switch would be the wrong reward.
+    /// </para>
+    /// </summary>
+    private void OnKeyboardLayoutBadgePressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        e.Handled = true;
+        var tag = _keyboardLayout?.SwitchToNext();
+        // No sound on a no-op: a click that changed nothing should not claim it did something.
+        if (tag is null) return;
+        IslandSounds.Play(IslandSoundKind.Hover, _settings);
+        // The poll runs every 500 ms, so the new layout paints on its own; there is nothing to
+        // force here and forcing it would be a second source of truth for the same state.
+    }
+
+    /// <summary>
     /// Start the recording indicator's source.
     /// <para>
     /// Gated on the setting, unlike the language badge: a privacy lamp is something a user may
@@ -5321,17 +5361,57 @@ public partial class OverlayWindow : Window
 
     private void OnPillHoverEnter()
     {
+        // A click that closed the surface also suppresses re-entry for a moment, because closing
+        // RESIZES the window: the pointer is left over a region the new geometry has just made
+        // "outside", and Avalonia reads that as PointerExited followed by PointerEntered. With
+        // only a boolean, the exit cleared it and the surface reopened two seconds later —
+        // worse than never closing it.
+        //
+        // So the suppression is timed rather than a flag cleared on leave. Leaving and coming
+        // back sooner than this is a hover, not a new visit, and reopening under the cursor the
+        // user is still holding is what they just asked us not to do.
+        if (_dismissedByClickAt is { } at &&
+            (Environment.TickCount64 - at) < DismissAfterClickMs)
+            return;
         var kind = _machine.Snapshot().Kind;
         if (kind is not (OverlayKind.Idle or OverlayKind.Collapsed or OverlayKind.SystemStats)) return;
         _hoverPin.PointerEnter();
         ApplyPinnedBorderVisual();
     }
 
+    /// <summary>How long after «clicked the surface closed» a re-entry is ignored (ms).</summary>
+    private const int DismissAfterClickMs = 1500;
+
     private void OnPillHoverLeave()
     {
         _hoverPin.PointerLeave();
         if (!_hoverPin.IsContentExpanded)
             ApplyHoverExpandedState(false);
+    }
+
+    /// <summary>When the metrics surface was closed by a click, or null if it was not.</summary>
+    private long? _dismissedByClickAt;
+
+    /// <summary>
+    /// Close the metrics surface without unpinning, the way Esc does.
+    /// <para>
+    /// The border is refreshed too: a collapse that leaves the hover hairline behind looks
+    /// like a pinned island that is somehow not pinned, and the only reader of that hairline is
+    /// the eye.
+    /// </para>
+    /// </summary>
+    private void CollapseMetricsSurface()
+    {
+        _dismissedByClickAt = Environment.TickCount64;
+        if (!_hoverPin.IsContentExpanded) return;
+        _hoverPin.EscapeOrUnpin();
+        ApplyHoverExpandedState(false);
+        ApplyPinnedBorderVisual();
+        IslandSounds.Play(IslandSoundKind.Hover, _settings);
+        // Logged because a click that silently does nothing is the exact failure this replaced:
+        // with no line here, "I clicked and it stayed open" is indistinguishable from "the
+        // click never arrived", and those need different fixes.
+        AppLog.Info("metrics surface closed by click");
     }
 
     private void ApplyPinnedBorderVisual()
