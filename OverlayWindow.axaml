@@ -238,7 +238,12 @@
         </Border>
       </StackPanel>
 
-      <!-- Expanded single-row: icon | title/subtitle | badge | (system-stats expanded when SystemStats kind) -->
+      <!-- Expanded single-row: icon | title/subtitle | badge | (system-stats expanded when SystemStats kind)
+
+           1.15: the Margin below is the HORIZONTAL island's value only. On a vertical island the
+           cross axis is 88 DIP, and 22 + 22 left the message a negative column — it was drawn at
+           zero width and the island simply never said anything. ApplyOrientationLayout overwrites
+           it per orientation from RowInsets; do not treat this number as the real inset. -->
       <DockPanel x:Name="OverlayPanel"
                  Margin="22,0,22,0"
                  IsVisible="False"
@@ -340,6 +345,7 @@
                        FontWeight="SemiBold"
                        Foreground="#FFFFFF"
                        TextTrimming="CharacterEllipsis"
+                       RenderTransformOrigin="0%,50%"
                        Text="Обзор" />
             <!-- The body is the part of a notification that gets cut, so it is the part that
                  scrolls. Two states, one control: CharacterEllipsis is the resting look and

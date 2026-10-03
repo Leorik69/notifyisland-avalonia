@@ -316,6 +316,10 @@ public partial class OverlayWindow : Window
         // the bell ring's scale is declared in code for the identical reason (the source
         // generator does not register a field for an x:Name on a transform child).
         OverlaySubtitle.RenderTransform = _bodyMarqueeShift;
+        // A vertical island scrolls its single line, which is the TITLE, so it needs a transform
+        // of its own. Both are attached unconditionally; whichever one is not in use is never
+        // moved. See _marqueeTargetShift.
+        OverlayTitle.RenderTransform = _titleMarqueeShift;
         NotifyBellRing.RenderTransform = _bellRingScale;
         OverlayTextColumn.SizeChanged += (_, _) => ClampTitleToColumn();
         _settings = AppSettings.Load();
@@ -1092,6 +1096,7 @@ public partial class OverlayWindow : Window
         // never shows there and the margins are reset.
         CyclePrevButton.Margin = vertical ? new Thickness(0) : new Thickness(-6, 0, -3, 0);
         CycleNextButton.Margin = vertical ? new Thickness(0) : new Thickness(-3, 0, -6, 0);
+        SyncRowInsets();
         ApplyDrawerAnchor(vertical);
     }
 
@@ -3494,10 +3499,33 @@ public partial class OverlayWindow : Window
         // pointer is on the capsule and there is actually something to clear. Its width is taken
         // out of the text budget BEFORE measuring, so revealing it cannot reflow the message.
         var notifActions = notifLike && _pointerOverUi && snap.UnreadCount > 0;
+        // The furniture is measured from the SAME function the layout is sized by, not from the
+        // hardcoded 26 DIP this used to subtract. That 26 was the horizontal island's icon plus
+        // its gap; on a vertical island the icon is hidden, the bell is smaller, and the badge is
+        // smaller, so the old constant silently budgeted more than the row could ever show and
+        // the title measured 20 DIP narrower than its column.
+        var rowInsets = RowInsets.For(SplitIsVertical);
+        var available = rowInsets.TextWidthOn(Pill.Bounds.Width,
+            bellVisible: notifLike && NotificationMarquee.BellVisible(kind),
+            unreadVisible: snap.UnreadCount > 0,
+            vertical: SplitIsVertical);
         var (titleW, bodyW) = NotificationLayout.SplitWidths(
-            Math.Max(0, Pill.Bounds.Width - 2 * OverlayPanel.Margin.Left - 26 /* icon + gap */ - 8),
+            Math.Max(0, available),
             notifActions,
             bodyText.Length > 0);
+
+        // 1.15: a vertical island gets ONE scrolling line instead of a title and a body. The
+        // 62/38 split leaves the body about one glyph on a 46 DIP column, which no marquee can
+        // make readable; one line spends every point on the message. The horizontal island keeps
+        // the two-ink hierarchy — there is room for it there. See RowInsets.SingleLineRow.
+        var singleLine = RowInsets.SingleLineRow(SplitIsVertical);
+        if (singleLine && notifLike && bodyText.Length > 0)
+        {
+            titleText = titleText.Length > 0
+                ? titleText + NotificationLayout.HeadlineJoiner + bodyText
+                : bodyText;
+            bodyText = "";
+        }
 
         OverlayTitle.Text = titleText;
         _titleBudget = titleW;
@@ -4225,6 +4253,56 @@ public partial class OverlayWindow : Window
         }
     }
 
+    /// <summary>
+    /// Apply the orientation-dependent insets to the single-row capsule content.
+    /// <para>
+    /// Called from the same place the layout is derived, not from Paint: Paint runs five times a
+    /// second and writing a Margin there would dirty the layout every tick. A vertical island is
+    /// 88 DIP across, so the horizontal island's 22 DIP on each side left the message a NEGATIVE
+    /// column and it was drawn at zero width — the row looked perfect and never said anything.
+    /// </para>
+    /// </summary>
+    private void SyncRowInsets()
+    {
+        var vertical = SplitIsVertical;
+        var insets = RowInsets.For(vertical);
+        if (!OverlayPanel.Margin.Left.Equals(insets.Inset)) OverlayPanel.Margin = new Thickness(insets.Inset, 0);
+
+        // The badges shrink with the island. At 88 DIP across, the horizontal sizes cost the
+        // message a fifth of its column, and the horizontal font size leaves room for barely one
+        // glyph — the marquee cannot help if a single character is wider than the slot.
+        var bell = vertical ? 12.0 : 16.0;
+        var ring = vertical ? 12.0 : 16.0;
+        if (!NotifyBellBadge.Width.Equals(bell))
+        {
+            NotifyBellBadge.Width = bell;
+            NotifyBellBadge.Height = bell;
+            NotifyBellRing.Width = ring;
+            NotifyBellRing.Height = ring;
+        }
+        if (!UnreadBadge.MinWidth.Equals(vertical ? 16.0 : 18.0))
+            UnreadBadge.MinWidth = vertical ? 16.0 : 18.0;
+
+        var title = vertical ? RowInsets.VerticalTitleFont : 12.0;
+        if (!OverlayTitle.FontSize.Equals(title))
+        {
+            OverlayTitle.FontSize = title;
+            OverlaySubtitle.FontSize = vertical ? RowInsets.VerticalBodyFont : 11.0;
+            // A font change invalidates both measured widths, so the marquee has to re-decide.
+            _bodyMarqueeActive = false;
+        }
+
+        // The icon is an 18 DIP box in a column that cannot spare it; the media artwork keeps its
+        // own frame, so only the GLYPH is hidden. See RowInsets for why.
+        if (AppIcon.IsVisible == insets.ShowAppIcon) return;
+        AppIcon.IsVisible = insets.ShowAppIcon;
+        if (insets.ShowAppIcon) return;
+        // The artwork lives inside the icon box, so hiding the box must not hide the artwork with
+        // it — otherwise a track playing on a vertical island would lose its picture.
+        AppIconHost.IsVisible = false;
+        MediaArtwork.IsVisible = MediaArtwork.Source is not null;
+    }
+
     private void EnsureNotificationSource()
     {
         if (_notifSource is not null) return;        try
@@ -4296,6 +4374,8 @@ public partial class OverlayWindow : Window
     // two move at different times over different widths, and one shared transform would mean each
     // restarting the other's motion.
     private readonly TranslateTransform _bodyMarqueeShift = new();
+    /// <summary>Scroll transform for the single-line (vertical island) row, which moves the title.</summary>
+    private readonly TranslateTransform _titleMarqueeShift = new();
     /// <summary>
     /// The bell ring's scale. Declared here rather than as an x:Name in the XAML because the
     /// Avalonia 11.3 source generator does not register fields for a name on a transform child of
@@ -4351,27 +4431,33 @@ public partial class OverlayWindow : Window
     /// </summary>
     private void SyncBodyMarquee(string bodyText, bool notifLike)
     {
-        if (!notifLike || bodyText.Length == 0)
+        // WHICH text scrolls depends on the layout: a horizontal island scrolls the body beside
+        // the title, a vertical one has a single line and scrolls that. Both cases read the same
+        // way from here, which is the point of picking the target once.
+        var singleLine = RowInsets.SingleLineRow(SplitIsVertical);
+        var target = singleLine ? OverlayTitle : OverlaySubtitle;
+
+        if (!notifLike || string.IsNullOrEmpty(target.Text))
         {
             StopBodyMarquee();
             return;
         }
 
-        OverlaySubtitle.TextTrimming = TextTrimming.None;
-        OverlaySubtitle.MaxWidth = double.PositiveInfinity;
-        var natural = OverlaySubtitle.Bounds.Width;
-        var column = BodyColumnWidth();
+        target.TextTrimming = TextTrimming.None;
+        target.MaxWidth = double.PositiveInfinity;
+        var natural = target.Bounds.Width;
+        var column = singleLine ? OverlayTextColumn.Bounds.Width : BodyColumnWidth();
 
         if (_settings.NotifyBodyMarquee
             && NotificationMarquee.ShouldScroll(natural, column, enabled: true))
         {
             // A different string is a different message: restart the travel, or the new text
             // would arrive mid-scroll and be unreadable at the very moment it appeared.
-            if (!string.Equals(bodyText, _bodyMarqueeText, StringComparison.Ordinal))
+            if (!string.Equals(target.Text, _bodyMarqueeText, StringComparison.Ordinal))
             {
-                _bodyMarqueeText = bodyText;
+                _bodyMarqueeText = target.Text;
                 _bodyMarqueeElapsedMs = 0;
-                _bodyMarqueeShift.X = 0;
+                _marqueeTargetShift.X = 0;
             }
             _bodyMarqueeActive = true;
             return;
@@ -4381,10 +4467,10 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// The room the body actually has: the text column minus the title and the gap between them.
-    /// Both terms are read back from the laid-out controls rather than recomputed, because the
-    /// star column is what actually gave the body its width and a second copy of that arithmetic
-    /// is exactly the kind of thing that drifts.
+    /// The room the body actually has on a two-text row: the text column minus the title and the
+    /// gap between them. Both terms are read back from the laid-out controls rather than
+    /// recomputed, because the star column is what actually gave the body its width and a second
+    /// copy of that arithmetic is exactly the kind of thing that drifts.
     /// </summary>
     private double BodyColumnWidth()
     {
@@ -4395,7 +4481,7 @@ public partial class OverlayWindow : Window
 
     private void StopBodyMarquee()
     {
-        if (_bodyMarqueeActive) _bodyMarqueeShift.X = 0;
+        if (_bodyMarqueeActive) _marqueeTargetShift.X = 0;
         _bodyMarqueeActive = false;
         _bodyMarqueeText = "";
     }
@@ -4411,11 +4497,23 @@ public partial class OverlayWindow : Window
     /// </summary>
     private void TickBodyMarquee(int deltaMs)
     {
-        if (!_bodyMarqueeActive || !OverlaySubtitle.IsVisible) return;
+        if (!_bodyMarqueeActive) return;
+        var singleLine = RowInsets.SingleLineRow(SplitIsVertical);
+        var target = singleLine ? OverlayTitle : OverlaySubtitle;
+        if (!target.IsVisible) return;
         _bodyMarqueeElapsedMs += deltaMs;
-        _bodyMarqueeShift.X = NotificationMarquee.OffsetFor(
-            _bodyMarqueeElapsedMs, OverlaySubtitle.Bounds.Width, BodyColumnWidth());
+        var column = singleLine ? OverlayTextColumn.Bounds.Width : BodyColumnWidth();
+        _marqueeTargetShift.X = NotificationMarquee.OffsetFor(
+            _bodyMarqueeElapsedMs, target.Bounds.Width, column);
     }
+
+    /// <summary>
+    /// The transform of whichever text is currently scrolling. One property, chosen per call,
+    /// because a two-text row scrolls the body and a one-text row scrolls the title — and two
+    /// separate tick methods for "move whichever one" is how they drift apart.
+    /// </summary>
+    private TranslateTransform _marqueeTargetShift =>
+        RowInsets.SingleLineRow(SplitIsVertical) ? _titleMarqueeShift : _bodyMarqueeShift;
 
     /// <summary>
     /// One frame of the bell's ring, from the shared 33 ms clock.
