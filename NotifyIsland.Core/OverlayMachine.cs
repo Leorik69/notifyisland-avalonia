@@ -16,7 +16,8 @@ public enum OverlayKind
     Error,
     Weather,
     Battery,
-    Clipboard
+    Clipboard,
+    SystemStats
 }
 
 public enum OverlayCommand
@@ -29,16 +30,18 @@ public enum OverlayCommand
     SetTimer,
     SetError,
     Clear,
-    DemoNext,
     SetWeather,
     CycleNext,
     CyclePrev,
     ExpandWidget,
     SetBattery,
     SetClipboard,
+    /// <summary>Attach a clipboard half next to the current kind instead of taking over the pill (1.12.2).</summary>
+    SetClipboardSplit,
     SetClipboardCycle,
     CycleClipboardNext,
-    CycleClipboardPrev
+    CycleClipboardPrev,
+    SetSystemStats
 }
 
 /// <summary>Discriminator for the latest clipboard item the island is showing.</summary>
@@ -90,6 +93,8 @@ public sealed class OverlayPayload
     public string ClipboardCyclePreview { get; set; } = "";
     /// <summary>Per-item previews for the cycle browser (newest first). Empty when not cycling.</summary>
     public IReadOnlyList<string> ClipboardCyclePreviews { get; set; } = Array.Empty<string>();
+    /// <summary>Live machine metrics; null when System Stats is disabled or sampling failed.</summary>
+    public SystemSnapshot? SystemStats { get; set; }
 }
 
 public sealed class OverlaySnapshot
@@ -100,8 +105,14 @@ public sealed class OverlaySnapshot
     public double Height { get; init; }
     public int NotifyMsLeft { get; init; }
     public int UnreadCount { get; init; }
+    /// <summary>True while a clipboard half is attached next to the normal island content (1.12.2).</summary>
+    public bool IsSplitClipboard { get; init; }
+    /// <summary>Milliseconds left before the split clipboard half collapses away.</summary>
+    public int SplitMsLeft { get; init; }
     public bool WeatherEnabled { get; init; }
     public OverlayPayload LastWeather { get; init; } = new();
+    /// <summary>Payload of the attached clipboard half. Empty when <see cref="IsSplitClipboard"/> is false.</summary>
+    public OverlayPayload SplitClipboard { get; init; } = new();
 }
 
 public sealed class OverlayMachine
@@ -110,13 +121,133 @@ public sealed class OverlayMachine
     private OverlayKind _returnTo = OverlayKind.Idle;
     private int _notifyMs;
     private readonly OverlayPayload _payload = new();
-    private int _demoIndex;
     private int _notifyDurationMs = OverlayTokens.DefaultNotifyMs;
     private int _unreadCount;
     private bool _weatherEnabled = true;
     private OverlayPayload _lastWeather = WeatherCodes.MockMoscow();
     private List<string> _cyclePreviews = new();
     private int _cycleIndex = -1;
+    // 1.12.2 split pill: the island keeps its own kind while a clipboard half is attached
+    // beside it. The half is orthogonal to the kind, so it carries its own payload and its
+    // own lifetime — see Dispatch(SetClipboardSplit) and Tick.
+    private readonly OverlayPayload _splitClipboard = new();
+    private bool _isSplitClipboard;
+    private int _splitMs;
+
+    /// <summary>
+    /// Freeze the split's idle lifetime. Set by the overlay while the user is holding the
+    /// clipboard ball (pressed or dragging). The ball is the one piece of the capsule the user
+    /// grabs by hand, so its timeout has to yield to the hand on it.
+    /// </summary>
+    public bool SplitHold { get; set; }
+
+    /// <summary>
+    /// The budget restored to full on every held tick, so releasing the ball leaves it alive
+    /// rather than expiring it on the next frame. Defaults to the normal split lifetime.
+    /// </summary>
+    public int SplitHoldMs { get; set; } = ClipboardHistory.MaxPillMs;
+
+    // 1.13: media / timer / progress stopped taking the capsule over. They live here as
+    // status-row data and as a progress-band arbitration input, both independent of _kind.
+    // This is the whole point of the change: the capsule keeps the clock and only the band
+    // reacts, so a song starting no longer hides the time and a timer no longer sits on
+    // screen forever. See docs/superpowers/specs/2026-09-30--notifyisland-single-capsule.md.
+    // Not readonly: ApplyTo fills them through a ref, and readonly fields may not be passed
+    // as ref outside a constructor. They are still never reassigned, only mutated in place.
+    private OverlayPayload _media = new();
+    private bool _mediaActive;
+    // 2026-10-02: the Notification cycle slot used to Apply() a hardcoded "Сообщение /
+    // Уведомление" — leftover demo text, reachable by clicking a chevron on the idle pill. It
+    // also discarded whatever the capsule was showing, so landing on that slot destroyed the
+    // clipboard preview or the media row that was on screen. The machine now keeps the last real
+    // notification so the slot can show something true, and a slot with nothing to show is not
+    // offered for cycling at all (see EnabledSlots).
+    private OverlayPayload _lastNotify = new();
+    private bool _hasLastNotify;
+    // 2026-10-02: notifications displaced by a newer one, replayed in order when the capsule
+    // frees up. See NotificationQueue.
+    private readonly NotificationQueue _queue = new();
+    // Arrivals that have started or joined the current run. The position being shown is derived
+    // as (this minus whatever is still waiting) rather than tracked separately — one counter
+    // cannot drift out of step with the queue, which two could.
+    private int _notifRunTotal;
+    private OverlayPayload _timer = new();
+    private bool _timerActive;
+    private double _timerTotalSeconds;
+    private int _timerDoneMs;
+    private OverlayPayload _progress = new();
+    private bool _progressActive;
+
+    /// <summary>Live media session, for the monitor's Плеер row and the capsule band.</summary>
+    public OverlayPayload MediaRow => Clone(_media);
+
+    /// <summary>True while an SMTC session is being shown.</summary>
+    public bool MediaActive => _mediaActive;
+
+    /// <summary>Live timer, for the monitor's Таймер row and the capsule band.</summary>
+    public OverlayPayload TimerRow => Clone(_timer);
+
+    /// <summary>True while a countdown/stopwatch exists (running or paused, not cancelled).</summary>
+    public bool TimerActive => _timerActive;
+
+    /// <summary>
+    /// How long a finished countdown keeps showing "Время вышло" in its row (ms). Long enough
+    /// to be read if the panel happens to be open, short enough that a later timer start is
+    /// not fighting a stale notice.
+    /// </summary>
+    public const int TimerDoneMs = 12000;
+
+    /// <summary>Total length of a countdown, needed for the band's remaining fraction. 0 = stopwatch.</summary>
+    public double TimerTotalSeconds => _timerTotalSeconds;
+
+    /// <summary>
+    /// Drop the timer. Separate from <see cref="OverlayCommand.Clear"/> on purpose: cancel
+    /// must not collapse the capsule or wipe the payload the user was reading — the timer is
+    /// a row, and cancelling a row only removes that row.
+    /// </summary>
+    public void ClearTimer()
+    {
+        _timerActive = false;
+        _timerTotalSeconds = 0;
+        _timer = new OverlayPayload();
+    }
+
+    /// <summary>Drop the media row (the SMTC session ended).</summary>
+    public void ClearMedia()
+    {
+        _mediaActive = false;
+        _media = new OverlayPayload();
+    }
+
+    /// <summary>Drop the generic progress job, freeing the capsule band.</summary>
+    public void ClearProgress() => _progressActive = false;
+
+    /// <summary>Live generic progress, for the capsule band (copy operations).</summary>
+    public OverlayPayload ProgressRow => Clone(_progress);
+
+    /// <summary>True while a generic progress job is running.</summary>
+    public bool ProgressActive => _progressActive;
+
+    /// <summary>
+    /// The capsule's bottom band arbitration input, assembled from whatever is running right
+    /// now. Built on every call rather than cached: it is read once per Paint (~60 Hz) and
+    /// has no allocation beyond the record itself.
+    /// </summary>
+    public ProgressBandState BandState() => new()
+    {
+        ClipboardActive = _progressActive,
+        ClipboardProgress = _progressActive ? _progress.Progress : 0,
+        MediaActive = _mediaActive,
+        MediaProgress = _mediaActive ? _media.Progress : 0,
+        // A finished timer still occupies its row (that is where "Время вышло" is read),
+        // but it is NOT running and so must not keep the band: a parked completion notice
+        // holding the capsule's only progress strip would push out whatever actually started
+        // in the meantime. Played out the other way, the band is a lie about progress.
+        TimerActive = _timerActive && _timer.Playing,
+        TimerCountUp = _timer.CountUp,
+        TimerSeconds = _timer.RemainingSeconds,
+        TimerTotalSeconds = _timerTotalSeconds
+    };
 
     public int NotifyDurationMs
     {
@@ -132,18 +263,64 @@ public sealed class OverlayMachine
         set => _weatherEnabled = value;
     }
 
+    /// <summary>How many metric slots the collapsed pill shows. 0 hides the row. Set by the Av layer.</summary>
+    public int StatsMetricCount { get; set; }
+
+    /// <summary>
+    /// The user's collapsed-island width multiplier (1.14), mirrored from AppSettings. Clamped
+    /// on set rather than trusted, because the window sizes itself from the snapshot and an
+    /// out-of-range value here would push the capsule off screen.
+    /// </summary>
+    public double CollapsedWidthScale
+    {
+        get => _collapsedWidthScale;
+        set => _collapsedWidthScale = IslandWidth.ClampScale(value);
+    }
+
+    private double _collapsedWidthScale = IslandWidth.DefaultScale;
+
+    /// <summary>
+    /// How many rows the System Stats surface shows, from the resolved preset.
+    /// 0 means the default 5-row Full panel. Set by the Av layer from AppSettings.
+    /// </summary>
+    public int StatsRowCount { get; set; }
+
+    /// <summary>
+    /// True while the 1.13 running caption line is showing, so the panel's height budget
+    /// includes it. The Av layer sets this from whether the line currently has text; the
+    /// height must grow and shrink with it or the line gets clipped.
+    /// </summary>
+    public bool StatsMarquee { get; set; }
+
     public OverlayPayload LastWeather => Clone(_lastWeather);
+
+    /// <summary>True while a clipboard half is attached next to the normal island content (1.12.2).</summary>
+    public bool IsSplitClipboard => _isSplitClipboard;
+
+    /// <summary>Notifications still waiting behind the one on the capsule.</summary>
+    public int PendingNotifications => _queue.Count;
+
+    /// <summary>
+    /// "2/3" while a run of notifications is still being shown, empty otherwise. A lone
+    /// notification shows no progress at all — there is nothing to be progressing through.
+    /// </summary>
+    public string NotificationProgress =>
+        _notifRunTotal > 1 ? $"{_notifRunTotal - _queue.Count}/{_notifRunTotal}" : string.Empty;
 
     public OverlaySnapshot Snapshot() => new()
     {
         Kind = _kind,
         Payload = Clone(_payload),
-        Width = WidthFor(_kind, _weatherEnabled),
-        Height = HeightFor(_kind),
+        Width = WidthFor(_kind, _weatherEnabled, statsMetricCount: StatsMetricCount,
+                         splitClipboard: _isSplitClipboard, collapsedScale: _collapsedWidthScale),
+        Height = HeightFor(_kind, StatsRowCount, StatsMarquee),
         NotifyMsLeft = Math.Max(0, _notifyMs),
         UnreadCount = _unreadCount,
         WeatherEnabled = _weatherEnabled,
-        LastWeather = Clone(_lastWeather)
+        LastWeather = Clone(_lastWeather),
+        IsSplitClipboard = _isSplitClipboard,
+        SplitMsLeft = Math.Max(0, _splitMs),
+        SplitClipboard = _isSplitClipboard ? Clone(_splitClipboard) : new OverlayPayload()
     };
 
     public OverlaySnapshot Dispatch(OverlayCommand command, OverlayPayload? incoming = null)
@@ -154,6 +331,7 @@ public sealed class OverlayMachine
             case OverlayCommand.Collapse:
                 _kind = OverlayKind.Collapsed;
                 _notifyMs = 0;
+                ClearSplit();
                 break;
             case OverlayCommand.Expand:
                 _kind = OverlayKind.Expanded;
@@ -161,42 +339,80 @@ public sealed class OverlayMachine
                 _notifyMs = 0;
                 break;
             case OverlayCommand.Notify:
-                if (_kind != OverlayKind.Notification)
-                    _returnTo = _kind == OverlayKind.Collapsed ? OverlayKind.Idle : _kind;
-                _kind = OverlayKind.Notification;
-                Apply(data);
+                // 1.13 made a notification non-invasive: it only filled the payload and bumped
+                // unread, so a toast could never collapse something the user had opened. That
+                // left the row with nowhere to be seen AND the countdown with nothing to count —
+                // Tick only ever ran _notifyMs for Battery, so the milliseconds this case sets
+                // were never spent. The payload was reachable, the notification was not.
+                //
+                // The rule now, and it is the battery pill's rule verbatim: a notification takes
+                // the capsule from the RESTING kinds and returns to wherever it came from. It
+                // still refuses to take the capsule from something the user deliberately opened
+                // (Expanded, SystemStats, Media, ...), so 1.13's real guarantee survives: a toast
+                // arriving while you are reading the stats panel updates the payload and the
+                // unread count without taking the screen away from you.
+                if (_kind is OverlayKind.Idle or OverlayKind.Collapsed or OverlayKind.Notification)
+                {
+                    // A second notification while one is on screen extends the lifetime instead of
+                    // re-pointing the return: the user is reading the first one, and the capsule
+                    // still has to go back to where it was before either arrived.
+                    if (_kind != OverlayKind.Notification)
+                        _returnTo = _kind == OverlayKind.Collapsed ? OverlayKind.Idle : _kind;
+                    _kind = OverlayKind.Notification;
+                }
+                // 2026-10-02: a second notification arriving while one is on screen used to
+                // overwrite it outright — the first was never seen again and the unread badge
+                // was the only trace that anything had been lost. The DISPLACED payload now waits
+                // in the queue and is replayed when this one's time runs out. The newest still
+                // takes the capsule immediately, because the newest is the one the user most
+                // likely still needs.
+                if (_kind == OverlayKind.Notification && _notifyMs > 0)
+                    _queue.Push(Clone(_payload));
+                _notifRunTotal++;
+
                 if (string.IsNullOrWhiteSpace(_payload.Title))
                     _payload.Title = "Уведомление";
+                if (string.IsNullOrWhiteSpace(data.Title))
+                    data.Title = _payload.Title;
+                if (string.IsNullOrWhiteSpace(data.Body))
+                    data.Body = _payload.Body;
+                Apply(data);
+                // Remember it so the Notification cycle slot can show the real thing. Taken
+                // AFTER Apply, because data.Title/Body have just been filled in from the payload
+                // above — a copy taken earlier would store the blanks that were corrected.
+                _lastNotify = Clone(_payload);
+                _hasLastNotify = true;
                 _notifyMs = NotifyDurationMs;
                 _unreadCount = Math.Min(_unreadCount + 1, 99);
                 break;
             case OverlayCommand.SetProgress:
-                _kind = OverlayKind.Progress;
-                Apply(data);
-                _notifyMs = 0;
+                // 1.13: the band takes it; the kind does not move.
+                ApplyTo(ref _progress, data);
+                _progressActive = true;
                 break;
             case OverlayCommand.SetMedia:
-                _kind = OverlayKind.Media;
-                Apply(data);
-                if (string.IsNullOrWhiteSpace(_payload.Title))
-                    _payload.Title = "Без названия";
-                if (string.IsNullOrWhiteSpace(_payload.Subtitle))
-                    _payload.Subtitle = "Неизвестный исполнитель";
-                _notifyMs = 0;
+                ApplyTo(ref _media, data);
+                if (string.IsNullOrWhiteSpace(_media.Title))
+                    _media.Title = "Без названия";
+                if (string.IsNullOrWhiteSpace(_media.Subtitle))
+                    _media.Subtitle = "Неизвестный исполнитель";
+                _mediaActive = true;
                 break;
             case OverlayCommand.SetTimer:
-                _kind = OverlayKind.Timer;
-                Apply(data);
-                if (string.IsNullOrWhiteSpace(_payload.Title))
-                    _payload.Title = _payload.CountUp ? "Секундомер" : "Таймер";
-                _notifyMs = 0;
+                ApplyTo(ref _timer, data);
+                if (string.IsNullOrWhiteSpace(_timer.Title))
+                    _timer.Title = _timer.CountUp ? "Секундомер" : "Таймер";
+                // The first countdown defines the total the band's fraction is measured
+                // against; a stopwatch has none and reports 0 on purpose.
+                if (!_timer.CountUp && data.RemainingSeconds > 0)
+                    _timerTotalSeconds = data.RemainingSeconds;
+                _timerActive = true;
                 break;
             case OverlayCommand.SetError:
-                _kind = OverlayKind.Error;
+                // 1.13: like Notify — the kind stays, the payload carries the message.
+                if (string.IsNullOrWhiteSpace(data.Body) && string.IsNullOrWhiteSpace(data.Title))
+                    data.Title = "Ошибка";
                 Apply(data);
-                if (string.IsNullOrWhiteSpace(_payload.Body) && string.IsNullOrWhiteSpace(_payload.Title))
-                    _payload.Title = "Ошибка";
-                _notifyMs = 0;
                 break;
             case OverlayCommand.SetWeather:
                 ApplyWeather(data);
@@ -217,7 +433,15 @@ public sealed class OverlayMachine
                 _returnTo = OverlayKind.Idle;
                 _notifyMs = 0;
                 _unreadCount = 0;
+                // Forgets the notification too. Leaving _lastNotify behind would mean the action
+                // labelled "clear" empties the capsule and the next chevron click puts the same
+                // message back on it.
+                _lastNotify = new OverlayPayload();
+                _hasLastNotify = false;
+                _queue.Clear();
+                _notifRunTotal = 0;
                 Apply(new OverlayPayload());
+                ClearSplit();
                 break;
             case OverlayCommand.SetBattery:
                 if (_kind != OverlayKind.Battery)
@@ -230,6 +454,13 @@ public sealed class OverlayMachine
                     _payload.Subtitle = $"{(int)Math.Round(_payload.Progress * 100)}%";
                 _notifyMs = NotifyDurationMs > 0 ? Math.Min(NotifyDurationMs, BatteryAlertLogic.ChargePillMs) : BatteryAlertLogic.ChargePillMs;
                 // Charge pill is transient — do not bump unread.
+                break;
+            case OverlayCommand.SetSystemStats:
+                if (data.SystemStats is null) break;
+                if (_kind != OverlayKind.SystemStats)
+                    _returnTo = _kind == OverlayKind.Collapsed ? OverlayKind.Idle : _kind;
+                _kind = OverlayKind.SystemStats;
+                Apply(data);
                 break;
             case OverlayCommand.SetClipboard:
                 // Defensive: ignore empty payloads rather than blanking the pill.
@@ -244,6 +475,18 @@ public sealed class OverlayMachine
                 // Longer-lived than notification — copyable payload stays around.
                 _notifyMs = NotifyDurationMs > 0 ? Math.Min(NotifyDurationMs, ClipboardHistory.MaxPillMs) : ClipboardHistory.MaxPillMs;
                 // No unread bump — clipboard events are not system notifications.
+                break;
+            case OverlayCommand.SetClipboardSplit:
+                // 1.12.2: the island keeps its own kind; the clipboard rides along in a
+                // half attached to the long axis. No unread bump — copying is not a
+                // system notification (GUIDELINES).
+                if (data.ClipboardItemKind == ClipboardItemKind.None)
+                    break;
+                ApplySplit(data);
+                _isSplitClipboard = true;
+                _splitMs = NotifyDurationMs > 0
+                    ? Math.Min(NotifyDurationMs, ClipboardHistory.MaxPillMs)
+                    : ClipboardHistory.MaxPillMs;
                 break;
             case OverlayCommand.SetClipboardCycle:
                 // Install cycle previews + index. Used by the Idle/Collapsed pill to browse
@@ -266,9 +509,6 @@ public sealed class OverlayMachine
             case OverlayCommand.CycleClipboardPrev:
                 CycleClipboardInternal(-1);
                 break;
-            case OverlayCommand.DemoNext:
-                RunDemoStep();
-                break;
         }
         return Snapshot();
     }
@@ -290,36 +530,113 @@ public sealed class OverlayMachine
     public OverlaySnapshot Tick(int deltaMs)
     {
         var dt = Math.Max(0, deltaMs);
-        if (_kind is OverlayKind.Notification or OverlayKind.Battery or OverlayKind.Clipboard)
+        // 1.12.1: SystemStats no longer auto-collapses on a wall-clock timer.
+        // Exit is driven by pointer leave (HoverPinMachine grace) or an explicit Collapse.
+        // 1.13: Notification and Battery keep their transient lifetime — they are the only
+        // two kinds left that own the capsule outright. A notification arrives only over the
+        // resting kinds (see the Notify case), so _returnTo is where the capsule goes back to,
+        // and the countdown below is what actually spends the milliseconds Notify set.
+        //
+        // The guard against returning to the kind we are leaving is not decoration: _returnTo is
+        // sticky across arrivals, and without it a notification whose return target is another
+        // notification would refresh itself forever.
+        if (_kind is OverlayKind.Battery or OverlayKind.Notification)
         {
             _notifyMs -= dt;
             if (_notifyMs <= 0)
             {
                 _notifyMs = 0;
-                var collapseTarget = _kind == OverlayKind.Clipboard
-                    ? OverlayKind.Idle
-                    : (_returnTo == OverlayKind.Notification || _returnTo == OverlayKind.Battery
+                // 2026-10-02: before returning to rest, spend the queue. A notification whose
+                // time ran out is not the end of the run — the ones it displaced are still
+                // unseen, and dropping them here is exactly the loss the queue exists to stop.
+                // Only when the queue is empty does the capsule go back to where it came from.
+                var wasNotification = _kind == OverlayKind.Notification;
+                var next = _queue.Dequeue();
+                if (next is not null && wasNotification)
+                {
+                    Apply(Clone(next));
+                    _notifyMs = NotifyDurationMs;
+                    _lastNotify = Clone(_payload);
+                    _hasLastNotify = true;
+                }
+                else
+                {
+                    _kind = _returnTo is OverlayKind.Battery or OverlayKind.Notification
                         ? OverlayKind.Idle
-                        : _returnTo);
-                _kind = collapseTarget;
-                if (_kind == OverlayKind.Idle)
-                    _returnTo = OverlayKind.Idle;
+                        : _returnTo;
+                    if (_kind == OverlayKind.Idle)
+                        _returnTo = OverlayKind.Idle;
+                    // The run is over, so the next arrival starts a fresh one instead of
+                    // inheriting the old total and reporting "3/3" for a notification that is
+                    // the only thing on screen.
+                    if (wasNotification)
+                        _notifRunTotal = 0;
+                }
             }
         }
-        if (_kind == OverlayKind.Timer && _payload.Playing)
+        // 1.12.2: the split clipboard half has its own lifetime. It cannot ride on _notifyMs —
+        // that counter is owned by the Notification/Battery/Clipboard kinds and is reset by
+        // every Notify, so a notification arriving mid-split would either kill the half early
+        // or be killed by it. Same 6000 ms budget (ClipboardHistory.MaxPillMs), separate counter.
+        // 1.13.1: the split's 6 s budget stops while the user is holding the ball.
+        //
+        // The countdown used to run unconditionally, so a ball picked up and held still fell off
+        // the capsule out from under the pointer — the drag itself was unaffected, but the thing
+        // being dragged vanished mid-gesture. A hold is the user saying "I am interacting with
+        // this", and the lifetime is an idle timeout, not a lease: an interaction should not
+        // consume it.
+        if (_isSplitClipboard)
         {
-            if (_payload.CountUp)
-                _payload.RemainingSeconds = Math.Min(359999, _payload.RemainingSeconds + dt / 1000.0);
-            else if (_payload.RemainingSeconds > 0)
-                _payload.RemainingSeconds = Math.Max(0, _payload.RemainingSeconds - dt / 1000.0);
-
-            if (IslandTimerLogic.ShouldCompleteCountdown(_kind, _payload))
+            if (SplitHold)
             {
-                _returnTo = OverlayKind.Idle;
-                _kind = OverlayKind.Notification;
-                Apply(IslandTimerLogic.CompletedPayload());
-                _notifyMs = NotifyDurationMs;
+                // Held: keep the budget topped up rather than merely pausing, so releasing the
+                // ball does not immediately expire it either. Without this, pausing alone would
+                // make the ball disappear the instant the pointer came off.
+                _splitMs = Math.Max(_splitMs, SplitHoldMs);
+            }
+            else
+            {
+                _splitMs -= dt;
+                if (_splitMs <= 0)
+                {
+                    _splitMs = 0;
+                    ClearSplit();
+                }
+            }
+        }
+        if (_timerActive && _timer.Playing)
+        {
+            if (_timer.CountUp)
+                _timer.RemainingSeconds = Math.Min(359999, _timer.RemainingSeconds + dt / 1000.0);
+            else if (_timer.RemainingSeconds > 0)
+                _timer.RemainingSeconds = Math.Max(0, _timer.RemainingSeconds - dt / 1000.0);
+
+            // A finished countdown must not vanish silently, and it must not take the capsule
+            // either — the user kept battery as the only takeover. So it parks in the timer
+            // row for TimerDoneMs with the completion text, and bumps the unread count, which
+            // is what makes the capsule's unread dot pulse. The signal survives; the clock
+            // stays on screen.
+            if (IslandTimerLogic.ShouldCompleteCountdown(_timer))
+            {
+                _timer.RemainingSeconds = 0;
+                _timer.Playing = false;
+                _timer.CountUp = false;
+                _timer.Title = "Таймер";
+                _timer.Body = "Время вышло";
+                _timerDoneMs = TimerDoneMs;
                 _unreadCount = Math.Min(_unreadCount + 1, 99);
+            }
+        }
+        else if (_timerDoneMs > 0)
+        {
+            // The completion notice is a guest: after its budget the row goes back to empty
+            // and the band is free for whatever runs next.
+            _timerDoneMs = Math.Max(0, _timerDoneMs - dt);
+            if (_timerDoneMs == 0)
+            {
+                _timerActive = false;
+                _timerTotalSeconds = 0;
+                _timer = new OverlayPayload();
             }
         }
         return Snapshot();
@@ -327,12 +644,21 @@ public sealed class OverlayMachine
 
     public IslandSlot CurrentSlot() => SlotFromKind(_kind);
 
+    /// <summary>
+    /// Slots the cycle may visit, and only those that have something real to show.
+    /// <para>
+    /// This list used to be fixed: Idle, Notification, Weather, Media. That guaranteed two
+    /// entries were lies — Notification had no notification to show and Media had no session, so
+    /// both rendered hardcoded placeholder text. Whether a slot can be visited is therefore a
+    /// question about state, not a constant.
+    /// </para>
+    /// </summary>
     public IReadOnlyList<IslandSlot> EnabledSlots()
     {
-        var list = new List<IslandSlot> { IslandSlot.Idle, IslandSlot.Notification };
-        if (_weatherEnabled)
-            list.Add(IslandSlot.Weather);
-        list.Add(IslandSlot.Media);
+        var list = new List<IslandSlot> { IslandSlot.Idle };
+        if (_hasLastNotify) list.Add(IslandSlot.Notification);
+        if (_weatherEnabled) list.Add(IslandSlot.Weather);
+        if (_mediaActive) list.Add(IslandSlot.Media);
         return list;
     }
 
@@ -350,10 +676,18 @@ public sealed class OverlayMachine
     {
         if (_kind is OverlayKind.Idle or OverlayKind.Collapsed)
         {
-            if (_weatherEnabled)
-                ApplySlot(IslandSlot.Weather);
-            else
-                ApplySlot(IslandSlot.Notification);
+            // The first slot that actually has something to show. With the placeholders gone
+            // there is no guaranteed one: with weather off and no notification yet, expanding has
+            // nothing to expand to, and inventing content is worse than a click that changes
+            // nothing.
+            foreach (var slot in EnabledSlots())
+            {
+                if (slot != IslandSlot.Idle)
+                {
+                    ApplySlot(slot);
+                    return;
+                }
+            }
             return;
         }
         // Already expanded widget — keep kind, refresh weather text if needed.
@@ -371,9 +705,12 @@ public sealed class OverlayMachine
                 Apply(new OverlayPayload());
                 break;
             case IslandSlot.Notification:
-                // Demo seed without bumping unread (swipe cycle ≠ Notify).
+                // The last real notification, kept by OverlayCommand.Notify. Not bumping unread
+                // is deliberate and unchanged: the user is stepping back through what already
+                // arrived, and a slot they chose by hand is not a new event. _notifyMs stays 0
+                // so it does not run out while they are reading it — same rule as Media.
                 _kind = OverlayKind.Notification;
-                Apply(new OverlayPayload { Title = "Сообщение", Body = "Демо уведомление" });
+                Apply(Clone(_lastNotify));
                 _notifyMs = 0;
                 break;
             case IslandSlot.Weather:
@@ -382,14 +719,9 @@ public sealed class OverlayMachine
                 _notifyMs = 0;
                 break;
             case IslandSlot.Media:
+                // The live SMTC session, not a song that never existed.
                 _kind = OverlayKind.Media;
-                Apply(new OverlayPayload
-                {
-                    Title = "Night Drive",
-                    Subtitle = "Local Radio",
-                    Progress = 0.33,
-                    Playing = true
-                });
+                Apply(Clone(_media));
                 _notifyMs = 0;
                 break;
         }
@@ -412,6 +744,43 @@ public sealed class OverlayMachine
         _payload.ClipboardCyclePreview = _cyclePreviews[_cycleIndex];
         _payload.Title = _cyclePreviews[_cycleIndex];
         _payload.Subtitle = $"{_cycleIndex + 1}/{n}";
+    }
+
+    /// <summary>Dismiss the attached clipboard half without touching the island kind.</summary>
+    public OverlaySnapshot DismissSplitClipboard()
+    {
+        ClearSplit();
+        return Snapshot();
+    }
+
+    /// <summary>
+    /// Copy only the clipboard fields onto the half's own payload. The island's own payload
+    /// (title/weather/notification text) is deliberately left untouched — that is the whole
+    /// point of the split.
+    /// </summary>
+    private void ApplySplit(OverlayPayload data)
+    {
+        _splitClipboard.Title = string.IsNullOrWhiteSpace(data.Title) ? "Буфер обмена" : data.Title;
+        _splitClipboard.Subtitle = data.Subtitle;
+        _splitClipboard.Body = data.Body;
+        _splitClipboard.ClipboardItemKind = data.ClipboardItemKind;
+        _splitClipboard.ClipboardPaths = data.ClipboardPaths;
+        _splitClipboard.ClipboardCapturedAt = data.ClipboardCapturedAt;
+    }
+
+    private void ClearSplit()
+    {
+        _isSplitClipboard = false;
+        _splitMs = 0;
+        // Never leave the hold latched: a cleared split that still freezes its next lifetime
+        // would make the ball immortal on the following copy.
+        SplitHold = false;
+        _splitClipboard.ClipboardItemKind = ClipboardItemKind.None;
+        _splitClipboard.ClipboardPaths = null;
+        _splitClipboard.ClipboardCapturedAt = DateTimeOffset.MinValue;
+        _splitClipboard.Title = "";
+        _splitClipboard.Subtitle = "";
+        _splitClipboard.Body = "";
     }
 
     private void ApplyWeather(OverlayPayload data)
@@ -441,57 +810,39 @@ public sealed class OverlayMachine
         _lastWeather = Clone(weather);
     }
 
-    private void RunDemoStep()
+    private void Apply(OverlayPayload data) => CopyInto(_payload, data);
+
+    /// <summary>
+    /// Copy a payload's fields into an arbitrary target. Used both for the capsule's own
+    /// payload (<see cref="Apply"/>) and for the 1.13 status rows (media / timer / progress),
+    /// which are the same record stored somewhere else — one copy routine, so a new payload
+    /// field cannot be added to one and forgotten in the other.
+    /// </summary>
+    private static void CopyInto(OverlayPayload target, OverlayPayload data)
     {
-        // Alternate expand ↔ collapse so width morph is obvious in demo.
-        var steps = new OverlayCommand[]
-        {
-            OverlayCommand.Notify, OverlayCommand.Collapse,
-            OverlayCommand.SetWeather, OverlayCommand.Collapse,
-            OverlayCommand.SetMedia, OverlayCommand.Collapse,
-            OverlayCommand.SetProgress, OverlayCommand.Collapse,
-            OverlayCommand.SetBattery, OverlayCommand.Collapse,
-            OverlayCommand.SetTimer, OverlayCommand.Collapse,
-            OverlayCommand.SetError, OverlayCommand.Collapse
-        };
-        var cmd = steps[_demoIndex % steps.Length];
-        _demoIndex++;
-        var sample = cmd switch
-        {
-            OverlayCommand.SetWeather => Clone(_lastWeather),
-            OverlayCommand.Notify => new OverlayPayload { Title = "Сообщение", Body = "Демо уведомление" },
-            OverlayCommand.SetProgress => new OverlayPayload { Title = "Копирование", Progress = 0.42 },
-            OverlayCommand.SetMedia => new OverlayPayload { Title = "Night Drive", Subtitle = "Local Radio", Progress = 0.33, Playing = true },
-            OverlayCommand.SetBattery => BatteryAlertLogic.ChargePayload(67),
-            OverlayCommand.SetTimer => new OverlayPayload { Title = "Фокус", RemainingSeconds = 90, Playing = true },
-            OverlayCommand.SetError => new OverlayPayload { Title = "Сеть", Body = "Нет ответа сервера" },
-            _ => new OverlayPayload()
-        };
-        Dispatch(cmd, sample);
+        target.Title = data.Title;
+        target.Subtitle = data.Subtitle;
+        target.Body = data.Body;
+        target.Progress = data.Progress;
+        target.Playing = data.Playing;
+        target.RemainingSeconds = data.RemainingSeconds;
+        target.CountUp = data.CountUp;
+        target.TemperatureC = data.TemperatureC;
+        target.WeatherCode = data.WeatherCode;
+        target.PrecipProb = data.PrecipProb;
+        target.ArtworkBytes = data.ArtworkBytes;
+        target.ClipboardItemKind = data.ClipboardItemKind;
+        target.ClipboardPaths = data.ClipboardPaths;
+        target.ClipboardCapturedAt = data.ClipboardCapturedAt;
+        target.ClipboardCycleIndex = data.ClipboardCycleIndex;
+        target.ClipboardCycleCount = data.ClipboardCycleCount;
+        target.ClipboardCyclePreview = data.ClipboardCyclePreview;
+        target.ClipboardCyclePreviews = data.ClipboardCyclePreviews;
+        target.SystemStats = data.SystemStats;
     }
 
-    private void Apply(OverlayPayload data)
-    {
-        _payload.Title = data.Title;
-        _payload.Subtitle = data.Subtitle;
-        _payload.Body = data.Body;
-        _payload.Progress = data.Progress;
-        _payload.Playing = data.Playing;
-        _payload.RemainingSeconds = data.RemainingSeconds;
-        _payload.CountUp = data.CountUp;
-        _payload.TemperatureC = data.TemperatureC;
-        _payload.WeatherCode = data.WeatherCode;
-        _payload.PrecipProb = data.PrecipProb;
-        _payload.ArtworkBytes = data.ArtworkBytes;
-        _payload.ClipboardItemKind = data.ClipboardItemKind;
-        _payload.ClipboardPaths = data.ClipboardPaths;
-        _payload.ClipboardCapturedAt = data.ClipboardCapturedAt;
-        _payload.ClipboardCycleIndex = data.ClipboardCycleIndex;
-        _payload.ClipboardCycleCount = data.ClipboardCycleCount;
-        _payload.ClipboardCyclePreview = data.ClipboardCyclePreview;
-        _payload.ClipboardCyclePreviews = data.ClipboardCyclePreviews;
-        _payload.ClipboardCapturedAt = data.ClipboardCapturedAt;
-    }
+    /// <summary>Fill one of the 1.13 status-row payloads (media / timer / progress).</summary>
+    private static void ApplyTo(ref OverlayPayload target, OverlayPayload data) => CopyInto(target, data);
 
     public static OverlayPayload Sanitize(OverlayPayload raw)
     {
@@ -565,28 +916,51 @@ public sealed class OverlayMachine
             ClipboardCycleIndex = raw.ClipboardCycleIndex,
             ClipboardCycleCount = raw.ClipboardCycleCount,
             ClipboardCyclePreview = raw.ClipboardCyclePreview,
-            ClipboardCyclePreviews = raw.ClipboardCyclePreviews
+            ClipboardCyclePreviews = raw.ClipboardCyclePreviews,
+            SystemStats = raw.SystemStats is { CpuPercent: var cpu } && double.IsFinite(cpu)
+                ? raw.SystemStats with { CpuPercent = Math.Round(Math.Clamp(cpu, 0, 100), 1) }
+                : null
         };
     }
 
+    // 2026-10-02 perf pass: the artwork array is shared by reference, not deep-copied. Nothing
+    // in the project ever writes into ArtworkBytes — the media source publishes a fresh array
+    // per thumbnail and everything else only assigns the whole reference — and WindowsMedia
+    // SessionSource already shared it between two payloads. Clone is the body of every row
+    // accessor, and MediaRow is read five times a second from Paint, so each of those copies
+    // was a memcpy of 100-500 KB (straight onto the large object heap above 85 KB) to
+    // reproduce an array nobody could change anyway. A defensive copy of the SCALAR fields is
+    // still made: OverlayPayload is a mutable class, and that is what actually protects the
+    // machine's state from a consumer.
     private static OverlayPayload Clone(OverlayPayload p) => new()
     {
         Title = p.Title, Subtitle = p.Subtitle, Body = p.Body,
         Progress = p.Progress, Playing = p.Playing, RemainingSeconds = p.RemainingSeconds,
         CountUp = p.CountUp,
         TemperatureC = p.TemperatureC, WeatherCode = p.WeatherCode, PrecipProb = p.PrecipProb,
-        ArtworkBytes = p.ArtworkBytes is null ? null : (byte[])p.ArtworkBytes.Clone(),
+        ArtworkBytes = p.ArtworkBytes,
         ClipboardItemKind = p.ClipboardItemKind,
         ClipboardPaths = p.ClipboardPaths,
         ClipboardCapturedAt = p.ClipboardCapturedAt,
         ClipboardCycleIndex = p.ClipboardCycleIndex,
         ClipboardCycleCount = p.ClipboardCycleCount,
         ClipboardCyclePreview = p.ClipboardCyclePreview,
-        ClipboardCyclePreviews = p.ClipboardCyclePreviews
+        ClipboardCyclePreviews = p.ClipboardCyclePreviews,
+        SystemStats = p.SystemStats
     };
 
-    public static double WidthFor(OverlayKind kind, bool weatherEnabled = false, bool batteryChip = false, int cycleCount = 0)
+    /// <summary>
+    /// Long-axis (morph) width for a kind. <paramref name="splitClipboard"/> adds the 1.12.2
+    /// clipboard half to the long axis; SystemStats keeps its fixed block width and is exempt,
+    /// exactly as it is exempt from the CollapsedH height rule.
+    /// </summary>
+    public static double WidthFor(OverlayKind kind, bool weatherEnabled = false,
+                                  bool batteryChip = false, int statsMetricCount = 0,
+                                  bool splitClipboard = false,
+                                  double collapsedScale = IslandWidth.DefaultScale)
     {
+        if (kind == OverlayKind.SystemStats)
+            return OverlayTokens.StatsExpandedW;
         var w = kind switch
         {
             OverlayKind.Expanded => 340,
@@ -604,16 +978,28 @@ public sealed class OverlayMachine
         };
         if (kind is OverlayKind.Idle or OverlayKind.Collapsed)
         {
+            // 1.14: the user's width customisation applies to the COLLAPSED island only. The
+            // battery chip's extra is added BEFORE scaling, so the chip scales together with the
+            // capsule instead of staying a fixed stub hanging off an otherwise wider one.
             if (batteryChip)
                 w += OverlayTokens.CollapsedBatteryExtraW;
-            // Clipboard cycle preview replaces the clock — pill needs to fit preview + nav hint.
-            if (cycleCount > 1)
-                w = Math.Max(w, 280);
-            return w;
+            w *= IslandWidth.ClampScale(collapsedScale);
+            // The split half is orthogonal to the kind: it rides on the long axis of whatever
+            // is currently shown, and is not clamped into the ExpandedMinW/MaxW range — a
+            // split Notification is 380 + ClipboardHalfW, not squeezed back to 460.
+            return splitClipboard ? ClipboardSplit.SplitLongAxisFor(w) : w;
         }
-        return Math.Clamp(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
+        w = Math.Clamp(w, OverlayTokens.ExpandedMinW, OverlayTokens.ExpandedMaxW);
+        return splitClipboard ? ClipboardSplit.SplitLongAxisFor(w) : w;
     }
 
-    /// <summary>Fixed height for every kind — island only morphs horizontally.</summary>
-    public static double HeightFor(OverlayKind kind) => OverlayTokens.CollapsedH;
+    /// <summary>
+    /// Fixed height for every kind — island only morphs horizontally. SystemStats is the 1.12.1
+    /// exception: its height follows the resolved row count (<paramref name="statsRowCount"/>,
+    /// 0 or less = the default 5-row Full panel, i.e. OverlayTokens.StatsExpandedH).
+    /// </summary>
+    public static double HeightFor(OverlayKind kind, int statsRowCount = 0, bool statsMarquee = false) =>
+        kind == OverlayKind.SystemStats
+            ? StatsLayout.StatsHeightFor(statsRowCount, statsMarquee)
+            : OverlayTokens.CollapsedH;
 }

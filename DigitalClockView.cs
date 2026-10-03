@@ -17,6 +17,18 @@ public static class DigitalClockView
     private static bool _loggedBase;
 
     /// <summary>
+    /// 2026-10-02 perf pass: the XML was cached but the parsed <see cref="SvgSource"/> was not,
+    /// so every changed digit re-ran the SVG parser and the currentColor substitution — three
+    /// times a second, forever, for artwork that changes only when the theme does. Keyed by glyph
+    /// AND colour because the colour is baked into the markup. Bounded by construction: the
+    /// glyph set is digits and a colon, times the handful of colours the user can pick.
+    /// </summary>
+    private static readonly Dictionary<string, SvgSource> ParsedCache = new(StringComparer.Ordinal);
+
+    /// <summary>Directory the glyph SVGs were found in, so each glyph stops probing nine paths.</summary>
+    private static string? _assetDir;
+
+    /// <summary>
     /// Sync <paramref name="host"/> children to <paramref name="formatted"/> time.
     /// Returns false when no glyphs could be loaded (caller should fall back to text).
     /// </summary>
@@ -98,21 +110,26 @@ public static class DigitalClockView
 
             var xml = LoadSvgXml(key, path);
             if (xml is null) return null;
-            xml = xml.Replace("currentColor", hex, StringComparison.OrdinalIgnoreCase);
 
-            SvgSource? loaded = null;
-            try { loaded = SvgSource.LoadFromSvg(xml); }
-            catch (Exception ex) { AppLog.Warn($"DigitalClock LoadFromSvg({key})", ex); }
+            var parsedKey = key + "|" + hex;
+            if (!ParsedCache.TryGetValue(parsedKey, out var loaded))
+            {
+                xml = xml.Replace("currentColor", hex, StringComparison.OrdinalIgnoreCase);
+                try { loaded = SvgSource.LoadFromSvg(xml); }
+                catch (Exception ex) { AppLog.Warn($"DigitalClock LoadFromSvg({key})", ex); }
 
-            if (loaded is null)
-            {
-                try { loaded = SvgSource.Load(path); }
-                catch (Exception ex) { AppLog.Warn($"DigitalClock Load({key})", ex); }
-            }
-            if (loaded is null)
-            {
-                AppLog.Warn($"DigitalClock: SvgSource null for {key}");
-                return null;
+                if (loaded is null)
+                {
+                    try { loaded = SvgSource.Load(path); }
+                    catch (Exception ex) { AppLog.Warn($"DigitalClock Load({key})", ex); }
+                }
+
+                if (loaded is null)
+                {
+                    AppLog.Warn($"DigitalClock: SvgSource null for {key}");
+                    return null;
+                }
+                ParsedCache[parsedKey] = loaded;
             }
 
             var factor = DigitalClockGlyphs.WidthFactor(c);
@@ -125,7 +142,7 @@ public static class DigitalClockView
                 Height = h,
                 Stretch = Stretch.Uniform,
                 IsHitTestVisible = false,
-                Tag = key + "|" + hex,
+                Tag = parsedKey,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             };
         }
@@ -155,6 +172,12 @@ public static class DigitalClockView
 
     private static string? ResolvePath(string file)
     {
+        // The assets never move while the process runs, so the directory that worked once is
+        // reused. Probing nine candidate paths for every glyph, every time one was rebuilt, was
+        // pure repeated directory probing.
+        if (_assetDir is not null)
+            return Path.Combine(_assetDir, file);
+
         var candidates = new List<string>
         {
             Path.Combine(AppContext.BaseDirectory, "Assets", "Icons", DigitalClockGlyphs.PackFolder, file),
@@ -168,7 +191,11 @@ public static class DigitalClockView
         catch { /* ignore */ }
 
         foreach (var c in candidates)
-            if (File.Exists(c)) return c;
+        {
+            if (!File.Exists(c)) continue;
+            _assetDir = Path.GetDirectoryName(c);
+            return c;
+        }
         return null;
     }
 

@@ -12,18 +12,32 @@
         TransparencyBackgroundFallback="#080808"
         Background="Transparent"
         WindowStartupLocation="Manual">
-  <Border x:Name="Pill"
+  <!-- 1.14: буфер — секция самой капсулы (spec: docs/superpowers/specs, 2026-09-30,
+       notifyisland-clipboard-section).
+       Шарик на верёвке, его drag-диск и бейдж счёта удалены: окно теперь ровно того размера,
+       что оно показывает — капсула по длинной оси, капсула+ящик по короткой, — поэтому
+       запаса под перетаскивание больше нет и прозрачное окно не может уехать за край.
+       Root не хит-тестится, и обратно в игру opt-in'ятся только капсула, секция буфера и
+       ящик истории. Порядок детей — это порядок отрисовки. -->
+  <Grid x:Name="Root"
+        IsHitTestVisible="False">
+    <Border x:Name="Pill"
           Width="170" Height="30"
           CornerRadius="15"
           Background="#080808"
-          BorderBrush="#28FFFFFF"
+          BorderBrush="#16FFFFFF"
           BorderThickness="1"
-          HorizontalAlignment="Center"
+          HorizontalAlignment="Left"
           VerticalAlignment="Center"
           ClipToBounds="False"
           RenderTransformOrigin="50%,50%">
-    <Grid>
+    <!-- Island content. The capsule is the island again: 1.12.3 moved the clipboard out of
+         the pill into the ball, so this container spans the capsule and nothing else, and the
+         ⅓/⅓/⅓ cycle zones and the seconds strip are measured against the capsule's own
+         length without any slack compensation. -->
+    <Grid x:Name="CollapsedArea">
       <!-- Collapsed: visible ‹/› chevrons + clock/date/weather + unread dot.
+           System-stats metrics live in SystemStatsPanel (expanded view only, 1.12.1).
            When clipboard cycle is active (≥2 items), clock is hidden and the
            preview + nav hint take its place; chevrons appear as clickable
            cycle-prev / cycle-next buttons on the edges. -->
@@ -31,7 +45,8 @@
                   Orientation="Horizontal"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
-                  Spacing="6">
+                  Spacing="6"
+                  Margin="20,0,20,0">
         <Button x:Name="CyclePrevButton"
                 Classes="cycleChevron"
                 VerticalAlignment="Center"
@@ -48,9 +63,10 @@
         <TextBlock x:Name="ClockText"
                    VerticalAlignment="Center"
                    FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                   FontSize="12"
+                   FontSize="13"
                    FontWeight="SemiBold"
                    Foreground="#FFFFFF"
+                   FontFeatures="tnum"
                    Text="00:00" />
         <TextBlock x:Name="CyclePreviewText"
                    VerticalAlignment="Center"
@@ -93,9 +109,11 @@
         <TextBlock x:Name="DateText"
                    VerticalAlignment="Center"
                    FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                   FontSize="11"
+                   FontSize="10"
                    FontWeight="Medium"
                    Foreground="#C8C8CC"
+                   TextTrimming="CharacterEllipsis"
+                   MaxWidth="120"
                    Text="24 сен" />
         <StackPanel x:Name="MinimalWeather"
                     Orientation="Horizontal"
@@ -128,19 +146,106 @@
                      Foreground="#C8C8CC"
                      Text="100%" />
         </StackPanel>
+        <!-- 1.15: unread dot stays a quiet 6 DIP square in the accent colour. The permanent
+             outer glow is gone — a steady halo around a 6 DIP dot read as an alert lamp and
+             fought the calm of the capsule. Attention comes from the existing pulse (opacity
+             0.40↔1.0), not from a constant light source. -->
         <Border x:Name="UnreadDot"
-                Width="7" Height="7"
-                CornerRadius="3.5"
-                Background="#5CB6FF"
+                Width="6" Height="6"
+                CornerRadius="2"
+                Background="#3D9CF0"
                 VerticalAlignment="Center"
                 Opacity="0"
-                IsHitTestVisible="False"
-                BoxShadow="0 0 12 4 #E05CB6FF" />
+                IsHitTestVisible="False" />
+        <Border x:Name="PinnedBadge"
+                IsVisible="False"
+                CornerRadius="4"
+                Background="#28FFFFFF"
+                Padding="4,1"
+                VerticalAlignment="Center">
+          <TextBlock Text="закреп"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="9"
+                     FontWeight="SemiBold"
+                     Foreground="#C8C8CC" />
+        </Border>
+
+        <!-- Keyboard-layout badge. Shown only for a moment after the user switches layout
+             while typing; WindowsKeyboardLayoutSource decides WHEN, and it never fires on the
+             first reading (that one is priming) or on a language-bar hover with no typing.
+
+             The left cell is the two-letter country code, NOT an emoji flag. Measured on this
+             Avalonia build: a plain emoji draws in full colour, but a pair of regional indicator
+             symbols does not get shaped into a flag and falls back to the letters "US" / "RU" —
+             so the code is drawn deliberately rather than as a surprise. OverlayTokens and the
+             icon pack are the places to revisit if real flag artwork ever lands. -->
+        <Border x:Name="KeyboardLayoutBadge"
+                IsVisible="False"
+                CornerRadius="4"
+                Background="#28FFFFFF"
+                Padding="5,1"
+                VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <TextBlock x:Name="KeyboardLayoutFlag"
+                       FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                       FontSize="9"
+                       FontWeight="SemiBold"
+                       Foreground="#7FD4C1"
+                       VerticalAlignment="Center" />
+            <TextBlock x:Name="KeyboardLayoutName"
+                       FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                       FontSize="9"
+                       Foreground="#C8C8CC"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+        </Border>
+        <!-- Recording indicator (1.15): a microphone glyph with a level bar, and/or a screen
+             dot, shown only while something is actually capturing.
+
+             WindowsRecordingSource decides WHETHER, RecordingGate decides WHEN (it has to see
+             two consecutive active polls before it announces, so a single spike cannot light
+             the lamp). The bar width is bound to the smoothed level, not to the raw peak, which
+             is what stops it strobing between words.
+
+             The bar is a plain Rectangle inside a clipped host rather than a ProgressBar: the
+             project uses no Avalonia.Animation for the capsule, and a ProgressBar's own
+             animations would keep a compositor running behind a lamp that is only 3 DIP tall. -->
+        <Border x:Name="RecordingBadge"
+                IsVisible="False"
+                CornerRadius="4"
+                Background="#28FFFFFF"
+                Padding="5,1"
+                VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Viewbox x:Name="RecordingMicGlyph" Width="9" Height="9" VerticalAlignment="Center" />
+            <Border x:Name="RecordingLevelHost"
+                    Width="14" Height="3"
+                    CornerRadius="1.5"
+                    Background="#28FFFFFF"
+                    ClipToBounds="True"
+                    VerticalAlignment="Center">
+              <Rectangle x:Name="RecordingLevelBar"
+                         Width="14" Height="3"
+                         Fill="#E8A0A0"
+                         HorizontalAlignment="Left" />
+            </Border>
+            <Ellipse x:Name="RecordingScreenDot"
+                     Width="5" Height="5"
+                     Fill="#E8A0A0"
+                     VerticalAlignment="Center"
+                     IsVisible="False" />
+          </StackPanel>
+        </Border>
       </StackPanel>
 
-      <!-- Expanded single-row: icon | title/subtitle | badge -->
+      <!-- Expanded single-row: icon | title/subtitle | badge | (system-stats expanded when SystemStats kind)
+
+           1.15: the Margin below is the HORIZONTAL island's value only. On a vertical island the
+           cross axis is 88 DIP, and 22 + 22 left the message a negative column — it was drawn at
+           zero width and the island simply never said anything. ApplyOrientationLayout overwrites
+           it per orientation from RowInsets; do not treat this number as the real inset. -->
       <DockPanel x:Name="OverlayPanel"
-                 Margin="10,0,10,0"
+                 Margin="22,0,22,0"
                  IsVisible="False"
                  VerticalAlignment="Center">
         <Border x:Name="AppIcon"
@@ -161,6 +266,35 @@
           </Grid>
         </Border>
 
+        <!-- 1.15 notification bell badge: a small circle with a bell that breathes while a
+             notification is on the capsule.
+
+             It sits BETWEEN the app icon and the text, not before the icon: the icon says which
+             app sent this, the bell says "this wants you now", and reading left to right the
+             cause comes before the alarm. The ring is a separate Ellipse rather than a border on
+             the badge itself, because a border grows inward and would eat the bell at this size —
+             the ring has to be able to shrink without touching anything.
+
+             The ring's scale is written from NotificationMarquee.BellRingScale on the shared
+             33 ms frame, and reduced motion turns the whole thing off (IsVisible=false) rather
+             than freezing a half-drawn ring. -->
+        <Grid x:Name="NotifyBellBadge"
+              DockPanel.Dock="Left"
+              Width="16" Height="16"
+              Margin="0,0,6,0"
+              VerticalAlignment="Center"
+              IsVisible="False"
+              IsHitTestVisible="False">
+          <Ellipse x:Name="NotifyBellRing"
+                   Width="16" Height="16"
+                   Stroke="#3D9CF0"
+                   StrokeThickness="1.25"
+                   Opacity="0.55"
+                   RenderTransformOrigin="50%,50%" />
+          <Viewbox x:Name="NotifyBellGlyph" Width="9" Height="9"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Grid>
+
         <Border x:Name="UnreadBadge"
                 DockPanel.Dock="Right"
                 MinWidth="18" Height="18"
@@ -180,116 +314,267 @@
                      Text="1" />
         </Border>
 
-        <StackPanel x:Name="MediaControls"
-                    DockPanel.Dock="Right"
-                    Orientation="Horizontal"
-                    Spacing="2"
-                    Margin="6,0,0,0"
-                    VerticalAlignment="Center"
-                    IsVisible="False">
-          <Button x:Name="MediaPrev"
-                  Padding="4,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Click="OnMediaPrev"
-                  ToolTip.Tip="Предыдущий"
-                  AutomationProperties.Name="Предыдущий трек">
-            <TextBlock x:Name="MediaPrevGlyph" Text="⏮" FontSize="11" Foreground="#3D9CF0" VerticalAlignment="Center"/>
-          </Button>
-          <Button x:Name="MediaPlay"
-                  Padding="4,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Click="OnMediaPlay"
-                  ToolTip.Tip="Воспроизведение"
-                  AutomationProperties.Name="Воспроизведение">
-            <TextBlock x:Name="MediaPlayGlyph"
-                       Text="▶"
+        <!-- 1.13: the media and timer control clusters were removed from the capsule. Both
+             live in their own monitor rows (StatsRowView draws ⏮ ▶ ⏭ and ⏸ +1 ✕ next to
+             Плеер / Таймер), because a control cluster on the capsule is what made those two
+             take the capsule over in the first place.
+
+             Stage 8. This row used to be a single TextBlock that pasted the title and the body
+             together as "title · body" in one weight and one ink, so a notification had no
+             hierarchy at all — the second half of the text was as loud as the first. It is now
+             two texts in ONE line: the title keeps the primary ink and weight, the body drops to
+             the secondary ink at a smaller size. One line, because the island morphs on the long
+             axis only and every kind is 30 DIP tall (OverlayMachine.HeightFor) — a stacked
+             three-line layout would need a height change the machine does not have, and the
+             notification must not become a second card on top of the capsule.
+
+             The two widths are written from code (NotificationLayout) instead of being left to
+             the layout: a horizontal StackPanel measures its children with infinite width, so
+             TextTrimming never engages and a long title would push the badge out of the pill.
+             MaxWidth is what makes the ellipsis real here. -->
+        <Grid x:Name="OverlayTextRow" ColumnDefinitions="*,Auto" ClipToBounds="True">
+          <Grid x:Name="OverlayTextColumn"
+                ColumnDefinitions="Auto,*"
+                VerticalAlignment="Center"
+                ClipToBounds="True">
+            <TextBlock x:Name="OverlayTitle"
+                       Grid.Column="0"
+                       VerticalAlignment="Center"
+                       FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Foreground="#FFFFFF"
+                       TextTrimming="CharacterEllipsis"
+                       RenderTransformOrigin="0%,50%"
+                       Text="Обзор" />
+            <!-- The body is the part of a notification that gets cut, so it is the part that
+                 scrolls. Two states, one control: CharacterEllipsis is the resting look and
+                 Nothing is the scrolling one, swapped from code (SyncBodyMarquee) — the ellipsis
+                 cannot simply be left on, because a trimmed text block reports the TRIMMED width,
+                 and the marquee would then scroll a string that is not the one on screen.
+
+                 The shift transform is wired from code (see _bodyMarqueeShift). RenderTransform-
+                 Origin is pinned to the LEFT edge, the same as the monitor caption: the column
+                 must move, not scale. -->
+            <TextBlock x:Name="OverlaySubtitle"
+                       Grid.Column="1"
+                       VerticalAlignment="Center"
+                       Margin="6,0,0,0"
+                       FontFamily="Segoe UI Variable, Inter, Segoe UI"
                        FontSize="11"
-                       Foreground="#3D9CF0"
-                       VerticalAlignment="Center" />
-          </Button>
-          <Button x:Name="MediaNext"
-                  Padding="4,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Click="OnMediaNext"
-                  ToolTip.Tip="Следующий"
-                  AutomationProperties.Name="Следующий трек">
-            <TextBlock x:Name="MediaNextGlyph" Text="⏭" FontSize="11" Foreground="#3D9CF0" VerticalAlignment="Center"/>
-          </Button>
-        </StackPanel>
+                       Foreground="#C8C8CC"
+                       TextTrimming="CharacterEllipsis"
+                       RenderTransformOrigin="0%,50%"
+                       IsVisible="False"
+                       Text="">
+              <TextBlock.RenderTransform>
+                <TranslateTransform />
+              </TextBlock.RenderTransform>
+            </TextBlock>
+          </Grid>
 
-        <StackPanel x:Name="TimerControls"
-                    DockPanel.Dock="Right"
-                    Orientation="Horizontal"
-                    Spacing="2"
-                    Margin="6,0,0,0"
-                    VerticalAlignment="Center"
-                    IsVisible="False">
-          <Button x:Name="TimerPauseBtn"
-                  Padding="4,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Click="OnTimerPauseResume"
-                  ToolTip.Tip="Пауза / продолжить"
-                  AutomationProperties.Name="Пауза таймера">
-            <TextBlock x:Name="TimerPauseGlyph" Text="||" FontSize="11" Foreground="#3D9CF0" VerticalAlignment="Center"/>
-          </Button>
-          <Button x:Name="TimerPlusBtn"
-                  Padding="4,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Click="OnTimerPlusOne"
-                  ToolTip.Tip="+1 мин"
-                  AutomationProperties.Name="Добавить минуту">
-            <TextBlock x:Name="TimerPlusGlyph" Text="+1" FontSize="10" FontWeight="SemiBold" Foreground="#3D9CF0" VerticalAlignment="Center"/>
-          </Button>
-          <Button x:Name="TimerCancelBtn"
-                  Padding="4,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Click="OnTimerCancel"
-                  ToolTip.Tip="Отмена"
-                  AutomationProperties.Name="Отменить таймер">
-            <TextBlock x:Name="TimerCancelGlyph" Text="✕" FontSize="11" Foreground="#E8A0A0" VerticalAlignment="Center"/>
-          </Button>
-        </StackPanel>
-
-        <TextBlock x:Name="OverlayTitle"
-                   VerticalAlignment="Center"
-                   FontFamily="Segoe UI Variable, Inter, Segoe UI"
-                   FontSize="12"
-                   FontWeight="SemiBold"
-                   Foreground="#FFFFFF"
-                   TextTrimming="CharacterEllipsis"
-                   Text="Обзор" />
-        <TextBlock x:Name="OverlaySubtitle"
-                   IsVisible="False"
-                   Height="0"
-                   FontSize="1"
-                   Text="" />
+          <!-- Stage 8: the one action that already exists in the machine (OverlayCommand.Clear).
+               It sits on the trailing edge INSIDE the pill, so revealing it cannot reflow the
+               text — the spec asks for actions that appear without shoving the message sideways,
+               and a second line is not available at 30 DIP. Compact, flat, no bright outline;
+               the label carries the theme's error colour because clearing is destructive. -->
+          <Border x:Name="NotifActionClear"
+                  Grid.Column="1"
+                  Margin="8,0,0,0"
+                  MinWidth="18" Height="18"
+                  CornerRadius="5"
+                  Background="#1AFFFFFF"
+                  Padding="5,0"
+                  VerticalAlignment="Center"
+                  IsVisible="False"
+                  IsHitTestVisible="False">
+            <TextBlock x:Name="NotifActionClearText"
+                       FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                       FontSize="9.5"
+                       FontWeight="SemiBold"
+                       Foreground="#E8A0A0"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Text="Очистить" />
+          </Border>
+        </Grid>
       </DockPanel>
 
-      <!-- FontAudio digital-dot seconds strip (Idle/Collapsed); complementary to HH:mm[:ss] -->
+      <!-- System Stats expanded view (1.12.1): own slot in the root Grid so the
+           stats block is never clipped by the single-row overlay layout.
+           Rows are built at runtime from the settings list (any subset, any order) —
+           see StatsRowView and SyncStatsRows. Spacing/Margin are the numbers
+           StatsLayout.StatsHeightFor was derived from; do not change them. -->
+      <!-- 1.13.1: the stats block and the running caption now STACK instead of overlapping.
+           They used to be siblings anchored independently (panel = Center, caption = Bottom) in
+           the same CollapsedArea grid, so the panel centred itself without knowing a caption
+           existed and the caption drew straight through the last metric row. The screenshot
+           showed the result: «Ночью — Honey Trap» printed on top of «Память 21,8 / 34 ГБ».
+
+           StatsHeightFor already budgets MarqueeTrack.LineH for the caption, so the height was
+           right and only the arrangement was wrong. One vertical stack, centred as a unit, makes
+           the budget and the layout agree. -->
+      <StackPanel x:Name="StatsStack"
+                  HorizontalAlignment="Stretch"
+                  VerticalAlignment="Center">
+        <StackPanel x:Name="SystemStatsPanel"
+                    Spacing="4"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Center"
+                    IsVisible="False"
+                    Margin="22,6,22,6" />
+
+        <!-- 1.13 running caption: the name of whatever the capsule is currently talking about
+             (clipboard item, track, timer), in small type, scrolling only if it does not fit.
+
+             It replaces the clipboard preview that used to live in the clock row: that one was
+             drawn in the collapsed row and the stats panel then grew straight through it, which
+             is why it read as a clipped smear on the last line. Here it has its own slot with
+             its own budget (MarqueeTrack.LineH) and a ClipToBounds host, so overflow scrolls
+             instead of being cut.
+
+             Shown ONLY inside the monitor (see ApplyMarquee): a 30 DIP Idle capsule has no room
+             for a 14 DIP line, and letting it show there drew it across the clock.
+             RenderTransformOrigin is pinned to the LEFT edge: a marquee must move the text, not
+             scale the box. -->
+        <Border x:Name="MarqueeHost"
+                Height="14"
+                IsVisible="False"
+                IsHitTestVisible="False"
+                ClipToBounds="True"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Bottom"
+                Margin="22,0,22,10">
+          <TextBlock x:Name="MarqueeText"
+                     FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                     FontSize="10"
+                     FontWeight="Medium"
+                     Foreground="#8A8A92"
+                     VerticalAlignment="Center"
+                     RenderTransformOrigin="0%,50%"
+                     TextTrimming="None">
+            <TextBlock.RenderTransform>
+              <!-- No x:Name here: the shift transform is wired from code (see _marqueeShift field).
+                   The Avalonia 11.3 source generator does not register fields for x:Name on
+                   transform children of a RenderTransform property. -->
+              <TranslateTransform />
+            </TextBlock.RenderTransform>
+          </TextBlock>
+        </Border>
+      </StackPanel>
+
+      <!-- FontAudio digital-dot seconds strip (Idle/Collapsed); complementary to HH:mm[:ss].
+
+           1.13: the bottom 8 DIP of the capsule are a SHARED band. ProgressBar (below) and
+           SecondsStrip both anchor to VerticalAlignment=Bottom, and only one of them may be
+           visible: seconds digits and a moving progress bar are two different readings of the
+           same strip, and drawing both reads as a glitch. CapsuleProgressBand decides which
+           one gets it. The band is why CollapsedH stays 30 DIP — the progress bar did not
+           need a taller capsule, it needed the strip the seconds were already using. -->
       <StackPanel x:Name="SecondsStrip"
                   Orientation="Horizontal"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Bottom"
-                  Margin="10,0,10,2"
+                  Margin="22,0,22,2"
                   Spacing="1.5"
                   Height="8"
                   IsVisible="False"
                   IsHitTestVisible="False" />
 
+      <!-- 1.13 capsule progress band: 2 DIP bar in the strip the seconds just yielded.
+           Value/visibility come from CapsuleProgressBand (owner = clipboard > media > timer).
+           Accent is set per owner in Paint so the bar reads as belonging to its source.
+           1.17: a faint track under the fill, so the band reads as one continuous strip
+           with an empty remainder rather than as a bright line floating over the capsule.
+           Still exactly 2 DIP (CapsuleProgressBand.BarH) and still inside the capsule —
+           the band is a secondary explanation of a number, never the number itself. -->
       <ProgressBar x:Name="OverlayProgress"
                    Height="2"
                    Minimum="0" Maximum="100"
                    Foreground="#3D9CF0"
-                   Background="Transparent"
+                   Background="#0DFFFFFF"
                    VerticalAlignment="Bottom"
-                   Margin="12,0,12,2"
+                   Margin="22,0,22,2"
                    IsVisible="False" />
+
+      <!-- 1.14: секция буфера — правая часть САМОЙ капсулы. При копировании капсула
+           разъезжается на ClipboardSectionW по длинной оси, часы остаются у ведущего края,
+           а здесь появляется иконка формата и превью содержимого.
+           Живой элемент, а не только чернила: IsHitTestVisible=True и клик по нему открывает
+           ящик истории (OverlayWindow.HandleClipboardSectionClick). ClipToBounds — чтобы текст
+           обрезался скруглённой крышкой капсулы, а не вылезал за неё; ширина и отступы пишутся
+           из кода по ClipboardSection.CapsuleLongAt / OpacityAt. -->
+      <Border x:Name="ClipboardSection"
+              IsVisible="False"
+              IsHitTestVisible="True"
+              ClipToBounds="True"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Center"
+              Margin="0,0,15,0"
+              Opacity="0"
+              Background="Transparent"
+              Cursor="Hand"
+              ToolTip.Tip="История буфера">
+        <!-- 1.18: the seam. A 1 DIP hairline on the edge that meets the capsule, so the join
+             reads as one deliberately divided object instead of two shapes that happen to
+             touch. Its side is NOT fixed here: the section is anchored to the RIGHT when the
+             capsule is horizontal and to the BOTTOM when it is vertical, so ApplyClipboard
+             SectionMorph writes the alignment, the thickness and the inset for the current
+             orientation. The capsule's own leading content is never covered — the hairline
+             lives in the section, inset from the join. -->
+        <Grid>
+          <Border x:Name="ClipboardSectionSeam"
+                  Width="1"
+                  Background="#1FFFFFFF"
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Stretch"
+                  Margin="10,0,0,0"
+                  IsHitTestVisible="False" />
+          <StackPanel x:Name="ClipboardSectionContent"
+                      Orientation="Horizontal"
+                      Spacing="6"
+                      HorizontalAlignment="Left"
+                      VerticalAlignment="Center"
+                      Margin="14,0,0,0">
+            <Viewbox x:Name="ClipboardSectionIcon" Width="13" Height="13" VerticalAlignment="Center" />
+            <TextBlock x:Name="ClipboardSectionText"
+                       VerticalAlignment="Center"
+                       FontFamily="Segoe UI Variable, Inter, Segoe UI"
+                       FontSize="11"
+                       FontWeight="Medium"
+                       Foreground="#A1A1A6"
+                       TextTrimming="CharacterEllipsis"
+                       Text="буфер" />
+          </StackPanel>
+        </Grid>
+      </Border>
     </Grid>
   </Border>
+
+    <!-- 1.14: ящик истории буфера. Выезжает из кромки капсулы по короткой оси и остаётся к
+         ней примыкающим: та же длинная ось, ноль зазора, а углы на стыке становятся прямыми
+         (ClipboardDrawer.CapsuleRadiiFor / DrawerRadiiFor пишут их из кода). Он НЕ отдельное
+         окно и НЕ привязан верёвкой — это продолжение капсулы, поэтому одного окна хватает,
+         а «ящик» вместо «второй капсулы» читается именно по стыку.
+         IsHitTestVisible=False до клика по секции буфера: закрытый ящик не перехватывает
+         клики по рабочему столу. Отрисован последним, чтобы перекрыть капсулу, если стык
+         разъехался на кадр. -->
+    <Border x:Name="HistoryPanel"
+            Width="260"
+            CornerRadius="12"
+            Background="#080808"
+            BorderBrush="#16FFFFFF"
+            BorderThickness="1"
+            Padding="10,8"
+            IsVisible="False"
+            IsHitTestVisible="False"
+            ClipToBounds="False"
+            Opacity="0"
+            RenderTransformOrigin="50%,50%">
+      <StackPanel x:Name="HistoryRows"
+                  Spacing="0"
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Top" />
+    </Border>
+  </Grid>
 </Window>

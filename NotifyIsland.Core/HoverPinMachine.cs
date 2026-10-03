@@ -46,7 +46,9 @@ public sealed class HoverPinMachine
         HoverExpandEnabled = hoverEnabled;
         ClickPinEnabled = pinEnabled;
         HoverDelayMs = Math.Clamp(hoverDelayMs, 0, 2000);
-        CollapseGraceMs = Math.Clamp(collapseGraceMs, 0, 3000);
+        // 10 s ceiling: a value larger than that turns the panel into an auto-stay surface,
+        // which is what ClickPinEnabled is for. The grace is the brief safety net after leave.
+        CollapseGraceMs = Math.Clamp(collapseGraceMs, 0, 10000);
         if (!HoverExpandEnabled && Phase is HoverPinPhase.HoverPending or HoverPinPhase.HoverExpanded or HoverPinPhase.CollapsePending)
         {
             if (Phase != HoverPinPhase.Pinned)

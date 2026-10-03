@@ -130,4 +130,22 @@ public class HoverPinMachineTests
         m.Configure(hoverEnabled: true, pinEnabled: false, hoverDelayMs: 250, collapseGraceMs: 500);
         Assert.Equal(HoverPinPhase.Collapsed, m.Phase);
     }
+
+    [Fact]
+    public void DefaultGrace_FiveSeconds()
+    {
+        // The System Stats panel needs enough time for the eye to follow the cursor.
+        // 500 ms is too short; 5 s is the new default the user asked for.
+        var m = new HoverPinMachine();
+        Assert.Equal(5000, m.CollapseGraceMs);
+        Assert.Equal(5000, OverlayTokens.HoverCollapseGraceMs);
+    }
+
+    [Fact]
+    public void Configure_GraceClampsAtTenSeconds()
+    {
+        var m = new HoverPinMachine();
+        m.Configure(true, true, 250, 60_000);
+        Assert.Equal(10_000, m.CollapseGraceMs);
+    }
 }

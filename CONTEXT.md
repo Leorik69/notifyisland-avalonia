@@ -22,6 +22,8 @@
 | Battery / charging | `WindowsPowerSource.cs` + `NotifyIsland.Core/BatteryAlertLogic.cs` |
 | Timer / stopwatch | `NotifyIsland.Core/IslandTimerLogic.cs` + `OverlayMachine` SetTimer/Tick |
 | Clipboard history | `NotifyIsland.Core/ClipboardHistory.cs` + `WindowsClipboardSource.cs` |
+| **Split clipboard half (1.12.2)** | геометрия + hit-test: `NotifyIsland.Core/ClipboardSplit.cs` (граница половины, зоны ⅓/⅓/⅓, кадр translate/opacity/scale, breathe, разделитель) · иконка формата + правила превью: `NotifyIsland.Core/ClipboardHalfPreview.cs` · состояние на FSM: `NotifyIsland.Core/OverlayMachine.cs` — `OverlayCommand.SetClipboardSplit`, `OverlayMachine.IsSplitClipboard`, `OverlaySnapshot.{IsSplitClipboard,SplitMsLeft,SplitClipboard}`, `DismissSplitClipboard()`. Правда о числах — GUIDELINES §3 (правила 8–11), §2, §3b, §4b-1 |
+| System monitor | `NotifyIsland.Core/StatsLayout.cs` (строки, пресеты, `StatsHeightFor`) + `NotifyIsland.Core/StatsRowEditState.cs` (редактор строк) + `StatsRowView.axaml` (контрол строки) + `NotifyIsland.Core/{SystemSnapshot,StatsDebounce,SystemMonitorMachine}.cs` + `WindowsSystemMonitorSource.cs` |
 | Digital clock (FontAudio) | `DigitalClockGlyphs` + `DigitalClockView` + `Assets/Icons/FontAudio/` |
 | Seconds strip (digital-dot) | `SecondsStripLogic` + `SecondsStripView` |
 | Outline icons | `IslandIcons.cs`, `Assets/Icons/README.md` |
@@ -57,7 +59,7 @@ SettingsWindow.axaml(.cs)       # Settings sidebar (Lucide nav) + panels
 TrayService.cs / IslandSounds.cs
 IslandIcons.cs + Assets/tray*.png
 Assets/Icons/README.md + Assets/Sounds/**
-NotifyIsland.Core/              # OverlayMachine, OverlayTokens, WeatherCodes, ClipboardHistory
+NotifyIsland.Core/              # OverlayMachine, OverlayTokens, WeatherCodes, ClipboardHistory, ClipboardSplit, ClipboardHalfPreview
 NotifyIsland.Tests/             # unit tests FSM + Core
 docs/ISLAND_GUIDELINES.md       # правила островка
 CONTEXT.md                      # этот файл
@@ -72,16 +74,16 @@ python3 tools/test_overlay_states.py
 dotnet build NotifyIsland.Av.csproj -c Release
 dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained false -o ./publish
 ./publish/NotifyIsland.exe          # обычный запуск
-./publish/NotifyIsland.exe --demo   # демо-цикл (моке-данные + weather step)
+./publish/NotifyIsland.exe --settings   # открыть окно настроек сразу при старте
 ```
-Горячие клавиши в overlay: **F9** demo on/off, **F10** charge pill, **F11** low-battery, **F12** timer/stopwatch, **Esc** unpin (и collapse). Версия продукта: **1.11.0**.
+Горячие клавиши в overlay: **F12** timer/stopwatch, **Esc** unpin (и collapse). Версия продукта: **1.11.0**.
 
 ## Функциональность: есть / убрать / добавить
 Кратко (детали — в GUIDELINES §5 / §10):
 
-**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); **hover expand + click pin 1.10.0**; **hide on fullscreen 1.10.0**; **Settings icon-sidebar 1.11.0**; **clipboard history (text + file paths, локальный ring buffer) 1.12.0**; tray + Settings window; WeatherSide; Edge+Offset (**no island drag**); Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; timer/stopwatch; FontAudio digital clock + seconds strip; demo; tests+CI.
+**Есть:** Idle clock + unread; weather (Windows-primary); morph FSM; **clicks only** (no swipe); **hover expand + click pin 1.10.0**; **hide on fullscreen 1.10.0**; **Settings icon-sidebar 1.11.0**; **clipboard history (text + file paths, локальный ring buffer) 1.12.0**; **split clipboard half (пилюля делится пополам, клик по половине исполняет ClipboardClickAction) 1.12.2**; tray + Settings window; WeatherSide; Edge+Offset (**no island drag**); Orientation H/V/Auto; Z-order×3; Opacity; Sounds; outline icons; battery pill; SMTC Now Playing; timer/stopwatch; FontAudio digital clock + seconds strip; tests+CI.
 
-**Убрать/не раздувать:** demo как продукт; Open-Meteo; Xiaomi pull-down / swipe gestures; detached second island; **idle breath animation** (снесено — pulse непрочитанных остался).
+**Убрать/не раздувать:** Open-Meteo; Xiaomi pull-down / swipe gestures; detached second island; **idle breath animation** (снесено — pulse непрочитанных остался).
 
 **Добавить позже (backlog):** deeper CsWinRT geolocation; image clipboard formats; clipboard auto-paste to last focus; **file shelf / launcher** (не в scope сейчас).
 
@@ -90,11 +92,9 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 
 ## Батарея — откуда данные?
 **Live:** `WindowsPowerSource` → WinForms `SystemInformation.PowerStatus` (2s poll). Charge connect / % bump → `SetBattery` pill; low battery → `Notify` once per cycle.
-**Demo:** F10 charge pill, F11 low-battery, Settings «Демо зарядки».
 
 ## Медиа — откуда данные?
-**Live:** `WindowsMediaSessionSource` → Windows SMTC (`GlobalSystemMediaTransportControlsSessionManager`). При активной сессии островок получает `SetMedia` (title/artist/progress/playing/artwork).  
-**Demo:** F9 по-прежнему использует `"Night Drive"` / `"Local Radio"` в `OverlayMachine`. Если SMTC недоступен — demo/idle без принуждения Media.
+**Live:** `WindowsMediaSessionSource` → Windows SMTC (`GlobalSystemMediaTransportControlsSessionManager`). При активной сессии островок получает `SetMedia` (title/artist/progress/playing/artwork). Если SMTC недоступен — строка Media остаётся пустой, капсула не переключается.
 
 ## Таймер
 **Live:** tray «Таймер» presets / Settings → Таймер / F12 → `SetTimer`. `Tick` уменьшает `RemainingSeconds` пока `Playing`; на 0 → Notify «Таймер» → Idle.  
@@ -102,13 +102,15 @@ dotnet publish NotifyIsland.Av.csproj -c Release -r win-x64 --self-contained fal
 **Секундомер:** `TimerStopwatchMode` + `CountUp` (счёт вверх).
 
 ## Буфер обмена
-**Live:** `WindowsClipboardSource` (polling 1с, `GetClipboardSequenceNumber`). При новом элементе → `SetClipboard` → pill показывает превью (текст / имя файла / "N файлов"). Локально: ring buffer в памяти, без HTTP, без auto-paste. Клик по пилюле — Dismiss (по умолчанию) или DismissAndClear. Из настроек: toggle, размер истории (10/25/50/100), click action.
-**Demo:** F9 циклически показывает мок-данные других overlay kinds; clipboard pill в demo не показывается — нужен реальный copy.
+**Live:** `WindowsClipboardSource` (polling 1с, `GetClipboardSequenceNumber`). При новом элементе → `SetClipboardSplit` (1.12.2) → островок делится пополам: своя половина живёт как была, соседняя показывает иконку формата + превью (текст ≤22 симв., имя файла, «5 файлов»). Живёт `min(NotifyDurationMs, ClipboardHistory.MaxPillMs)` = **4 с** при дефолтах. Локально: ring buffer в памяти, без HTTP, без auto-paste. Клик по буферной половине — `ClipboardClickAction`: Dismiss (по умолчанию) или DismissAndClear. Из настроек: toggle, размер истории (10/25/50/100), click action.
+
+**Ввод (клики) — буфер:** обе половины — один Border; попадание решается по координате длинной оси против `ClipboardSplit.ClipboardHalfStart` (X на Top/Bottom, Y на Left/Right). Клик по островной половине — как раньше (пин/анпин, двойной = Action Center); зоны ⅓/⅓/⅓ цикла меряются по островной половине (170 DIP), а не по всей пилюле, иначе при делении они уедут вправо. Клик по буферной половине → `ClipboardClickAction`; ПКМ в любом месте — контекстное меню как раньше.
 
 ## Ввод (клики)
 Жесты свайпа **убраны** (1.8.1). `ClickMaxPx=12` — GUIDELINES §3b / OverlayTokens. `CycleNext`/`CyclePrev` остаются в FSM для тестов/API.
 - Idle/Collapsed: **одинарный клик** = pin/unpin; **двойной клик** = Action Center; Esc = unpin.
 - Hover (~250 ms) → peek (секунды + ширина); leave → grace ~500 мс.
+- Клик по буферной половине split-пилюли (1.12.2) → `ClipboardClickAction` (Dismiss / DismissAndClear).
 
 ## Fullscreen
 `HideOnFullscreen` (default ON): `SHQueryUserNotificationState` + monitor-cover → Hide; restore on leave. Optional click-through if hide off.

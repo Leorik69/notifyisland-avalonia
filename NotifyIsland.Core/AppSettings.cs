@@ -115,8 +115,27 @@ public sealed class AppSettings
     /// <summary>Hover delay before peek (ms). Default 250.</summary>
     public int HoverExpandDelayMs { get; set; } = OverlayTokens.HoverExpandDelayMs;
 
-    /// <summary>Pointer-leave grace before collapsing peek (ms). Default 500.</summary>
+    /// <summary>
+    /// Pointer-leave grace before collapsing the hover peek (ms). Default
+    /// <see cref="OverlayTokens.HoverCollapseGraceMs"/> (5000 as of 1.13.0; it was 500 before).
+    /// </summary>
     public int HoverCollapseGraceMs { get; set; } = OverlayTokens.HoverCollapseGraceMs;
+
+    /// <summary>
+    /// The grace the product shipped with before 1.13.0. A settings.json written by an older
+    /// install carries this value, and it is indistinguishable from one the user typed: the
+    /// property has always been persisted. So the stored 500 is almost certainly nobody's
+    /// choice — it is just the old default that survived every save. It is therefore migrated up
+    /// to the new default instead of stranding the user on a 0.5 s panel.
+    /// </summary>
+    public const int LegacyHoverCollapseGraceMs = 500;
+
+    /// <summary>
+    /// User control over the collapsed island's long axis (1.14), as a multiplier of the token
+    /// width rather than an absolute DIP count — see <see cref="IslandWidth"/> for why, and for
+    /// the argument behind MinScale/MaxScale. 1.0 = exactly the token widths.
+    /// </summary>
+    public double IslandWidthScale { get; set; } = IslandWidth.DefaultScale;
 
     /// <summary>Single click toggles pinned expanded Idle. Default ON.</summary>
     public bool ClickPinEnabled { get; set; } = true;
@@ -129,6 +148,64 @@ public sealed class AppSettings
     /// Secondary; default OFF. Prefer hide.
     /// </summary>
     public bool ClickThroughOnFullscreen { get; set; } = false;
+
+    /// <summary>
+    /// Raise the island above the app windows while a notification is on the capsule, and put it
+    /// back where <see cref="ZOrderMode"/> says afterwards. Default ON.
+    /// <para>
+    /// 2026-10-02, added with the notification queue. A notification that arrives while the user
+    /// is looking at something else was previously drawn behind that window whenever the island sat
+    /// at Desktop or BehindApps — which is what those modes are FOR, but it means a toast the user
+    /// asked to see is silently unseen. The jump is temporary and only for the notification's
+    /// lifetime, so the configured z-order still governs the island the rest of the time.
+    /// </para>
+    /// <para>
+    /// The fullscreen rules still win: if the island is hidden or click-through because something
+    /// is fullscreen, this does not pull it back.
+    /// </para>
+    /// </summary>
+    public bool NotifyJumpToTop { get; set; } = true;
+
+    /// <summary>
+    /// Scroll a notification's body text when it is wider than its column, instead of cutting it
+    /// at the ellipsis. Default ON.
+    /// <para>
+    /// 2026-10-03, added with the bell badge. The title is short by construction — an app name —
+    /// so the body is what a notification actually loses, and on a real toast that is usually the
+    /// half that says what happened. Cutting it leaves the user with «Windows PowerShell» and no
+    /// way to learn anything; scrolling shows all of it, at the cost of not being able to read it
+    /// all at once.
+    /// </para>
+    /// <para>
+    /// The motion is the monitor's own running caption (<see cref="MarqueeTrack"/>), not a second
+    /// implementation, and reduced motion stops it: the body then stays trimmed exactly as it was
+    /// before this setting existed.
+    /// </para>
+    /// </summary>
+    public bool NotifyBodyMarquee { get; set; } = true;
+
+    /// <summary>
+    /// Show a microphone / screen-recording indicator while something is capturing. Default ON.
+    /// <para>
+    /// 2026-10-03. The microphone half is measured through WASAPI and is as accurate as the
+    /// indicator Windows itself draws. The screen half is a whitelist of process names, because
+    /// Windows exposes no API for it — so this setting being off costs the user a lamp that is
+    /// occasionally right, and being on costs a COM meter and a process walk every 700 ms.
+    /// </para>
+    /// </summary>
+    public bool RecordingIndicatorEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Keep a list of the windows the user has worked in, and offer to switch back to them from
+    /// the island's menu. Default ON.
+    /// <para>
+    /// 2026-10-03. Windows already has Alt+Tab; what it does not have is a list you can read at a
+    /// glance and jump from without holding a key, and that is what this is. The list is a jump
+    /// list, not a log: at most eight rows, and a window nobody has touched in half an hour is
+    /// forgotten.
+    /// </para>
+    /// </summary>
+    public bool RecentWindowsEnabled { get; set; } = true;
 
     /// <summary>Stock theme or Custom. Stock Apply overwrites palette/font/anim/icons/date.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -228,11 +305,34 @@ public sealed class AppSettings
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AnimationSpeed AnimHover { get; set; } = AnimationSpeed.Normal;
 
+    /// <summary>
+    /// Speed of the old swipe rubber-band. **Dead since 1.13.0** — the <c>DoubleTransition</c> it
+    /// fed was removed from <c>_pillTranslate</c> because it fought the per-frame morph writes, and
+    /// the gesture it served was deleted back in 1.8.1. Kept in the schema on purpose: a user may
+    /// have the key in settings.json, and dropping it would silently discard their file's value.
+    /// Nothing reads it.
+    /// </summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AnimationSpeed AnimSwipeRubber { get; set; } = AnimationSpeed.Normal;
 
+    /// <summary>Speed of the click-acknowledgement pop.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AnimationSpeed AnimClickPop { get; set; } = AnimationSpeed.Normal;
+
+    /// <summary>Speed of the first-appear wobble.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AnimationSpeed AnimFirstAppearWobble { get; set; } = AnimationSpeed.Normal;
+
     /// <summary>Enable unread-dot opacity pulse when unread &gt; 0.</summary>
     public bool AnimPulseEnabled { get; set; } = true;
+
+    /// <summary>
+    /// User's own "reduce motion" request (Settings → Анимации), combined with the OS toggle by
+    /// <see cref="AnimReduced.Resolve"/>. Default <c>false</c> = "no extra request": a settings.json
+    /// written by an older build simply has no such key and deserializes to the initialiser value, so
+    /// untouched installs keep animating exactly as before (1.12.4).
+    /// </summary>
+    public bool ReducedMotion { get; set; } = false;
 
     /// <summary>Notification appear style (Settings → Анимации).</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -242,15 +342,66 @@ public sealed class AppSettings
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public NotifyDismissStyle DismissStyle { get; set; } = NotifyDismissStyle.Ragged;
 
+    /// <summary>Show live CPU / RAM / battery / network in the collapsed pill.</summary>
+    public bool SystemStatsEnabled { get; set; } = true;
+
+    /// <summary>Sampling period in ms. Clamped to [StatsRefreshMinMs, StatsRefreshMaxMs] by Normalize().</summary>
+    public int SystemStatsRefreshMs { get; set; } = OverlayTokens.StatsRefreshMs;
+
+    // REMOVED 1.12.1: SystemStatsAutoCollapse (and its Settings checkbox "Сворачивать через 30 с").
+    // The wall-clock 30 s self-collapse it gated no longer exists — the SystemStats surface is
+    // entered on hover and closed on pointer-leave (HoverExpandDelayMs / HoverCollapseGraceMs).
+    // Old settings.json files that still contain the key simply ignore the unknown member.
+
+    /// <summary>Hover the Idle pill for <see cref="HoverExpandDelayMs"/> to peek the SystemStats surface. Default ON.</summary>
+    public bool SystemStatsHoverPeek { get; set; } = true;
+
+    /// <summary>Count virtual / tunnel / loopback network interfaces in the net metric.</summary>
+    public bool SystemStatsAllInterfaces { get; set; } = true;
+
+    /// <summary>
+    /// Which row set the System Stats surface renders. Independent of <see cref="SystemStatsEnabled"/>,
+    /// which is the on/off switch for the surface as a whole; this picks the rows.
+    /// Not named <c>StatsPreset</c> to avoid colliding with the enum type in code that references both.
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public StatsPreset StatsRowsPreset { get; set; } = StatsPreset.Full;
+
+    /// <summary>
+    /// Ordered set of visible System Stats rows. Authoritative only when
+    /// <see cref="StatsRowsPreset"/> is <see cref="StatsPreset.Custom"/>; for the other presets
+    /// Normalize() rewrites it to the preset's canonical set. Defaults to the Full set.
+    /// </summary>
+    public List<StatsRow> StatsRows { get; set; } =
+        new List<StatsRow>(StatsLayout.FullRows);
+
+    /// <summary>Show the sidebar search box when there are enough sections to filter.</summary>
+    public bool SettingsSearchEnabled { get; set; } = true;
+
     /// <summary>Persisted Settings window geometry (separate from island OffsetX/Y).</summary>
     public int? SettingsWindowX { get; set; }
     public int? SettingsWindowY { get; set; }
     public double SettingsWindowWidth { get; set; } = 720;
     public double SettingsWindowHeight { get; set; } = 560;
 
+    /// <summary>
+    /// When set, the clipboard listener ignores captures until this UTC instant (spec §«Не
+    /// реагировать 30 мин»). Null = listening normally. The tray tooltip surfaces the
+    /// remaining time so the user can see why new copies don't reach the clipboard section.
+    /// <para>
+    /// 1.14: the pause SURVIVED the ball. Everything around the clipboard's on-screen position
+    /// (the ball pin, its drag offsets) went with the ball, but this is a listener-level switch
+    /// and nothing about it depended on the ball existing.
+    /// </para>
+    /// </summary>
+    public DateTime? ClipboardPrivacyPauseUntilUtc { get; set; }
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,
+        // Reading is case-insensitive so a hand-edited file or an export from a build that wrote
+        // PascalCase names still loads instead of silently falling back to defaults.
+        PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
@@ -264,20 +415,97 @@ public sealed class AppSettings
 
     public static AppSettings Load()
     {
+        if (TryLoadFrom(SettingsPath, out var loaded, out var error))
+        {
+            LastLoadError = null;
+            return loaded!;
+        }
+
+        // 2026-10-02: Load used to swallow this and return defaults, which was fine until the
+        // next Save — that overwrote the user's file with defaults and the original was gone
+        // for good, with nothing on screen or in the log to say why their settings had reset.
+        // TryLoadFrom has already moved the unreadable file aside. The reason is kept rather than
+        // printed because Core is a library: it cannot reach the app's own AppLog, and a
+        // Console.Error from a WinExe goes nowhere. The host reads LastLoadError at startup.
+        LastLoadError = error.Length == 0 ? null : error;
+        return new AppSettings();
+    }
+
+    /// <summary>
+    /// Why the last <see cref="Load"/> fell back to defaults, or null if it did not. Set only by
+    /// Load, and cleared on a successful read — a stale reason from a later good load must not be
+    /// reported as a current problem.
+    /// </summary>
+    public static string? LastLoadError { get; private set; }
+
+    /// <summary>
+    /// Read settings from an explicit path.
+    /// <para>
+    /// Split out of <see cref="Load"/> so the failure path is testable — Load's own path lives
+    /// under LOCALAPPDATA and must not be touched by a test.
+    /// </para>
+    /// <para>
+    /// Returns true only when a file existed and parsed. A missing file is not a failure: the
+    /// error stays empty so first run is indistinguishable from a clean start. A file that exists
+    /// but cannot be parsed IS a failure, it reports why, and it is moved to
+    /// <c>settings.corrupt-&lt;timestamp&gt;.json</c> before this returns — because the next Save
+    /// writes over the original, and a quarantined file is the difference between the user
+    /// recovering their settings and not.
+    /// </para>
+    /// </summary>
+    public static bool TryLoadFrom(string path, out AppSettings? settings, out string error)
+    {
+        settings = null;
+        error = string.Empty;
+
+        bool exists;
+        try { exists = File.Exists(path); }
+        catch { return false; }
+        if (!exists) return false;
+
         try
         {
-            if (File.Exists(SettingsPath))
+            var json = File.ReadAllText(path);
+            var parsed = FromJson(json);
+            if (parsed is not null)
             {
-                var json = File.ReadAllText(SettingsPath);
-                var s = FromJson(json);
-                if (s is not null) return s;
+                settings = parsed;
+                return true;
             }
+            error = "файл не содержит настроек";
+        }
+        catch (JsonException) { error = "файл повреждён: не является корректным JSON"; }
+        catch (IOException) { error = "файл не удалось прочитать"; }
+        catch (UnauthorizedAccessException) { error = "нет доступа к файлу"; }
+        catch
+        {
+            // Anything else is still a read failure worth reporting; the file stays where it is.
+            error = "файл не удалось разобрать";
+        }
+
+        QuarantineCorrupt(path);
+        return false;
+    }
+
+    /// <summary>
+    /// Move an unreadable settings file aside so the next Save cannot destroy it. Best effort:
+    /// a failure here must not stop the app from starting on defaults.
+    /// </summary>
+    private static void QuarantineCorrupt(string path)
+    {
+        try
+        {
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            var target = Path.Combine(
+                Path.GetDirectoryName(path) ?? string.Empty,
+                $"settings.corrupt-{stamp}.json");
+            File.Move(path, target, overwrite: true);
         }
         catch
         {
-            // ignore corrupt settings — fall back to defaults
+            // Cannot move it (locked, read-only volume). The original stays put and the message
+            // from TryLoadFrom still told the user their file was the problem.
         }
-        return new AppSettings();
     }
 
     public void Save()
@@ -285,7 +513,7 @@ public sealed class AppSettings
         try
         {
             Directory.CreateDirectory(SettingsDirectory);
-            File.WriteAllText(SettingsPath, ToJson());
+            WriteAtomically(SettingsPath, ToJson());
         }
         catch
         {
@@ -294,6 +522,36 @@ public sealed class AppSettings
     }
 
     public string ToJson() => JsonSerializer.Serialize(this, JsonOpts);
+
+    /// <summary>
+    /// Write through a temp file and swap it in, so a crash or a full disk mid-write leaves the
+    /// previous settings intact instead of a truncated file that Load would discard as corrupt.
+    /// </summary>
+    public static void WriteAtomically(string path, string contents)
+    {
+        var tmp = path + ".tmp";
+        File.WriteAllText(tmp, contents);
+        if (File.Exists(path)) File.Replace(tmp, path, null);
+        else File.Move(tmp, path);
+    }
+
+    /// <summary>
+    /// Parse a settings file chosen by the user. Unlike <see cref="Load"/> this reports why it
+    /// failed, because the user is waiting on the answer: null result plus a short reason.
+    /// </summary>
+    public static AppSettings? TryImport(string json, out string error)
+    {
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(json)) { error = "файл пуст"; return null; }
+        try
+        {
+            var s = FromJson(json);
+            if (s is null) error = "в файле нет настроек";
+            return s;
+        }
+        catch (JsonException) { error = "файл не является настройками NotifyIsland"; return null; }
+        catch (NotSupportedException) { error = "неподдерживаемый формат файла"; return null; }
+    }
 
     public static AppSettings? FromJson(string json)
     {
@@ -324,10 +582,19 @@ public sealed class AppSettings
         target.ShowSecondsStrip = ShowSecondsStrip;
         target.HoverExpandEnabled = HoverExpandEnabled;
         target.HoverExpandDelayMs = Math.Clamp(HoverExpandDelayMs, 0, 2000);
-        target.HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 3000);
+        // 1.13.1: the ceiling was 3000 ms, which silently cut the 5000 ms default down to 3 s on
+        // every load. The token and the machine both allowed 10 s, so the layer between them was
+        // the only thing deciding the grace the user actually got — and it decided 3 s. The
+        // ceiling now matches HoverPinMachine.Configure.
+        target.HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 10000);
+        target.IslandWidthScale = IslandWidth.ClampScale(IslandWidthScale);
         target.ClickPinEnabled = ClickPinEnabled;
         target.HideOnFullscreen = HideOnFullscreen;
         target.ClickThroughOnFullscreen = ClickThroughOnFullscreen;
+        target.NotifyJumpToTop = NotifyJumpToTop;
+        target.NotifyBodyMarquee = NotifyBodyMarquee;
+        target.RecordingIndicatorEnabled = RecordingIndicatorEnabled;
+        target.RecentWindowsEnabled = RecentWindowsEnabled;
         target.ThemePreset = ThemePreset;
         target.WeatherSide = WeatherSide;
         target.ZOrderMode = ZOrderMode;
@@ -364,13 +631,24 @@ public sealed class AppSettings
         target.AnimUnreadPulse = AnimUnreadPulse;
         target.AnimHover = AnimHover;
         target.AnimSwipeRubber = AnimSwipeRubber;
+        target.AnimClickPop = AnimClickPop;
+        target.AnimFirstAppearWobble = AnimFirstAppearWobble;
         target.AnimPulseEnabled = AnimPulseEnabled;
+        target.ReducedMotion = ReducedMotion;
         target.AppearStyle = AppearStyle;
         target.DismissStyle = DismissStyle;
+        target.SystemStatsEnabled = SystemStatsEnabled;
+        target.SystemStatsRefreshMs = SystemStatsRefreshMs;
+        target.SystemStatsHoverPeek = SystemStatsHoverPeek;
+        target.SystemStatsAllInterfaces = SystemStatsAllInterfaces;
+        target.StatsRowsPreset = StatsRowsPreset;
+        target.StatsRows = new List<StatsRow>(StatsRows ?? new List<StatsRow>());
+        target.SettingsSearchEnabled = SettingsSearchEnabled;
         target.SettingsWindowX = SettingsWindowX;
         target.SettingsWindowY = SettingsWindowY;
         target.SettingsWindowWidth = SettingsWindowWidth;
         target.SettingsWindowHeight = SettingsWindowHeight;
+        target.ClipboardPrivacyPauseUntilUtc = ClipboardPrivacyPauseUntilUtc;
     }
 
     /// <summary>Clamp opacity / volume into valid ranges after deserialize.</summary>
@@ -402,7 +680,33 @@ public sealed class AppSettings
             LowBatteryPercent <= 0 ? BatteryAlertLogic.DefaultLowPercent : LowBatteryPercent);
         TimerDefaultMinutes = IslandTimerLogic.ClampPresetMinutes(TimerDefaultMinutes);
         HoverExpandDelayMs = Math.Clamp(HoverExpandDelayMs, 0, 2000);
-        HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 3000);
+        // Same ceiling as CopyTo and HoverPinMachine.Configure — see the note there: a 3000 cap
+        // here is what actually truncated the 5 s default the user was promised.
+        HoverCollapseGraceMs = Math.Clamp(HoverCollapseGraceMs, 0, 10000);
+        // 1.13.1: migrate the old shipped default. Without this, a settings.json from an earlier
+        // install keeps a literal 500 forever and the new 5 s default is dead on arrival — the
+        // clamp change alone could never help, because 500 was already inside the range.
+        if (HoverCollapseGraceMs == LegacyHoverCollapseGraceMs
+            && OverlayTokens.HoverCollapseGraceMs != LegacyHoverCollapseGraceMs)
+            HoverCollapseGraceMs = OverlayTokens.HoverCollapseGraceMs;
+        // A settings.json written before 1.14 has no islandWidthScale key at all, and a few
+        // intermediate builds could persist 0. Neither is a choice — a scale of 0 would clamp
+        // to MinScale and silently shrink the island the first time such a file is loaded.
+        if (double.IsNaN(IslandWidthScale) || IslandWidthScale <= 0)
+            IslandWidthScale = IslandWidth.DefaultScale;
+        else
+            IslandWidthScale = IslandWidth.ClampScale(IslandWidthScale);
+        SystemStatsRefreshMs = Math.Clamp(SystemStatsRefreshMs,
+            OverlayTokens.StatsRefreshMinMs, OverlayTokens.StatsRefreshMaxMs);
+
+        // System Stats rows. Independent of SystemStatsEnabled: turning the surface off must not
+        // destroy the user's row order, so this runs either way.
+        if (!Enum.IsDefined(typeof(StatsPreset), StatsRowsPreset))
+            StatsRowsPreset = StatsPreset.Full;
+        // A non-custom preset wins outright, so a stale list can never contradict it.
+        // Custom keeps the user's order, filtered to known/unique entries, falling back to Full
+        // rather than leaving an empty (zero-height) panel.
+        StatsRows = new List<StatsRow>(StatsLayout.ResolveRows(StatsRowsPreset, StatsRows));
     }
 
     /// <summary>Accept #RGB / #RRGGBB / #AARRGGBB; fallback on parse failure.</summary>

@@ -17,7 +17,9 @@ public enum DateFormat
     /// <summary>«24.09»</summary>
     Numeric,
     /// <summary>«ср, 24 сен»</summary>
-    FullShort
+    FullShort,
+    /// <summary>«вт, 28 сентября 2026 г.»</summary>
+    FullLong
 }
 
 /// <summary>Formats <see cref="DateTime"/> for the collapsed island date chip.</summary>
@@ -33,6 +35,7 @@ public static class DateFormatHelper
         DateFormat.WeekdayDay => $"{dt.ToString("ddd", Ru).TrimEnd('.')} {dt.Day}",
         DateFormat.Numeric => dt.ToString("dd.MM", Ru),
         DateFormat.FullShort => $"{dt.ToString("ddd", Ru).TrimEnd('.')}, {dt.ToString("d MMM", Ru).Replace(".", "")}",
+        DateFormat.FullLong => $"{dt.ToString("ddd", Ru).TrimEnd('.')}, {dt.ToString("d MMMM", Ru).Replace(".", "")} {dt:yyyy}",
         _ => dt.ToString("d MMM", Ru).Replace(".", "")
     };
 
