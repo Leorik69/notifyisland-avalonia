@@ -149,6 +149,23 @@ public sealed class AppSettings
     /// </summary>
     public bool ClickThroughOnFullscreen { get; set; } = false;
 
+    /// <summary>
+    /// Raise the island above the app windows while a notification is on the capsule, and put it
+    /// back where <see cref="ZOrderMode"/> says afterwards. Default ON.
+    /// <para>
+    /// 2026-10-02, added with the notification queue. A notification that arrives while the user
+    /// is looking at something else was previously drawn behind that window whenever the island sat
+    /// at Desktop or BehindApps — which is what those modes are FOR, but it means a toast the user
+    /// asked to see is silently unseen. The jump is temporary and only for the notification's
+    /// lifetime, so the configured z-order still governs the island the rest of the time.
+    /// </para>
+    /// <para>
+    /// The fullscreen rules still win: if the island is hidden or click-through because something
+    /// is fullscreen, this does not pull it back.
+    /// </para>
+    /// </summary>
+    public bool NotifyJumpToTop { get; set; } = true;
+
     /// <summary>Stock theme or Custom. Stock Apply overwrites palette/font/anim/icons/date.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ThemePreset ThemePreset { get; set; } = ThemePreset.Custom;
@@ -533,6 +550,7 @@ public sealed class AppSettings
         target.ClickPinEnabled = ClickPinEnabled;
         target.HideOnFullscreen = HideOnFullscreen;
         target.ClickThroughOnFullscreen = ClickThroughOnFullscreen;
+    target.NotifyJumpToTop = NotifyJumpToTop;
         target.ThemePreset = ThemePreset;
         target.WeatherSide = WeatherSide;
         target.ZOrderMode = ZOrderMode;

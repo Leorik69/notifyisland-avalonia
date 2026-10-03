@@ -602,6 +602,28 @@ public class AppSettingsTests
     }
 
     [Fact]
+    public void NotifyJumpToTop_IsOnByDefaultAndSurvivesARoundTrip()
+    {
+        // On by default: a toast drawn behind the window you are reading is not a toast you
+        // asked for. It is a checkbox, so a user who wants a strictly desktop-level island can
+        // turn it off without changing ZOrderMode.
+        var fresh = new AppSettings();
+        Assert.True(fresh.NotifyJumpToTop);
+
+        var s = new AppSettings { NotifyJumpToTop = false };
+        var json = s.ToJson();
+        var back = AppSettings.FromJson(json);
+        Assert.NotNull(back);
+        Assert.False(back!.NotifyJumpToTop);
+
+        // CopyTo is the live-preview path; forgetting the field there would make the checkbox
+        // appear to do nothing until the window is reopened.
+        var target = new AppSettings();
+        s.CopyTo(target);
+        Assert.False(target.NotifyJumpToTop);
+    }
+
+    [Fact]
     public void HoverGrace_AFreshInstallAlreadyGetsTheNewDefault()
     {
         var s = new AppSettings();

@@ -392,6 +392,11 @@
                        Text="Одинарный клик — закрепить/открепить. Двойной клик — Центр уведомлений. Esc — открепить. Без свайпов."/>
             <CheckBox x:Name="HideOnFullscreenBox" Content="Скрывать в полноэкранном режиме" Margin="0,12,0,0"/>
             <CheckBox x:Name="ClickThroughFullscreenBox" Content="Click-through вместо скрытия (если скрытие выкл)"/>
+            <CheckBox x:Name="NotifyJumpToTopBox"
+                      Content="Прыгать поверх окон, пока показывается уведомление"
+                      Margin="0,12,0,0"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Временно поднимает островок над приложениями на время показа уведомления, потом возвращает выбранный Z-order. В полноэкранном режиме скрытие всё равно главнее."/>
             <TextBlock Classes="mutedNote"
                        Text="Предпочтительно скрывать. Click-through — запасной вариант, когда HideOnFullscreen выкл."/>
             <TextBlock Classes="mutedNote"

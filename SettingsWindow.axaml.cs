@@ -262,6 +262,7 @@ public partial class SettingsWindow : Window
         Wire(HoverDelaySlider, Slider.ValueProperty);
         Wire(ClickPinBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
         Wire(HideOnFullscreenBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+    Wire(NotifyJumpToTopBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
         Wire(ClickThroughFullscreenBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
 
         // Appearance
@@ -689,6 +690,7 @@ public partial class SettingsWindow : Window
         HoverDelayLabel.Text = $"{(int)HoverDelaySlider.Value}";
         ClickPinBox.IsChecked = _draft.ClickPinEnabled;
         HideOnFullscreenBox.IsChecked = _draft.HideOnFullscreen;
+        NotifyJumpToTopBox.IsChecked = _draft.NotifyJumpToTop;
         ClickThroughFullscreenBox.IsChecked = _draft.ClickThroughOnFullscreen;
         SelectByTag(ThemePresetBox, _draft.ThemePreset.ToString());
         SelectByTag(WeatherLocationModeBox, _draft.WeatherLocationMode.ToString());

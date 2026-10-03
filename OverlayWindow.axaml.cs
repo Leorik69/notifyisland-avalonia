@@ -444,6 +444,7 @@ public partial class OverlayWindow : Window
             var splitAfter = _machine.IsSplitClipboard;
             if (before != after) OnKindChanged(before, after);
             var hoverChanged = TickHoverPin(200);
+            SyncNotifyJumpToTop(after);
             if (_machine.TimerActive != timerBefore || SystemStatsPanel.IsVisible)
                 ApplyTimerRow();
             TickMarquee(200);
@@ -487,6 +488,7 @@ public partial class OverlayWindow : Window
         // The language badge, same reason: it needs no window handle and no setting, and Opened
         // is not a reliable place to start anything (it does not run on first launch at all).
         EnsureKeyboardLayoutSource();
+
 
 
         // Same reason as above: the row set must exist before the first hover, or
@@ -2259,6 +2261,43 @@ public partial class OverlayWindow : Window
         var before = _machine.Snapshot().Kind;
         _machine.Dispatch(OverlayCommand.Collapse);
         OnKindChanged(before, _machine.Snapshot().Kind);
+    }
+
+    /// <summary>Whether the notification jump has currently taken the window to Topmost.</summary>
+    private bool _notifyTopActive;
+
+    /// <summary>
+    /// Keep the island above the app windows while a notification is on the capsule, and put it
+    /// back the moment the run is over.
+    /// <para>
+    /// A toast the user asked to see is not much use drawn behind the window they are reading. The
+    /// jump is deliberately transient and deliberately does NOT change ZOrderMode: the configured
+    /// mode still governs the island the rest of the time, so "Desktop" still means desktop.
+    /// </para>
+    /// <para>
+    /// The fullscreen rules outrank this. If the island is hidden or click-through because
+    /// something is fullscreen, this leaves it alone — pulling a click-through window back to
+    /// Topmost would hand the pointer back to something the user is watching fullscreen.
+    /// </para>
+    /// </summary>
+    private void SyncNotifyJumpToTop(OverlayKind kind)
+    {
+        var wanted = _settings.NotifyJumpToTop
+            && kind == OverlayKind.Notification
+            && !_hiddenByFullscreen
+            && !_clickThroughActive;
+
+        if (wanted == _notifyTopActive) return;
+        _notifyTopActive = wanted;
+        try
+        {
+            Win32Overlay.ApplyZOrder(this, wanted ? ZOrderMode.Topmost : _settings.ZOrderMode);
+
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("SyncNotifyJumpToTop failed", ex);
+        }
     }
 
     private void OnKindChanged(OverlayKind before, OverlayKind after)
