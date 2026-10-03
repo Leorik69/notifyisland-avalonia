@@ -642,6 +642,22 @@ public class AppSettingsTests
     }
 
     [Fact]
+    public void RecordingIndicator_IsOnByDefaultAndSurvivesARoundTrip()
+    {
+        var fresh = new AppSettings();
+        Assert.True(fresh.RecordingIndicatorEnabled);
+
+        var s = new AppSettings { RecordingIndicatorEnabled = false };
+        var back = AppSettings.FromJson(s.ToJson());
+        Assert.NotNull(back);
+        Assert.False(back!.RecordingIndicatorEnabled);
+
+        var target = new AppSettings();
+        s.CopyTo(target);
+        Assert.False(target.RecordingIndicatorEnabled);
+    }
+
+    [Fact]
     public void HoverGrace_AFreshInstallAlreadyGetsTheNewDefault()
     {
         var s = new AppSettings();

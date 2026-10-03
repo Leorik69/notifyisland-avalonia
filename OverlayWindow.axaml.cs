@@ -34,6 +34,8 @@ public partial class OverlayWindow : Window
     private SystemMonitorMachine? _statsMachine;
     private WindowsNotificationSource? _notifSource;
     private WindowsKeyboardLayoutSource? _keyboardLayout;
+    private WindowsRecordingSource? _recording;
+    private readonly RecordingGate _recordingGate = new();
     private CancellationTokenSource? _keyboardLayoutHide;
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(200) };
@@ -428,6 +430,8 @@ public partial class OverlayWindow : Window
             _notifSource = null;
             _keyboardLayout?.Dispose();
             _keyboardLayout = null;
+            _recording?.Dispose();
+            _recording = null;
             _keyboardLayoutHide?.Cancel();
             _keyboardLayoutHide = null;
         };
@@ -494,6 +498,9 @@ public partial class OverlayWindow : Window
         // The language badge, same reason: it needs no window handle and no setting, and Opened
         // is not a reliable place to start anything (it does not run on first launch at all).
         EnsureKeyboardLayoutSource();
+        // The recording lamp, same reason — and it is additionally gated on its own setting, so
+        // it may legitimately not start at all.
+        EnsureRecordingSource();
 
 
 
@@ -4068,6 +4075,85 @@ public partial class OverlayWindow : Window
                 }, TaskScheduler.Default);
         });
     }
+
+    /// <summary>
+    /// Start the recording indicator's source.
+    /// <para>
+    /// Gated on the setting, unlike the language badge: a privacy lamp is something a user may
+    /// genuinely not want at all, and unlike the badge it is not a momentary caption — it is
+    /// present for as long as a call lasts. The gate is checked here rather than inside the
+    /// source so that a user who turns it OFF actually stops the polling, instead of paying for
+    /// a COM call and a process walk every 700 ms to render nothing.
+    /// </para>
+    /// </summary>
+    private void EnsureRecordingSource()
+    {
+        if (_recording is not null) return;
+        if (!_settings.RecordingIndicatorEnabled) return;
+        try
+        {
+            _recording = new WindowsRecordingSource();
+            _recording.Changed += OnRecordingSample;
+            _recording.Start();
+        }
+        catch (Exception ex)
+        {
+            // Cosmetic, same as the language badge: a missing privacy lamp is not a reason for
+            // the island to be unhappy.
+            AppLog.Warn("EnsureRecordingSource failed", ex);
+            _recording = null;
+        }
+    }
+
+    private void OnRecordingSample(RecordingSample sample)
+    {
+        // The gate lives here, not in the source, because it is presentation: what counts as an
+        // announcement is a decision about the island, and the source's only job is to report
+        // numbers. It runs on the source's own thread, so the answer crosses back to the UI
+        // thread before anything is written to a control.
+        var state = _recordingGate.Sample(sample);
+        Dispatcher.UIThread.Post(() => ApplyRecordingState(state), DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// Draw the indicator for a state the gate has already approved.
+    /// <para>
+    /// The bar's width is the smoothed level, clamped against the HOST's width: the gate already
+    /// keeps the level inside 0…1, but the host is 14 DIP and a bar one pixel wider would spill
+    /// past the rounded cap it is clipped into. A level of 0 is drawn as 0 rather than as its
+    /// minimum, so a silent-but-active microphone still shows the mic glyph and nothing else —
+    /// the glyph is the fact, the bar is only how loud it is.
+    /// </para>
+    /// </summary>
+    private void ApplyRecordingState(RecordingIndicatorState state)
+    {
+        RecordingBadge.IsVisible = state.IsVisible;
+        if (!state.IsVisible) return;
+
+        var mic = state.Activity is RecordingActivity.Microphone or RecordingActivity.Both;
+        var screen = state.Activity is RecordingActivity.Screen or RecordingActivity.Both;
+        RecordingMicGlyph.IsVisible = mic;
+        RecordingLevelHost.IsVisible = mic;
+        RecordingScreenDot.IsVisible = screen;
+
+        if (mic)
+        {
+            if (RecordingMicGlyph.Child is null)
+                RecordingMicGlyph.Child = IslandIcons.Create("mic", 9, new SolidColorBrush(_inkSecondary));
+            var host = RecordingLevelHost.Bounds.Width > 0 ? RecordingLevelHost.Bounds.Width : 14;
+            RecordingLevelBar.Width = Math.Clamp(state.Level, 0, 1) * host;
+        }
+
+        if (!string.Equals(_recordingTip, state.Label, StringComparison.Ordinal))
+        {
+            // ToolTip is an attached property, not a control property, so the previous value has
+            // to be remembered in a field to know whether writing it again is worth a layout pass.
+            _recordingTip = state.Label;
+            ToolTip.SetTip(RecordingBadge, state.Label);
+        }
+    }
+
+    private string _recordingTip = "";
 
     private void EnsureNotificationSource()
     {

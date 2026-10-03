@@ -199,6 +199,43 @@
                        VerticalAlignment="Center" />
           </StackPanel>
         </Border>
+        <!-- Recording indicator (1.15): a microphone glyph with a level bar, and/or a screen
+             dot, shown only while something is actually capturing.
+
+             WindowsRecordingSource decides WHETHER, RecordingGate decides WHEN (it has to see
+             two consecutive active polls before it announces, so a single spike cannot light
+             the lamp). The bar width is bound to the smoothed level, not to the raw peak, which
+             is what stops it strobing between words.
+
+             The bar is a plain Rectangle inside a clipped host rather than a ProgressBar: the
+             project uses no Avalonia.Animation for the capsule, and a ProgressBar's own
+             animations would keep a compositor running behind a lamp that is only 3 DIP tall. -->
+        <Border x:Name="RecordingBadge"
+                IsVisible="False"
+                CornerRadius="4"
+                Background="#28FFFFFF"
+                Padding="5,1"
+                VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Viewbox x:Name="RecordingMicGlyph" Width="9" Height="9" VerticalAlignment="Center" />
+            <Border x:Name="RecordingLevelHost"
+                    Width="14" Height="3"
+                    CornerRadius="1.5"
+                    Background="#28FFFFFF"
+                    ClipToBounds="True"
+                    VerticalAlignment="Center">
+              <Rectangle x:Name="RecordingLevelBar"
+                         Width="14" Height="3"
+                         Fill="#E8A0A0"
+                         HorizontalAlignment="Left" />
+            </Border>
+            <Ellipse x:Name="RecordingScreenDot"
+                     Width="5" Height="5"
+                     Fill="#E8A0A0"
+                     VerticalAlignment="Center"
+                     IsVisible="False" />
+          </StackPanel>
+        </Border>
       </StackPanel>
 
       <!-- Expanded single-row: icon | title/subtitle | badge | (system-stats expanded when SystemStats kind) -->

@@ -264,6 +264,7 @@ public partial class SettingsWindow : Window
         Wire(HideOnFullscreenBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
         Wire(NotifyJumpToTopBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
         Wire(NotifyBodyMarqueeBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(RecordingIndicatorBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
         Wire(ClickThroughFullscreenBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
 
         // Appearance
@@ -693,6 +694,7 @@ public partial class SettingsWindow : Window
         HideOnFullscreenBox.IsChecked = _draft.HideOnFullscreen;
         NotifyJumpToTopBox.IsChecked = _draft.NotifyJumpToTop;
         NotifyBodyMarqueeBox.IsChecked = _draft.NotifyBodyMarquee;
+        RecordingIndicatorBox.IsChecked = _draft.RecordingIndicatorEnabled;
         ClickThroughFullscreenBox.IsChecked = _draft.ClickThroughOnFullscreen;
         SelectByTag(ThemePresetBox, _draft.ThemePreset.ToString());
         SelectByTag(WeatherLocationModeBox, _draft.WeatherLocationMode.ToString());
@@ -1145,6 +1147,7 @@ public partial class SettingsWindow : Window
         // straight back over the user's change. Both boxes are read here now.
         _draft.NotifyJumpToTop = NotifyJumpToTopBox.IsChecked == true;
         _draft.NotifyBodyMarquee = NotifyBodyMarqueeBox.IsChecked == true;
+        _draft.RecordingIndicatorEnabled = RecordingIndicatorBox.IsChecked == true;
         _draft.ClickThroughOnFullscreen = ClickThroughFullscreenBox.IsChecked == true;
         if (Enum.TryParse<ThemePreset>(SelectedTag(ThemePresetBox), true, out var tp))
             _draft.ThemePreset = tp;

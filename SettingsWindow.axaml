@@ -392,6 +392,11 @@
                        Text="Одинарный клик — закрепить/открепить. Двойной клик — Центр уведомлений. Esc — открепить. Без свайпов."/>
             <CheckBox x:Name="HideOnFullscreenBox" Content="Скрывать в полноэкранном режиме" Margin="0,12,0,0"/>
             <CheckBox x:Name="ClickThroughFullscreenBox" Content="Click-through вместо скрытия (если скрытие выкл)"/>
+            <CheckBox x:Name="RecordingIndicatorBox"
+                      Content="Индикатор микрофона и записи экрана"
+                      Margin="0,12,0,0"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Микрофон измеряется через WASAPI — это тот же источник, что и у индикатора Windows. Запись экрана определяется по списку известных программ (OBS, ShareX, Xbox Game Bar и ещё несколько): в Windows нет API «идёт ли запись», поэтому безымянный рекордер индикатор не покажет."/>
             <CheckBox x:Name="NotifyJumpToTopBox"
                       Content="Прыгать поверх окон, пока показывается уведомление"
                       Margin="0,12,0,0"/>

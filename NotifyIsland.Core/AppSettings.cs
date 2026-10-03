@@ -184,6 +184,17 @@ public sealed class AppSettings
     /// </summary>
     public bool NotifyBodyMarquee { get; set; } = true;
 
+    /// <summary>
+    /// Show a microphone / screen-recording indicator while something is capturing. Default ON.
+    /// <para>
+    /// 2026-10-03. The microphone half is measured through WASAPI and is as accurate as the
+    /// indicator Windows itself draws. The screen half is a whitelist of process names, because
+    /// Windows exposes no API for it — so this setting being off costs the user a lamp that is
+    /// occasionally right, and being on costs a COM meter and a process walk every 700 ms.
+    /// </para>
+    /// </summary>
+    public bool RecordingIndicatorEnabled { get; set; } = true;
+
     /// <summary>Stock theme or Custom. Stock Apply overwrites palette/font/anim/icons/date.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ThemePreset ThemePreset { get; set; } = ThemePreset.Custom;
@@ -570,6 +581,7 @@ public sealed class AppSettings
         target.ClickThroughOnFullscreen = ClickThroughOnFullscreen;
         target.NotifyJumpToTop = NotifyJumpToTop;
         target.NotifyBodyMarquee = NotifyBodyMarquee;
+        target.RecordingIndicatorEnabled = RecordingIndicatorEnabled;
         target.ThemePreset = ThemePreset;
         target.WeatherSide = WeatherSide;
         target.ZOrderMode = ZOrderMode;
