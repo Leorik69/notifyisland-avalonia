@@ -624,6 +624,24 @@ public class AppSettingsTests
     }
 
     [Fact]
+    public void NotifyBodyMarquee_IsOnByDefaultAndSurvivesARoundTrip()
+    {
+        // On by default: the body is the half of a toast that carries the message, and cutting it
+        // at the ellipsis leaves the user with nothing but the app name.
+        var fresh = new AppSettings();
+        Assert.True(fresh.NotifyBodyMarquee);
+
+        var s = new AppSettings { NotifyBodyMarquee = false };
+        var back = AppSettings.FromJson(s.ToJson());
+        Assert.NotNull(back);
+        Assert.False(back!.NotifyBodyMarquee);
+
+        var target = new AppSettings();
+        s.CopyTo(target);
+        Assert.False(target.NotifyBodyMarquee);
+    }
+
+    [Fact]
     public void HoverGrace_AFreshInstallAlreadyGetsTheNewDefault()
     {
         var s = new AppSettings();

@@ -397,6 +397,11 @@
                       Margin="0,12,0,0"/>
             <TextBlock Classes="mutedNote"
                        Text="Временно поднимает островок над приложениями на время показа уведомления, потом возвращает выбранный Z-order. В полноэкранном режиме скрытие всё равно главнее."/>
+            <CheckBox x:Name="NotifyBodyMarqueeBox"
+                      Content="Прокручивать длинный текст уведомления"
+                      Margin="0,12,0,0"/>
+            <TextBlock Classes="mutedNote"
+                       Text="Заголовок короткий, поэтому обрезается обычно текст — а в нём и есть суть. Движение то же, что у бегущей строки монитора; при сниженной анимации текст просто обрезается как раньше."/>
             <TextBlock Classes="mutedNote"
                        Text="Предпочтительно скрывать. Click-through — запасной вариант, когда HideOnFullscreen выкл."/>
             <TextBlock Classes="mutedNote"

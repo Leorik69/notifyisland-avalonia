@@ -224,6 +224,35 @@
           </Grid>
         </Border>
 
+        <!-- 1.15 notification bell badge: a small circle with a bell that breathes while a
+             notification is on the capsule.
+
+             It sits BETWEEN the app icon and the text, not before the icon: the icon says which
+             app sent this, the bell says "this wants you now", and reading left to right the
+             cause comes before the alarm. The ring is a separate Ellipse rather than a border on
+             the badge itself, because a border grows inward and would eat the bell at this size —
+             the ring has to be able to shrink without touching anything.
+
+             The ring's scale is written from NotificationMarquee.BellRingScale on the shared
+             33 ms frame, and reduced motion turns the whole thing off (IsVisible=false) rather
+             than freezing a half-drawn ring. -->
+        <Grid x:Name="NotifyBellBadge"
+              DockPanel.Dock="Left"
+              Width="16" Height="16"
+              Margin="0,0,6,0"
+              VerticalAlignment="Center"
+              IsVisible="False"
+              IsHitTestVisible="False">
+          <Ellipse x:Name="NotifyBellRing"
+                   Width="16" Height="16"
+                   Stroke="#3D9CF0"
+                   StrokeThickness="1.25"
+                   Opacity="0.55"
+                   RenderTransformOrigin="50%,50%" />
+          <Viewbox x:Name="NotifyBellGlyph" Width="9" Height="9"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Grid>
+
         <Border x:Name="UnreadBadge"
                 DockPanel.Dock="Right"
                 MinWidth="18" Height="18"
@@ -275,6 +304,15 @@
                        Foreground="#FFFFFF"
                        TextTrimming="CharacterEllipsis"
                        Text="Обзор" />
+            <!-- The body is the part of a notification that gets cut, so it is the part that
+                 scrolls. Two states, one control: CharacterEllipsis is the resting look and
+                 Nothing is the scrolling one, swapped from code (SyncBodyMarquee) — the ellipsis
+                 cannot simply be left on, because a trimmed text block reports the TRIMMED width,
+                 and the marquee would then scroll a string that is not the one on screen.
+
+                 The shift transform is wired from code (see _bodyMarqueeShift). RenderTransform-
+                 Origin is pinned to the LEFT edge, the same as the monitor caption: the column
+                 must move, not scale. -->
             <TextBlock x:Name="OverlaySubtitle"
                        Grid.Column="1"
                        VerticalAlignment="Center"
@@ -283,8 +321,13 @@
                        FontSize="11"
                        Foreground="#C8C8CC"
                        TextTrimming="CharacterEllipsis"
+                       RenderTransformOrigin="0%,50%"
                        IsVisible="False"
-                       Text="" />
+                       Text="">
+              <TextBlock.RenderTransform>
+                <TranslateTransform />
+              </TextBlock.RenderTransform>
+            </TextBlock>
           </Grid>
 
           <!-- Stage 8: the one action that already exists in the machine (OverlayCommand.Clear).

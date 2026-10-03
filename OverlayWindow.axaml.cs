@@ -309,6 +309,11 @@ public partial class OverlayWindow : Window
         // so the XAML's <TranslateTransform x:Name="MarqueeShift"/> would compile without a
         // matching code-side field. Wire it onto the TextBlock here instead.
         MarqueeText.RenderTransform = _marqueeShift;
+        // Same reason, same wiring: the notification body scrolls on a transform of its own, and
+        // the bell ring's scale is declared in code for the identical reason (the source
+        // generator does not register a field for an x:Name on a transform child).
+        OverlaySubtitle.RenderTransform = _bodyMarqueeShift;
+        NotifyBellRing.RenderTransform = _bellRingScale;
         OverlayTextColumn.SizeChanged += (_, _) => ClampTitleToColumn();
         _settings = AppSettings.Load();
         // If the settings file was unreadable, Load moved it aside and fell back to defaults. Say
@@ -448,6 +453,7 @@ public partial class OverlayWindow : Window
             if (_machine.TimerActive != timerBefore || SystemStatsPanel.IsVisible)
                 ApplyTimerRow();
             TickMarquee(200);
+            TickBodyMarquee(200);
             Paint();
             UpdateSecondsStrip();
             if (before != after || hoverChanged || splitBefore != splitAfter) ApplySize();
@@ -769,6 +775,7 @@ public partial class OverlayWindow : Window
         if (TickFirstAppearWobble()) busy = true;
         if (TickReveal()) busy = true;
         if (TickAccentFlash()) busy = true;
+        if (TickBellPulse()) busy = true;
         if (busy) return;
         _frameTimer.Stop();
         _frameTimer.Tick -= OnFrameTick;
@@ -3453,6 +3460,11 @@ public partial class OverlayWindow : Window
         OverlaySubtitle.MaxWidth = bodyW > 0 ? bodyW : double.PositiveInfinity;
         OverlaySubtitle.IsVisible = bodyText.Length > 0;
         ClampTitleToColumn();
+        // 1.15: the bell and the scrolling body are decided here, after the final texts are set,
+        // because the badge answers to the KIND and the marquee to the final string — neither is
+        // something SplitWidths above knows anything about.
+        SyncNotifyBell(kind, notifLike);
+        SyncBodyMarquee(bodyText, notifLike);
 
         // 1.13: the capsule's bottom 8 DIP are one shared band. Whoever owns it draws, and
         // the other one yields — seconds digits and a progress bar are two readings of the
@@ -4123,6 +4135,159 @@ public partial class OverlayWindow : Window
 
     private double _titleBudget = double.PositiveInfinity;
     private bool _notifActionsShown;
+
+    // -- 1.15: notification bell badge + scrolling body ---------------------------------
+    // The body scrolls on a SEPARATE transform from the monitor caption's (_marqueeShift): the
+    // two move at different times over different widths, and one shared transform would mean each
+    // restarting the other's motion.
+    private readonly TranslateTransform _bodyMarqueeShift = new();
+    /// <summary>
+    /// The bell ring's scale. Declared here rather than as an x:Name in the XAML because the
+    /// Avalonia 11.3 source generator does not register fields for a name on a transform child of
+    /// a RenderTransform property — the same trap the marquee shift documents.
+    /// </summary>
+    private readonly ScaleTransform _bellRingScale = new(1, 1);
+    private double _bodyMarqueeElapsedMs;
+    /// <summary>Text the body is currently scrolling, so a NEW notification resets the phase.</summary>
+    private string _bodyMarqueeText = "";
+    private bool _bodyMarqueeActive;
+    private double _bellPulseMs;
+    private string _lastBellGlyphKey = "";
+
+    /// <summary>
+    /// Show the bell badge for this kind and give its ring a fresh pulse.
+    /// <para>
+    /// The pulse restarts on every ARRIVAL rather than on every Paint — Paint runs five times a
+    /// second, and resetting the phase there would hold the ring at its smallest size forever.
+    /// The visibility guard is what tells an arrival from a repaint: a second toast of the same
+    /// kind is still a second event, and the badge has to react to it.
+    /// </para>
+    /// </summary>
+    private void SyncNotifyBell(OverlayKind kind, bool notifLike)
+    {
+        var want = notifLike && NotificationMarquee.BellVisible(kind);
+        if (want && !NotifyBellBadge.IsVisible) _bellPulseMs = 0;
+        NotifyBellBadge.IsVisible = want;
+        if (!want)
+        {
+            _lastBellGlyphKey = "";
+            return;
+        }
+
+        // The glyph is a fixed shape at a fixed size, so it is built once per (kind, ink) pair.
+        // Rebuilding the geometry five times a second is what the kind-icon path above stopped
+        // doing, for exactly this reason.
+        var key = "bell:" + (kind == OverlayKind.Error ? "e" : "n") + _inkPrimary;
+        if (string.Equals(key, _lastBellGlyphKey, StringComparison.Ordinal)) return;
+        NotifyBellGlyph.Child = IslandIcons.Create("notify", 9, new SolidColorBrush(_inkPrimary), 2.0);
+        _lastBellGlyphKey = key;
+    }
+
+    /// <summary>
+    /// Decide whether the body scrolls, and in which of its two looks.
+    /// <para>
+    /// The measurement is the part worth writing down. A text block with
+    /// <c>CharacterEllipsis</c> reports the width it was GIVEN, not the width of its string, so
+    /// asking a trimming block how wide its text is always answers "the column" — the marquee
+    /// could then never start. Clearing the trimming first makes the measurement honest; layout
+    /// has not run again yet, so this reads the string's own width, and the visible edge still
+    /// comes from the column's ClipToBounds.
+    /// </para>
+    /// </summary>
+    private void SyncBodyMarquee(string bodyText, bool notifLike)
+    {
+        if (!notifLike || bodyText.Length == 0)
+        {
+            StopBodyMarquee();
+            return;
+        }
+
+        OverlaySubtitle.TextTrimming = TextTrimming.None;
+        OverlaySubtitle.MaxWidth = double.PositiveInfinity;
+        var natural = OverlaySubtitle.Bounds.Width;
+        var column = BodyColumnWidth();
+
+        if (_settings.NotifyBodyMarquee
+            && NotificationMarquee.ShouldScroll(natural, column, enabled: true))
+        {
+            // A different string is a different message: restart the travel, or the new text
+            // would arrive mid-scroll and be unreadable at the very moment it appeared.
+            if (!string.Equals(bodyText, _bodyMarqueeText, StringComparison.Ordinal))
+            {
+                _bodyMarqueeText = bodyText;
+                _bodyMarqueeElapsedMs = 0;
+                _bodyMarqueeShift.X = 0;
+            }
+            _bodyMarqueeActive = true;
+            return;
+        }
+
+        StopBodyMarquee();
+    }
+
+    /// <summary>
+    /// The room the body actually has: the text column minus the title and the gap between them.
+    /// Both terms are read back from the laid-out controls rather than recomputed, because the
+    /// star column is what actually gave the body its width and a second copy of that arithmetic
+    /// is exactly the kind of thing that drifts.
+    /// </summary>
+    private double BodyColumnWidth()
+    {
+        var column = OverlayTextColumn.Bounds.Width;
+        if (column <= 0) return 0;
+        return Math.Max(0, column - OverlayTitle.Bounds.Width - NotificationLayout.TitleBodyGap);
+    }
+
+    private void StopBodyMarquee()
+    {
+        if (_bodyMarqueeActive) _bodyMarqueeShift.X = 0;
+        _bodyMarqueeActive = false;
+        _bodyMarqueeText = "";
+    }
+
+    /// <summary>
+    /// One frame of the body's scroll, from the shared 200 ms tick.
+    /// <para>
+    /// It rides the 200 ms timer rather than the 33 ms frame clock on purpose. The text travels at
+    /// 26 DIP/s, so 200 ms is 5.2 DIP — under a tenth of a glyph — while a 33 ms timer would keep
+    /// the frame clock running for the whole notification window, which is precisely the idle CPU
+    /// this project spent a week removing.
+    /// </para>
+    /// </summary>
+    private void TickBodyMarquee(int deltaMs)
+    {
+        if (!_bodyMarqueeActive || !OverlaySubtitle.IsVisible) return;
+        _bodyMarqueeElapsedMs += deltaMs;
+        _bodyMarqueeShift.X = NotificationMarquee.OffsetFor(
+            _bodyMarqueeElapsedMs, OverlaySubtitle.Bounds.Width, BodyColumnWidth());
+    }
+
+    /// <summary>
+    /// One frame of the bell's ring, from the shared 33 ms clock.
+    /// <para>
+    /// Reports "not busy" under reduced motion, which is what lets the frame clock stop itself.
+    /// The ring is left at its full size and simply does not move — reduced motion removes the
+    /// movement rather than shortening it, so the badge still arrives, it just arrives quietly.
+    /// </para>
+    /// </summary>
+    private bool TickBellPulse()
+    {
+        if (!NotifyBellBadge.IsVisible) return false;
+        var speed = AnimationTiming.Effective(_settings.AnimationSpeed, _settings.AnimUnreadPulse);
+        var reduced = AnimReduced.Resolve(OsAnimationsEnabled(), _settings.ReducedMotion);
+        if (reduced || !AnimationTiming.IsEnabled(speed))
+        {
+            _bellRingScale.ScaleX = 1.0;
+            _bellRingScale.ScaleY = 1.0;
+            return false;
+        }
+        _bellPulseMs += OverlayTokens.CapsuleFrameTickMs;
+        var period = AnimationTiming.ScaleMs(NotificationMarquee.BellPulsePeriodMs, speed);
+        var s = NotificationMarquee.BellRingScale(_bellPulseMs, period, enabled: true);
+        _bellRingScale.ScaleX = s;
+        _bellRingScale.ScaleY = s;
+        return true;
+    }
 
     private static string OneLine(string? text) =>
         (text ?? string.Empty).Replace("\r", " ").Replace("\n", " ⏎ ").Trim();

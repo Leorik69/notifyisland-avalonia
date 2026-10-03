@@ -262,7 +262,8 @@ public partial class SettingsWindow : Window
         Wire(HoverDelaySlider, Slider.ValueProperty);
         Wire(ClickPinBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
         Wire(HideOnFullscreenBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
-    Wire(NotifyJumpToTopBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(NotifyJumpToTopBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
+        Wire(NotifyBodyMarqueeBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
         Wire(ClickThroughFullscreenBox, Avalonia.Controls.CheckBox.IsCheckedProperty);
 
         // Appearance
@@ -691,6 +692,7 @@ public partial class SettingsWindow : Window
         ClickPinBox.IsChecked = _draft.ClickPinEnabled;
         HideOnFullscreenBox.IsChecked = _draft.HideOnFullscreen;
         NotifyJumpToTopBox.IsChecked = _draft.NotifyJumpToTop;
+        NotifyBodyMarqueeBox.IsChecked = _draft.NotifyBodyMarquee;
         ClickThroughFullscreenBox.IsChecked = _draft.ClickThroughOnFullscreen;
         SelectByTag(ThemePresetBox, _draft.ThemePreset.ToString());
         SelectByTag(WeatherLocationModeBox, _draft.WeatherLocationMode.ToString());
@@ -1138,6 +1140,11 @@ public partial class SettingsWindow : Window
         _draft.HoverCollapseGraceMs = OverlayTokens.HoverCollapseGraceMs;
         _draft.ClickPinEnabled = ClickPinBox.IsChecked == true;
         _draft.HideOnFullscreen = HideOnFullscreenBox.IsChecked == true;
+        // 2cbabd4 added NotifyJumpToTopBox and wired it into the draft LOAD, but never into this
+        // read-back, so unchecking it could not be saved: the next Apply wrote the previous value
+        // straight back over the user's change. Both boxes are read here now.
+        _draft.NotifyJumpToTop = NotifyJumpToTopBox.IsChecked == true;
+        _draft.NotifyBodyMarquee = NotifyBodyMarqueeBox.IsChecked == true;
         _draft.ClickThroughOnFullscreen = ClickThroughFullscreenBox.IsChecked == true;
         if (Enum.TryParse<ThemePreset>(SelectedTag(ThemePresetBox), true, out var tp))
             _draft.ThemePreset = tp;

@@ -166,6 +166,24 @@ public sealed class AppSettings
     /// </summary>
     public bool NotifyJumpToTop { get; set; } = true;
 
+    /// <summary>
+    /// Scroll a notification's body text when it is wider than its column, instead of cutting it
+    /// at the ellipsis. Default ON.
+    /// <para>
+    /// 2026-10-03, added with the bell badge. The title is short by construction — an app name —
+    /// so the body is what a notification actually loses, and on a real toast that is usually the
+    /// half that says what happened. Cutting it leaves the user with «Windows PowerShell» and no
+    /// way to learn anything; scrolling shows all of it, at the cost of not being able to read it
+    /// all at once.
+    /// </para>
+    /// <para>
+    /// The motion is the monitor's own running caption (<see cref="MarqueeTrack"/>), not a second
+    /// implementation, and reduced motion stops it: the body then stays trimmed exactly as it was
+    /// before this setting existed.
+    /// </para>
+    /// </summary>
+    public bool NotifyBodyMarquee { get; set; } = true;
+
     /// <summary>Stock theme or Custom. Stock Apply overwrites palette/font/anim/icons/date.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ThemePreset ThemePreset { get; set; } = ThemePreset.Custom;
@@ -550,7 +568,8 @@ public sealed class AppSettings
         target.ClickPinEnabled = ClickPinEnabled;
         target.HideOnFullscreen = HideOnFullscreen;
         target.ClickThroughOnFullscreen = ClickThroughOnFullscreen;
-    target.NotifyJumpToTop = NotifyJumpToTop;
+        target.NotifyJumpToTop = NotifyJumpToTop;
+        target.NotifyBodyMarquee = NotifyBodyMarquee;
         target.ThemePreset = ThemePreset;
         target.WeatherSide = WeatherSide;
         target.ZOrderMode = ZOrderMode;
